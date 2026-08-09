@@ -1,0 +1,175 @@
+// TherapyJo — Prisma Schema
+// Database: Supabase PostgreSQL
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ─── Enums ────────────────────────────────────────────
+
+enum Role {
+  ADMIN
+  DOCTOR
+  SECRETARY
+}
+
+enum EmploymentStatus {
+  ACTIVE
+  RESIGNED
+}
+
+enum SessionStatus {
+  SCHEDULED
+  WAITING
+  CHECKED_IN
+  WITH_DOCTOR
+  CHECKED_OUT
+  CANCELLED
+  NO_SHOW
+}
+
+enum PaymentType {
+  CASH
+  INSURANCE
+}
+
+// ─── User (Doctors, Secretaries, Admin) ───────────────
+
+model User {
+  id             String           @id @default(cuid())
+  username       String           @unique
+  passwordHash   String
+  role           Role
+  name           String
+  email          String?
+  phone          String?
+  workingHours   String?
+  pictureUrl     String?
+  status         EmploymentStatus @default(ACTIVE)
+  color          String?          // hex color for calendar (doctors only)
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+
+  // Relations
+  reservations   Reservation[]    // doctor's reservations
+  notes          Note[]           // notes linked to doctor
+}
+
+// ─── Patient ──────────────────────────────────────────
+
+model Patient {
+  id             Int              @id @default(autoincrement())
+  name           String
+  phone1         String
+  phone2         String?
+  pictureUrl     String?
+  archived       Boolean          @default(false)
+  lastVisitDate  DateTime?
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+
+  // Relations
+  files          PatientFile[]
+  intake         ClinicalIntake?
+  reservations   Reservation[]
+}
+
+// ─── Patient Files (images, PDFs, X-rays) ─────────────
+
+model PatientFile {
+  id             Int              @id @default(autoincrement())
+  patientId      Int
+  fileName       String
+  filePath       String           // Supabase Storage path
+  fileType       String           // mime type
+  fileSize       Int              // bytes
+  uploadedAt     DateTime         @default(now())
+
+  patient        Patient          @relation(fields: [patientId], references: [id], onDelete: Cascade)
+}
+
+// ─── Clinical Intake / Assessment ─────────────────────
+
+model ClinicalIntake {
+  id                    Int       @id @default(autoincrement())
+  patientId             Int       @unique
+  injuryPlace           String?
+  enrollDate            DateTime?
+  medicalHistory        String?
+  assessment            String?
+  aggravators           String?   // What movements trigger pain
+  relievers             String?   // What relieves pain
+  diagnosis             String?
+  treatmentPlan         String?
+  recommendedSessions   Int?
+  clinicExercises       String?
+  homeExercises         String?
+  nextSessionTreatment  String?
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+
+  patient               Patient   @relation(fields: [patientId], references: [id], onDelete: Cascade)
+}
+
+// ─── Reservation (Session) ────────────────────────────
+
+model Reservation {
+  id                  Int            @id @default(autoincrement())
+  patientId           Int
+  doctorId            String
+  sessionDate         DateTime       // date only
+  sessionTime         DateTime       // time within the day
+  status              SessionStatus  @default(SCHEDULED)
+  paymentType         PaymentType?
+  isTwoHours          Boolean        @default(false)
+  isNote              Boolean        @default(false)
+  note                String?
+  showNoteOnCalendar  Boolean        @default(false)
+  nextSessionNote     String?
+  injuryPlace         String?
+  checkedInAt         DateTime?
+  withDoctorAt        DateTime?
+  checkedOutAt        DateTime?
+  createdAt           DateTime       @default(now())
+  updatedAt           DateTime       @updatedAt
+
+  // Relations
+  patient             Patient        @relation(fields: [patientId], references: [id])
+  doctor              User           @relation(fields: [doctorId], references: [id])
+  soapNote            SOAPNote?
+}
+
+// ─── SOAP Note (Physio documentation) ─────────────────
+
+model SOAPNote {
+  id              Int          @id @default(autoincrement())
+  reservationId   Int          @unique
+  subjective      String?
+  objective       String?
+  assessment      String?
+  plan            String?
+  injuryPlace     String?
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+
+  reservation     Reservation  @relation(fields: [reservationId], references: [id], onDelete: Cascade)
+}
+
+// ─── General Notes ────────────────────────────────────
+
+model Note {
+  id              Int          @id @default(autoincrement())
+  name            String
+  noteDate        DateTime
+  doctorId        String
+  doctorCheckNote Boolean      @default(false)
+  details         String?
+  createdAt       DateTime     @default(now())
+
+  doctor          User         @relation(fields: [doctorId], references: [id])
+}

@@ -1,0 +1,260 @@
+"use client";
+
+import { useState, useRef } from "react";
+import { useRouter } from "next/navigation";
+
+const COLORS = [
+    "#6ee7b7", "#93c5fd", "#fbbf24", "#f87171",
+    "#a78bfa", "#fb923c", "#34d399", "#60a5fa",
+    "#f472b6", "#38bdf8", "#facc15", "#c084fc",
+];
+
+export default function NewDoctorPage() {
+    const router = useRouter();
+    const fileInputRef = useRef<HTMLInputElement>(null);
+
+    const [form, setForm] = useState({
+        name: "", email: "", phone: "", workingHours: "",
+        username: "", password: "", color: COLORS[0],
+    });
+    const [pictureFile, setPictureFile] = useState<File | null>(null);
+    const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+    const [saving, setSaving] = useState(false);
+    const [error, setError] = useState("");
+
+    const handlePictureChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+        setPictureFile(file);
+        const reader = new FileReader();
+        reader.onload = () => setPreviewUrl(reader.result as string);
+        reader.readAsDataURL(file);
+    };
+
+    const removePicture = () => {
+        setPictureFile(null);
+        setPreviewUrl(null);
+        if (fileInputRef.current) fileInputRef.current.value = "";
+    };
+
+    const handleSubmit = async () => {
+        setError("");
+        if (!form.name.trim()) { setError("Name is required"); return; }
+        if (!form.username.trim()) { setError("Username is required"); return; }
+        if (!form.password.trim()) { setError("Password is required"); return; }
+        setSaving(true);
+
+        let pictureUrl: string | null = null;
+        if (pictureFile) {
+            const fd = new FormData();
+            fd.append("file", pictureFile);
+            const uploadRes = await fetch("/api/upload", { method: "POST", body: fd });
+            if (uploadRes.ok) {
+                const data = await uploadRes.json();
+                pictureUrl = data.url;
+            }
+        }
+
+        const res = await fetch("/api/employees/doctors", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ ...form, pictureUrl }),
+        });
+        const data = await res.json();
+        if (!res.ok) {
+            setError(data.error || "Failed to create doctor");
+            setSaving(false);
+            return;
+        }
+        router.push("/admin/employees/doctors");
+    };
+
+    return (
+        <div className="page">
+            <button className="back-btn" onClick={() => router.push("/admin/employees/doctors")}>← Back to Doctors</button>
+            <h1>New Doctor</h1>
+            <p className="subtitle">Create a new doctor account with login credentials.</p>
+
+            {error && <div className="error-banner">{error}</div>}
+
+            <div className="form-layout">
+                {/* Left: Avatar */}
+                <div className="avatar-column">
+                    <div className="avatar-card">
+                        <div className="avatar-circle" onClick={() => fileInputRef.current?.click()}>
+                            {previewUrl ? (
+                                <img src={previewUrl} alt="Preview" className="avatar-img" />
+                            ) : (
+                                <div className="avatar-placeholder">
+                                    <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round">
+                                        <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
+                                        <circle cx="12" cy="7" r="4" />
+                                    </svg>
+                                </div>
+                            )}
+                        </div>
+                        <input ref={fileInputRef} type="file" accept="image/*" onChange={handlePictureChange} style={{ display: "none" }} />
+                        <button className="upload-btn" onClick={() => fileInputRef.current?.click()}>
+                            {previewUrl ? "Change Photo" : "Upload Photo"}
+                        </button>
+                        {previewUrl && <button className="remove-btn" onClick={removePicture}>Remove</button>}
+                        <p className="upload-hint">JPG, PNG or WebP. Max 5MB.</p>
+                    </div>
+
+                    {/* Color picker */}
+                    <div className="color-card">
+                        <h3>Calendar Color</h3>
+                        <div className="color-picker">
+                            {COLORS.map((c) => (
+                                <button
+                                    key={c}
+                                    className={`color-swatch ${form.color === c ? "selected" : ""}`}
+                                    style={{ background: c }}
+                                    onClick={() => setForm({ ...form, color: c })}
+                                />
+                            ))}
+                        </div>
+                    </div>
+                </div>
+
+                {/* Right: Form fields */}
+                <div className="fields-column">
+                    <div className="fields-card">
+                        <h2>Personal Information</h2>
+                        <div className="field">
+                            <label htmlFor="name">Full Name <span className="req">*</span></label>
+                            <input id="name" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="Dr. Ahmad..." autoFocus />
+                        </div>
+                        <div className="field-row">
+                            <div className="field">
+                                <label htmlFor="phone">Phone</label>
+                                <input id="phone" type="tel" value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} placeholder="0791234567" />
+                            </div>
+                            <div className="field">
+                                <label htmlFor="email">Email</label>
+                                <input id="email" type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} placeholder="doctor@clinic.com" />
+                            </div>
+                        </div>
+                        <div className="field">
+                            <label htmlFor="hours">Working Hours</label>
+                            <input id="hours" value={form.workingHours} onChange={(e) => setForm({ ...form, workingHours: e.target.value })} placeholder="e.g. 9:00 AM – 3:00 PM" />
+                        </div>
+                    </div>
+
+                    <div className="fields-card">
+                        <h2>Login Credentials</h2>
+                        <div className="field-row">
+                            <div className="field">
+                                <label htmlFor="username">Username <span className="req">*</span></label>
+                                <input id="username" value={form.username} onChange={(e) => setForm({ ...form, username: e.target.value })} placeholder="dr.ahmad" />
+                            </div>
+                            <div className="field">
+                                <label htmlFor="password">Password <span className="req">*</span></label>
+                                <input id="password" type="password" value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} placeholder="••••••••" />
+                            </div>
+                        </div>
+                    </div>
+
+                    <div className="form-actions">
+                        <button className="btn-cancel" onClick={() => router.push("/admin/employees/doctors")}>Cancel</button>
+                        <button className="btn-save" onClick={handleSubmit} disabled={saving}>
+                            {saving ? "Creating…" : "Create Doctor"}
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <style jsx>{`
+                .page { max-width: 860px; }
+                .back-btn { background: none; border: none; color: rgba(255,255,255,0.45); font-size: 0.85rem; cursor: pointer; padding: 0; margin-bottom: 1rem; font-family: inherit; }
+                .back-btn:hover { color: #fff; }
+                h1 { font-size: 1.6rem; font-weight: 700; margin: 0 0 0.25rem; }
+                .subtitle { color: rgba(255,255,255,0.4); font-size: 0.9rem; margin-bottom: 1.5rem; }
+                .error-banner { background: rgba(220,38,38,0.1); border: 1px solid rgba(220,38,38,0.25); color: #fca5a5; padding: 0.65rem 1rem; border-radius: var(--radius-sm, 2px); font-size: 0.85rem; margin-bottom: 1.25rem; }
+
+                .form-layout { display: flex; gap: 1.5rem; align-items: flex-start; }
+
+                .avatar-column { width: 220px; flex-shrink: 0; display: flex; flex-direction: column; gap: 1rem; }
+                .avatar-card {
+                    background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.06);
+                    border-radius: var(--radius-md, 4px); padding: 1.5rem;
+                    display: flex; flex-direction: column; align-items: center; gap: 0.75rem;
+                }
+                .avatar-circle {
+                    width: 140px; height: 140px; border-radius: 50%;
+                    border: 2px dashed rgba(255,255,255,0.12);
+                    display: flex; align-items: center; justify-content: center;
+                    overflow: hidden; cursor: pointer; transition: border-color 0.2s;
+                    background: rgba(255,255,255,0.03);
+                }
+                .avatar-circle:hover { border-color: var(--primary, #4CAF93); }
+                .avatar-placeholder { color: rgba(255,255,255,0.2); }
+                .avatar-img { width: 100%; height: 100%; object-fit: cover; }
+                .upload-btn {
+                    background: rgba(76,175,147,0.12); color: var(--primary, #4CAF93); border: none;
+                    padding: 0.4rem 0.9rem; border-radius: var(--radius-sm, 2px); font-size: 0.8rem;
+                    font-weight: 600; cursor: pointer; font-family: inherit;
+                }
+                .upload-btn:hover { background: rgba(76,175,147,0.22); }
+                .remove-btn { background: none; border: none; color: rgba(220,100,100,0.7); font-size: 0.76rem; cursor: pointer; font-family: inherit; }
+                .remove-btn:hover { color: #fca5a5; }
+                .upload-hint { color: rgba(255,255,255,0.25); font-size: 0.72rem; text-align: center; margin: 0; }
+
+                .color-card {
+                    background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.06);
+                    border-radius: var(--radius-md, 4px); padding: 1.25rem;
+                }
+                .color-card h3 { font-size: 0.82rem; font-weight: 600; color: rgba(255,255,255,0.55); margin: 0 0 0.75rem; }
+                .color-picker { display: grid; grid-template-columns: repeat(4, 1fr); gap: 0.5rem; }
+                .color-swatch {
+                    width: 100%; aspect-ratio: 1; border-radius: 8px; border: 2px solid transparent;
+                    cursor: pointer; transition: transform 0.15s;
+                }
+                .color-swatch.selected { border-color: #fff; transform: scale(1.12); }
+                .color-swatch:hover { transform: scale(1.08); }
+
+                .fields-column { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1rem; }
+                .fields-card {
+                    background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.06);
+                    border-radius: var(--radius-md, 4px); padding: 1.5rem;
+                }
+                .fields-card h2 { font-size: 1rem; font-weight: 600; margin: 0 0 1.25rem; color: rgba(255,255,255,0.85); }
+                .field { display: flex; flex-direction: column; gap: 0.3rem; margin-bottom: 1rem; }
+                .field:last-child { margin-bottom: 0; }
+                .field label { font-size: 0.78rem; color: rgba(255,255,255,0.55); font-weight: 500; }
+                .req { color: var(--primary, #4CAF93); }
+                .field input {
+                    background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1);
+                    border-radius: var(--radius-sm, 2px); padding: 0.65rem 0.85rem; color: #fff;
+                    font-size: 0.9rem; outline: none; font-family: inherit; transition: border-color 0.15s;
+                }
+                .field input:focus { border-color: var(--primary, #4CAF93); }
+                .field input::placeholder { color: rgba(255,255,255,0.2); }
+                .field-row { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
+
+                .form-actions { display: flex; justify-content: flex-end; gap: 0.75rem; }
+                .btn-cancel {
+                    background: rgba(255,255,255,0.06); color: rgba(255,255,255,0.6);
+                    border: 1px solid rgba(255,255,255,0.1); border-radius: var(--radius-sm, 2px);
+                    padding: 0.55rem 1.2rem; font-size: 0.88rem; cursor: pointer; font-family: inherit;
+                }
+                .btn-cancel:hover { background: rgba(255,255,255,0.1); color: #fff; }
+                .btn-save {
+                    background: var(--primary, #4CAF93); color: #fff; border: none;
+                    border-radius: var(--radius-sm, 2px); padding: 0.55rem 1.5rem; font-size: 0.88rem;
+                    font-weight: 600; cursor: pointer; font-family: inherit;
+                }
+                .btn-save:hover { background: var(--primary-dark, #3a8f77); }
+                .btn-save:disabled { opacity: 0.5; cursor: not-allowed; }
+
+                @media (max-width: 640px) {
+                    .form-layout { flex-direction: column; }
+                    .avatar-column { width: 100%; flex-direction: row; }
+                    .avatar-card { flex-direction: row; gap: 1rem; padding: 1rem; }
+                    .avatar-circle { width: 80px; height: 80px; flex-shrink: 0; }
+                    .field-row { grid-template-columns: 1fr; }
+                }
+            `}</style>
+        </div>
+    );
+}
