@@ -1,6 +1,7 @@
 import { Inter, Outfit, Noto_Kufi_Arabic } from "next/font/google";
 import "./globals.css";
 import { LanguageProvider } from "./i18n/LanguageContext";
+import Providers from "./providers";
 
 const inter = Inter({
   subsets: ["latin"],
@@ -55,7 +56,9 @@ export default function RootLayout({
       <body
         className={`${inter.variable} ${outfit.variable} ${notoKufi.variable}`}
       >
-        <LanguageProvider>{children}</LanguageProvider>
+        <Providers>
+          <LanguageProvider>{children}</LanguageProvider>
+        </Providers>
       </body>
     </html>
   );

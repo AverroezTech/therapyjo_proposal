@@ -12,12 +12,12 @@ export default function About() {
     const { t, lang } = useLanguage();
     const statsRef = useRef<HTMLDivElement>(null);
 
-    // Counter animation — re-runs on language change, disabled on mobile
+    // Counter animation — re-runs on language change, disabled on mobile/tablet
     useEffect(() => {
         if (!statsRef.current) return;
 
-        // On mobile, just show the final values — no animation
-        const isMobile = window.innerWidth < 768;
+        // On mobile/tablet, just show the final values — no animation
+        const isMobile = window.matchMedia("(max-width: 1024px)").matches || "ontouchstart" in window;
         if (isMobile) return;
 
         const els = statsRef.current.querySelectorAll<HTMLElement>(".about-stat-number");
