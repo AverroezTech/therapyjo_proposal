@@ -26,7 +26,7 @@ export async function GET(
         where: { id: parseInt(id, 10) },
         include: {
             patient: {
-                select: { id: true, name: true, phone1: true, phone2: true },
+                select: { id: true, name: true, phone1: true, phone2: true, archived: true },
             },
             doctor: { select: { id: true, name: true, color: true } },
             soapNote: true,

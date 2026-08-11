@@ -22,7 +22,7 @@ interface ReservationDetail {
     isTwoHours: boolean;
     previousSessionNote: string | null;
     previousSessionDate: string | null;
-    patient: { id: number; name: string; phone1: string; phone2: string | null };
+    patient: { id: number; name: string; phone1: string; phone2: string | null; archived: boolean };
     doctor: { id: string; name: string; color: string | null };
     soapNote: { subjective: string | null; objective: string | null; assessment: string | null; plan: string | null } | null;
 }
@@ -199,7 +199,10 @@ export default function DoctorSessionPage({ params }: { params: Promise<{ id: st
 
             <div className="header">
                 <div className="header-left">
-                    <h1>{reservation.patient.name}</h1>
+                    <h1>
+                        {reservation.patient.name}
+                        {reservation.patient.archived && <span className="badge-archived">ARCHIVED</span>}
+                    </h1>
                     <div className="header-meta">
                         <span>📞 {reservation.patient.phone1}</span>
                         {reservation.patient.phone2 && <span>· {reservation.patient.phone2}</span>}
@@ -357,7 +360,8 @@ export default function DoctorSessionPage({ params }: { params: Promise<{ id: st
                 .back-btn { background: none; border: none; color: rgba(255,255,255,0.5); font-size: 0.85rem; cursor: pointer; padding: 0; margin-bottom: 1rem; font-family: inherit; }
                 .back-btn:hover { color: #fff; }
                 .header { display: flex; align-items: flex-start; justify-content: space-between; margin-bottom: 1rem; flex-wrap: wrap; gap: 1rem; }
-                .header h1 { font-size: 1.5rem; font-weight: 600; margin: 0; }
+                .header h1 { font-size: 1.5rem; font-weight: 600; margin: 0; display: flex; align-items: center; gap: 0.6rem; }
+                .badge-archived { background: rgba(239,68,68,0.12); color: #fca5a5; padding: 0.2rem 0.6rem; border-radius: var(--radius-sm, 2px); font-size: 0.65rem; font-weight: 700; letter-spacing: 0.04em; }
                 .header-meta { color: rgba(255,255,255,0.5); font-size: 0.85rem; margin-top: 0.2rem; display: flex; gap: 0.5rem; }
                 .header-right { display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap; }
                 .status-badge { padding: 0.3rem 0.8rem; border-radius: var(--radius-sm, 2px); font-size: 0.78rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.03em; }

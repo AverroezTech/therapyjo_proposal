@@ -26,6 +26,12 @@ export async function PUT(
     const session = await auth();
     if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
+    // Only admin and doctors can write clinical SOAP documentation
+    const role = (session.user as { role?: string })?.role;
+    if (role === "SECRETARY") {
+        return NextResponse.json({ error: "Secretaries cannot edit SOAP notes" }, { status: 403 });
+    }
+
     const { id } = await params;
     const reservationId = parseInt(id, 10);
     const body = await req.json();
