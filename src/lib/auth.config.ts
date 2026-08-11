@@ -23,7 +23,7 @@ export const authConfig: NextAuthConfig = {
             const pathname = nextUrl.pathname;
 
             // Public routes — accessible to everyone
-            const publicRoutes = ["/", "/api/auth"];
+            const publicRoutes = ["/", "/api/auth", "/blog", "/api/public"];
             const isPublic = publicRoutes.some(
                 (route) => pathname === route || pathname.startsWith(route + "/")
             );
