@@ -1,0 +1,817 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@600;700;800&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+  <script src="./image-slot.js"></script>
+  <style>
+    body { margin: 0; }
+    a { color: inherit; text-decoration: none; }
+    input, select, textarea { font-family: 'Inter', sans-serif; }
+    ::placeholder { color: rgba(255,255,255,0.3); }
+  </style>
+</helmet>
+
+<div style="font-family: 'Inter', sans-serif; background: #1a2e35; color: #ffffff; min-height: 100vh;">
+
+  <!-- NAV -->
+  <nav style="display: flex; align-items: center; gap: 1.25rem; row-gap: 0.35rem; padding: 0.5rem 1.5rem; min-height: 56px; box-sizing: border-box; flex-wrap: wrap; background: rgba(26,46,53,0.85); backdrop-filter: blur(20px); border-bottom: 1px solid rgba(255,255,255,0.06); position: sticky; top: 0; z-index: 100;">
+    <div style="font-family: 'Outfit', sans-serif; color: #4CAF93; font-size: 1.1rem; font-weight: 700; flex-shrink: 0; order: 1;">Therapy Jo</div>
+    <div style="display: flex; align-items: center; gap: 0.15rem; flex: {{ navTabsFlex }}; min-width: 0; flex-wrap: nowrap; overflow-x: auto; order: {{ navTabsOrder }};">
+      <button onClick="{{ goDashboard }}" style="background: {{ tabBg.dashboard }}; border: none; color: #fff; padding: 0.4rem 0.8rem; border-radius: 6px; font-size: 0.82rem; font-weight: 500; cursor: pointer; font-family: inherit; white-space: nowrap;" style-hover="background:rgba(255,255,255,0.06);">Dashboard</button>
+      <span style="color: rgba(255,255,255,0.55); padding: 0.4rem 0.8rem; font-size: 0.82rem; cursor: pointer; white-space: nowrap;" style-hover="color:#fff;">Employees</span>
+      <span style="color: rgba(255,255,255,0.55); padding: 0.4rem 0.8rem; font-size: 0.82rem; cursor: pointer; white-space: nowrap;" style-hover="color:#fff;">Patients</span>
+      <span style="color: rgba(255,255,255,0.55); padding: 0.4rem 0.8rem; font-size: 0.82rem; cursor: pointer; white-space: nowrap;" style-hover="color:#fff;">Notes</span>
+      <sc-if value="{{ canManageContent }}" hint-placeholder-val="{{ true }}">
+        <div style="display: flex; align-items: center; gap: 0.15rem;">
+          <div style="width: 1px; height: 20px; background: rgba(255,255,255,0.1); margin: 0 0.4rem;"></div>
+          <button onClick="{{ goBlogList }}" style="background: {{ tabBg.blog }}; border: none; color: #fff; padding: 0.4rem 0.8rem; border-radius: 6px; font-size: 0.82rem; font-weight: 500; cursor: pointer; font-family: inherit; white-space: nowrap;" style-hover="background:rgba(255,255,255,0.06);">Blog</button>
+          <button onClick="{{ goDoctors }}" style="background: {{ tabBg.doctors }}; border: none; color: #fff; padding: 0.4rem 0.8rem; border-radius: 6px; font-size: 0.82rem; font-weight: 500; cursor: pointer; font-family: inherit; white-space: nowrap;" style-hover="background:rgba(255,255,255,0.06);">Doctors</button>
+          <button onClick="{{ goApprovals }}" style="display: inline-flex; align-items: center; gap: 0.4rem; background: {{ tabBg.approvals }}; border: none; color: #fff; padding: 0.4rem 0.8rem; border-radius: 6px; font-size: 0.82rem; font-weight: 500; cursor: pointer; font-family: inherit; white-space: nowrap;" style-hover="background:rgba(255,255,255,0.06);">
+            Approvals
+            <sc-if value="{{ hasPending }}" hint-placeholder-val="{{ true }}">
+              <span style="background: #f59e0b; color: #3a2606; border-radius: 999px; min-width: 17px; height: 17px; display: inline-flex; align-items: center; justify-content: center; font-size: 0.68rem; font-weight: 700; padding: 0 4px;">{{ pendingCount }}</span>
+            </sc-if>
+          </button>
+        </div>
+      </sc-if>
+    </div>
+    <div style="display: flex; align-items: center; gap: 0.6rem; flex-shrink: 0; order: 2; margin-inline-start: auto;">
+      <button onClick="{{ openPalette }}" style="display: inline-flex; align-items: center; gap: 0.5rem; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); color: rgba(255,255,255,0.45); padding: 0.32rem 0.7rem; border-radius: 6px; font-size: 0.78rem; cursor: pointer; font-family: inherit;" style-hover="background:rgba(255,255,255,0.1);color:rgba(255,255,255,0.75);">Search <span style="font-size: 0.7rem; border: 1px solid rgba(255,255,255,0.15); border-radius: 3px; padding: 0.05rem 0.28rem;">⌘K</span></button>
+      <div style="display: flex; align-items: center; gap: 0.5rem; background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08); border-radius: 6px; padding: 0.22rem 0.3rem 0.22rem 0.55rem;">
+        <span style="display: {{ viewingAsDisplay }}; font-size: 0.7rem; color: rgba(255,255,255,0.35); text-transform: uppercase; letter-spacing: 0.05em;">Viewing as</span>
+        <select value="{{ role }}" onChange="{{ onRoleChange }}" style="background: transparent; border: none; color: #fff; font-size: 0.8rem; font-weight: 600; outline: none; cursor: pointer;">
+          <sc-for list="{{ roleOptions }}" as="r" hint-placeholder-count="3">
+            <option value="{{ r }}" style="background: #1a2e35;">{{ r }}</option>
+          </sc-for>
+        </select>
+      </div>
+      <div style="width: 28px; height: 28px; background: rgba(76,175,147,0.15); border: 1px solid rgba(76,175,147,0.25); border-radius: 6px; display: flex; align-items: center; justify-content: center; font-size: 0.75rem; font-weight: 700; color: #4CAF93;">{{ userInitial }}</div>
+      <button style="background: rgba(220,38,38,0.08); border: 1px solid rgba(220,38,38,0.15); color: rgba(252,165,165,0.8); padding: 0.32rem 0.75rem; border-radius: 6px; font-size: 0.76rem; cursor: pointer; font-family: inherit; white-space: nowrap;" style-hover="background:rgba(220,38,38,0.18);color:#fca5a5;">Sign Out</button>
+    </div>
+  </nav>
+
+  <main style="padding: 2rem; max-width: 1400px; margin: 0 auto;">
+
+    <!-- DASHBOARD -->
+    <sc-if value="{{ isDashboard }}" hint-placeholder-val="{{ true }}">
+      <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 0.75rem; margin-bottom: 1.25rem;">
+        <div style="display: flex; align-items: center; gap: 1.25rem; flex-wrap: wrap;">
+          <h1 style="font-size: 1.5rem; font-weight: 600; margin: 0;">Dashboard</h1>
+          <div style="display: flex; gap: 0.35rem;">
+            <button style="background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.1); color: rgba(255,255,255,0.7); padding: 0.35rem 0.75rem; border-radius: 6px; font-size: 0.78rem; cursor: pointer; font-family: inherit;">← Yesterday</button>
+            <button style="background: rgba(255,255,255,0.06); border: 1px solid #4CAF93; color: #4CAF93; padding: 0.35rem 0.75rem; border-radius: 6px; font-size: 0.78rem; font-weight: 600; cursor: pointer; font-family: inherit;">Today</button>
+            <button style="background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.1); color: rgba(255,255,255,0.7); padding: 0.35rem 0.75rem; border-radius: 6px; font-size: 0.78rem; cursor: pointer; font-family: inherit;">Tomorrow →</button>
+          </div>
+        </div>
+        <button style="background: #4CAF93; color: #fff; border: none; padding: 0.5rem 1.1rem; border-radius: 8px; font-size: 0.85rem; font-weight: 600; cursor: pointer; font-family: inherit;">+ Add Reservation</button>
+      </div>
+
+      <sc-if value="{{ showOwnerStrip }}" hint-placeholder-val="{{ true }}">
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 0.85rem; margin-bottom: 1.5rem;">
+          <sc-for list="{{ ownerStats }}" as="st" hint-placeholder-count="4">
+            <button onClick="{{ st.go }}" style="text-align: left; background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.06); border-radius: 10px; padding: 1rem 1.1rem; cursor: pointer; font-family: inherit;" style-hover="border-color:rgba(255,255,255,0.18);">
+              <div style="font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.06em; color: rgba(255,255,255,0.4); margin-bottom: 0.45rem;">{{ st.label }}</div>
+              <div style="font-size: 1.5rem; font-weight: 700; color: {{ st.color }};">{{ st.value }}</div>
+              <div style="font-size: 0.76rem; color: rgba(255,255,255,0.35); margin-top: 0.2rem;">{{ st.note }}</div>
+            </button>
+          </sc-for>
+        </div>
+      </sc-if>
+
+      <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 0.5rem; margin-bottom: 1rem;">
+        <span style="font-size: 1rem; font-weight: 500; color: rgba(255,255,255,0.7);">{{ todayLabel }}</span>
+        <span style="display: flex; align-items: center; gap: 0.35rem; font-size: 0.76rem; color: rgba(255,255,255,0.5);"><span style="width: 10px; height: 10px; border-radius: 3px; background: #6ee7b7;"></span>Noor Hamami</span>
+      </div>
+      <div style="display: flex; gap: 1rem; align-items: flex-start; flex-wrap: wrap;">
+        <div style="flex: 1; min-width: 320px; background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.06); border-radius: 10px; overflow: hidden;">
+          <sc-for list="{{ appointments }}" as="apt" hint-placeholder-count="5">
+            <div style="display: flex; align-items: center; gap: 1rem; padding: 0.9rem 1.25rem; border-bottom: 1px solid rgba(255,255,255,0.04);">
+              <span style="font-size: 0.85rem; color: rgba(255,255,255,0.5); width: 60px; flex-shrink: 0;">{{ apt.time }}</span>
+              <span style="font-size: 0.9rem; color: rgba(255,255,255,0.9); flex: 1;">{{ apt.patient }}</span>
+              <span style="font-size: 0.78rem; padding: 0.25rem 0.6rem; border-radius: 999px; background: rgba(110,196,171,0.12); color: #6ec4ab;">{{ apt.status }}</span>
+            </div>
+          </sc-for>
+        </div>
+        <div style="width: 260px; flex-shrink: 0; background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.06); border-radius: 10px; padding: 1rem;">
+          <h3 style="font-size: 0.82rem; font-weight: 600; margin: 0 0 0.75rem; color: rgba(255,255,255,0.6);">Today's Summary</h3>
+          <div style="display: flex; justify-content: space-between; padding: 0.3rem 0; font-size: 0.82rem; color: rgba(255,255,255,0.5); border-bottom: 1px solid rgba(255,255,255,0.04);"><span>Total</span><span style="font-weight: 600; color: #fff;">5</span></div>
+          <div style="display: flex; justify-content: space-between; padding: 0.3rem 0; font-size: 0.82rem; color: rgba(255,255,255,0.5); border-bottom: 1px solid rgba(255,255,255,0.04);"><span>Checked In</span><span style="font-weight: 600; color: #fff;">2</span></div>
+          <div style="display: flex; justify-content: space-between; padding: 0.3rem 0; font-size: 0.82rem; color: rgba(255,255,255,0.5);"><span>Waiting</span><span style="font-weight: 600; color: #fff;">1</span></div>
+        </div>
+      </div>
+    </sc-if>
+
+    <!-- BLOG LIST -->
+    <sc-if value="{{ isBlogList }}" hint-placeholder-val="{{ false }}">
+      <div style="display: flex; align-items: center; justify-content: space-between; gap: 1rem; flex-wrap: wrap; margin-bottom: 0.4rem;">
+        <h1 style="font-size: 1.5rem; font-weight: 600; margin: 0;">Blog Posts</h1>
+        <button onClick="{{ openNewPost }}" style="background: linear-gradient(135deg, #059669, #10b981); color: #fff; border: none; border-radius: 8px; padding: 0.6rem 1.25rem; font-size: 0.9rem; font-weight: 600; cursor: pointer; font-family: inherit;">+ New Post</button>
+      </div>
+      <p style="font-size: 0.8rem; color: rgba(255,255,255,0.35); margin: 0 0 1.25rem;">{{ contentAccessNote }}</p>
+
+      <div style="display: flex; gap: 0.4rem; margin-bottom: 1rem; flex-wrap: wrap;">
+        <sc-for list="{{ blogFilters }}" as="f" hint-placeholder-count="5">
+          <button onClick="{{ f.select }}" style="background: {{ f.bg }}; border: 1px solid {{ f.border }}; color: {{ f.color }}; padding: 0.38rem 0.85rem; border-radius: 999px; font-size: 0.8rem; font-weight: 600; cursor: pointer; font-family: inherit;">{{ f.label }} <span style="opacity: 0.55;">{{ f.count }}</span></button>
+        </sc-for>
+      </div>
+
+      <div style="background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.06); border-radius: 10px; overflow: hidden;">
+        <table style="width: 100%; border-collapse: collapse;">
+          <thead>
+            <tr>
+              <th style="text-align: left; padding: 0.9rem 1rem; font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.05em; color: rgba(255,255,255,0.4); border-bottom: 1px solid rgba(255,255,255,0.06);">Title</th>
+              <th style="text-align: left; padding: 0.9rem 0.5rem; font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.05em; color: rgba(255,255,255,0.4); border-bottom: 1px solid rgba(255,255,255,0.06);">Lang</th>
+              <th style="text-align: left; padding: 0.9rem 1rem; font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.05em; color: rgba(255,255,255,0.4); border-bottom: 1px solid rgba(255,255,255,0.06);">Category</th>
+              <th style="text-align: left; padding: 0.9rem 1rem; font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.05em; color: rgba(255,255,255,0.4); border-bottom: 1px solid rgba(255,255,255,0.06);">Status</th>
+              <th style="text-align: left; padding: 0.9rem 1rem; font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.05em; color: rgba(255,255,255,0.4); border-bottom: 1px solid rgba(255,255,255,0.06);">Date</th>
+              <th style="text-align: left; padding: 0.9rem 1rem; font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.05em; color: rgba(255,255,255,0.4); border-bottom: 1px solid rgba(255,255,255,0.06);">Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            <sc-for list="{{ visiblePosts }}" as="post" hint-placeholder-count="6">
+              <tr>
+                <td style="padding: 0.8rem 1rem; font-size: 0.88rem; color: rgba(255,255,255,0.9); border-bottom: 1px solid rgba(255,255,255,0.04);">
+                  <div>{{ post.title }}</div>
+                  <div style="font-size: 0.74rem; color: rgba(255,255,255,0.3); margin-top: 0.15rem;">{{ post.translationNote }}</div>
+                </td>
+                <td style="padding: 0.8rem 0.5rem; border-bottom: 1px solid rgba(255,255,255,0.04);"><span style="font-size: 0.7rem; font-weight: 700; letter-spacing: 0.05em; color: rgba(255,255,255,0.6); border: 1px solid rgba(255,255,255,0.15); border-radius: 4px; padding: 0.15rem 0.4rem;">{{ post.lang }}</span></td>
+                <td style="padding: 0.8rem 1rem; font-size: 0.85rem; color: rgba(255,255,255,0.55); border-bottom: 1px solid rgba(255,255,255,0.04);">{{ post.category }}</td>
+                <td style="padding: 0.8rem 1rem; border-bottom: 1px solid rgba(255,255,255,0.04);"><span style="padding: 0.25rem 0.6rem; border-radius: 20px; font-size: 0.72rem; font-weight: 600; background: {{ post.statusBg }}; color: {{ post.statusColor }};">{{ post.statusLabel }}</span></td>
+                <td style="padding: 0.8rem 1rem; font-size: 0.85rem; color: rgba(255,255,255,0.55); border-bottom: 1px solid rgba(255,255,255,0.04);">{{ post.date }}</td>
+                <td style="padding: 0.8rem 1rem; border-bottom: 1px solid rgba(255,255,255,0.04);">
+                  <div style="display: flex; gap: 0.4rem; flex-wrap: wrap;">
+                    <button onClick="{{ post.edit }}" style="padding: 0.3rem 0.7rem; border-radius: 6px; font-size: 0.78rem; border: none; cursor: pointer; font-weight: 500; font-family: inherit; background: rgba(96,165,250,0.15); color: #93c5fd;">Edit</button>
+                    <sc-if value="{{ post.isArchived }}" hint-placeholder-val="{{ false }}">
+                      <button onClick="{{ post.restore }}" style="padding: 0.3rem 0.7rem; border-radius: 6px; font-size: 0.78rem; border: none; cursor: pointer; font-weight: 500; font-family: inherit; background: rgba(16,185,129,0.15); color: #6ee7b7;">Restore</button>
+                    </sc-if>
+                    <sc-if value="{{ post.isLive }}" hint-placeholder-val="{{ true }}">
+                      <button onClick="{{ post.archive }}" style="padding: 0.3rem 0.7rem; border-radius: 6px; font-size: 0.78rem; border: none; cursor: pointer; font-weight: 500; font-family: inherit; background: rgba(245,158,11,0.15); color: #fcd34d;">Archive</button>
+                    </sc-if>
+                  </div>
+                </td>
+              </tr>
+            </sc-for>
+          </tbody>
+        </table>
+        <sc-if value="{{ noPosts }}" hint-placeholder-val="{{ false }}">
+          <div style="padding: 2.5rem; text-align: center; font-size: 0.88rem; color: rgba(255,255,255,0.35);">Nothing here yet.</div>
+        </sc-if>
+      </div>
+    </sc-if>
+
+    <!-- BLOG EDIT -->
+    <sc-if value="{{ isBlogEdit }}" hint-placeholder-val="{{ false }}">
+      <h1 style="font-size: 1.5rem; font-weight: 600; margin: 0 0 1.5rem;">{{ postForm.headerLabel }}</h1>
+      <div style="display: grid; grid-template-columns: {{ editorGrid }}; gap: 1.5rem; align-items: start;">
+        <div style="display: flex; flex-direction: column; gap: 1rem;">
+          <div>
+            <label style="font-size: 0.78rem; color: rgba(255,255,255,0.5); font-weight: 500; display: block; margin-bottom: 0.35rem;">Title</label>
+            <input value="{{ postForm.title }}" onChange="{{ postForm.onTitleChange }}" style="width: 100%; box-sizing: border-box; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); border-radius: 8px; padding: 0.65rem 0.85rem; color: #fff; font-size: 0.95rem; outline: none;" />
+          </div>
+          <div style="display: flex; gap: 1rem; flex-wrap: wrap;">
+            <div style="flex: 1; min-width: 180px;">
+              <label style="font-size: 0.78rem; color: rgba(255,255,255,0.5); font-weight: 500; display: block; margin-bottom: 0.35rem;">Category</label>
+              <select value="{{ postForm.category }}" onChange="{{ postForm.onCategoryChange }}" style="width: 100%; box-sizing: border-box; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); border-radius: 8px; padding: 0.65rem 0.85rem; color: #fff; font-size: 0.9rem;">
+                <sc-for list="{{ categoryOptions }}" as="cat" hint-placeholder-count="6">
+                  <option value="{{ cat }}" style="background: #1a2e35;">{{ cat }}</option>
+                </sc-for>
+              </select>
+            </div>
+            <div>
+              <label style="font-size: 0.78rem; color: rgba(255,255,255,0.5); font-weight: 500; display: block; margin-bottom: 0.35rem;">Language</label>
+              <div style="display: flex; gap: 0.4rem;">
+                <button onClick="{{ postForm.setEn }}" style="padding: 0.55rem 0.9rem; border-radius: 8px; font-size: 0.82rem; font-weight: 600; cursor: pointer; font-family: inherit; border: 1px solid {{ postForm.enBorder }}; background: {{ postForm.enBg }}; color: {{ postForm.enColor }};">English</button>
+                <button onClick="{{ postForm.setAr }}" style="padding: 0.55rem 0.9rem; border-radius: 8px; font-size: 0.82rem; font-weight: 600; cursor: pointer; font-family: inherit; border: 1px solid {{ postForm.arBorder }}; background: {{ postForm.arBg }}; color: {{ postForm.arColor }};">العربية</button>
+              </div>
+            </div>
+          </div>
+
+          <div>
+            <label style="font-size: 0.78rem; color: rgba(255,255,255,0.5); font-weight: 500; display: block; margin-bottom: 0.35rem;">Publishing</label>
+            <div style="display: flex; gap: 0.4rem; flex-wrap: wrap;">
+              <sc-for list="{{ postForm.statusChoices }}" as="sc" hint-placeholder-count="3">
+                <button onClick="{{ sc.select }}" style="padding: 0.55rem 0.95rem; border-radius: 8px; font-size: 0.82rem; font-weight: 600; cursor: pointer; font-family: inherit; border: 1px solid {{ sc.border }}; background: {{ sc.bg }}; color: {{ sc.color }};">{{ sc.label }}</button>
+              </sc-for>
+            </div>
+            <sc-if value="{{ postForm.isScheduled }}" hint-placeholder-val="{{ false }}">
+              <div style="display: flex; align-items: center; gap: 0.75rem; margin-top: 0.75rem; background: rgba(96,165,250,0.08); border: 1px solid rgba(96,165,250,0.2); border-radius: 8px; padding: 0.75rem 0.9rem;">
+                <label style="font-size: 0.82rem; color: #93c5fd; font-weight: 500;">Goes live on</label>
+                <input type="datetime-local" value="{{ postForm.publishAt }}" onChange="{{ postForm.onPublishAtChange }}" style="background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.12); border-radius: 6px; padding: 0.45rem 0.6rem; color: #fff; font-size: 0.85rem; outline: none;" />
+              </div>
+            </sc-if>
+            <sc-if value="{{ postForm.isPublished }}" hint-placeholder-val="{{ false }}">
+              <div style="display: flex; align-items: center; justify-content: space-between; gap: 1rem; flex-wrap: wrap; margin-top: 0.75rem; background: rgba(16,185,129,0.07); border: 1px solid rgba(16,185,129,0.18); border-radius: 8px; padding: 0.7rem 0.9rem;">
+                <span style="font-size: 0.82rem; color: #6ee7b7;">Live on the public site.</span>
+                <button onClick="{{ postForm.unpublish }}" style="background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.15); color: rgba(255,255,255,0.75); padding: 0.4rem 0.85rem; border-radius: 6px; font-size: 0.78rem; font-weight: 600; cursor: pointer; font-family: inherit;">Unpublish → Draft</button>
+              </div>
+            </sc-if>
+          </div>
+
+          <div>
+            <label style="font-size: 0.78rem; color: rgba(255,255,255,0.5); font-weight: 500; display: block; margin-bottom: 0.35rem;">Body</label>
+            <div style="display: flex; gap: 0.3rem; background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.1); border-bottom: none; border-radius: 8px 8px 0 0; padding: 0.4rem 0.6rem;">
+              <span style="width: 26px; height: 26px; display: flex; align-items: center; justify-content: center; border-radius: 5px; font-size: 0.8rem; font-weight: 700; color: rgba(255,255,255,0.5);">B</span>
+              <span style="width: 26px; height: 26px; display: flex; align-items: center; justify-content: center; border-radius: 5px; font-size: 0.8rem; font-style: italic; color: rgba(255,255,255,0.5);">I</span>
+              <span style="width: 26px; height: 26px; display: flex; align-items: center; justify-content: center; border-radius: 5px; font-size: 0.8rem; color: rgba(255,255,255,0.5);">🔗</span>
+              <span style="width: 26px; height: 26px; display: flex; align-items: center; justify-content: center; border-radius: 5px; font-size: 0.8rem; color: rgba(255,255,255,0.5);">☰</span>
+            </div>
+            <textarea value="{{ postForm.body }}" onChange="{{ postForm.onBodyChange }}" rows="10" dir="{{ postForm.bodyDir }}" style="width: 100%; box-sizing: border-box; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); border-radius: 0 0 8px 8px; padding: 0.85rem; color: #fff; font-size: 0.9rem; line-height: 1.6; outline: none; resize: vertical;"></textarea>
+          </div>
+
+          <div style="display: flex; justify-content: space-between; align-items: center; gap: 0.6rem; flex-wrap: wrap; margin-top: 0.5rem;">
+            <span style="font-size: 0.78rem; color: rgba(255,255,255,0.3);">{{ savedHint }}</span>
+            <div style="display: flex; gap: 0.6rem;">
+              <button onClick="{{ cancelPost }}" style="background: rgba(255,255,255,0.06); color: rgba(255,255,255,0.6); border: 1px solid rgba(255,255,255,0.1); border-radius: 8px; padding: 0.6rem 1.25rem; font-size: 0.88rem; cursor: pointer; font-family: inherit;">Cancel</button>
+              <button onClick="{{ savePost }}" style="background: #4CAF93; color: #fff; border: none; border-radius: 8px; padding: 0.6rem 1.4rem; font-size: 0.88rem; font-weight: 600; cursor: pointer; font-family: inherit;">Save Post</button>
+            </div>
+          </div>
+        </div>
+
+        <div style="display: flex; flex-direction: column; gap: 1rem;">
+          <div>
+            <label style="font-size: 0.78rem; color: rgba(255,255,255,0.5); font-weight: 500; display: block; margin-bottom: 0.35rem;">Cover Image</label>
+            <div style="width: 100%; aspect-ratio: 16/9; border-radius: 10px; overflow: hidden; background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.1);">
+              <image-slot id="{{ postForm.slotId }}" shape="rect" placeholder="Cover image" style="width: 100%; height: 100%;"></image-slot>
+            </div>
+          </div>
+          <div style="background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.07); border-radius: 10px; padding: 1rem;">
+            <div style="font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.06em; color: rgba(255,255,255,0.4); margin-bottom: 0.6rem;">Translation</div>
+            <p style="font-size: 0.84rem; color: rgba(255,255,255,0.6); line-height: 1.5; margin: 0 0 0.85rem;">{{ postForm.translationStatus }}</p>
+            <button onClick="{{ postForm.translationAction }}" style="width: 100%; background: rgba(96,165,250,0.15); border: 1px solid rgba(96,165,250,0.25); color: #93c5fd; padding: 0.5rem 0.85rem; border-radius: 6px; font-size: 0.82rem; font-weight: 600; cursor: pointer; font-family: inherit;">{{ postForm.translationCta }}</button>
+          </div>
+        </div>
+      </div>
+    </sc-if>
+
+    <!-- DOCTORS -->
+    <sc-if value="{{ isDoctors }}" hint-placeholder-val="{{ false }}">
+      <div style="display: flex; align-items: center; justify-content: space-between; gap: 1rem; flex-wrap: wrap; margin-bottom: 0.4rem;">
+        <h1 style="font-size: 1.5rem; font-weight: 600; margin: 0;">Doctors</h1>
+        <button onClick="{{ openAddDoctor }}" style="background: linear-gradient(135deg, #059669, #10b981); color: #fff; border: none; border-radius: 8px; padding: 0.6rem 1.25rem; font-size: 0.9rem; font-weight: 600; cursor: pointer; font-family: inherit;">+ Add Doctor</button>
+      </div>
+      <p style="font-size: 0.8rem; color: rgba(255,255,255,0.35); margin: 0 0 1.5rem;">Drag cards to set the order they appear on the public site.</p>
+      <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 1.25rem;">
+        <sc-for list="{{ doctors }}" as="doc" hint-placeholder-count="5">
+          <div draggable="true" onDragStart="{{ doc.onDragStart }}" onDragOver="{{ doc.onDragOver }}" onDrop="{{ doc.onDrop }}" onDragEnd="{{ doc.onDragEnd }}" style="background: rgba(255,255,255,0.03); border: 1px solid {{ doc.dragBorder }}; border-radius: 12px; overflow: hidden; cursor: grab; opacity: {{ doc.cardOpacity }}; transition: border-color 0.15s ease, opacity 0.15s ease;">
+            <div style="position: relative; width: 100%; aspect-ratio: 1; background: rgba(255,255,255,0.04);">
+              <sc-if value="{{ doc.real }}" hint-placeholder-val="{{ true }}">
+                <img src="{{ doc.photo }}" alt="{{ doc.displayName }}" style="width: 100%; height: 100%; object-fit: cover;" />
+              </sc-if>
+              <sc-if value="{{ doc.notReal }}" hint-placeholder-val="{{ false }}">
+                <image-slot id="{{ doc.slotId }}" shape="rect" placeholder="Doctor photo" style="width: 100%; height: 100%;"></image-slot>
+              </sc-if>
+              <div style="position: absolute; top: 0.5rem; left: 0.5rem; display: flex; align-items: center; gap: 0.3rem; background: rgba(10,18,22,0.75); border-radius: 5px; padding: 0.2rem 0.45rem; font-size: 0.7rem; font-weight: 700; color: rgba(255,255,255,0.7);">#{{ doc.order }}</div>
+              <sc-if value="{{ doc.hidden }}" hint-placeholder-val="{{ false }}">
+                <div style="position: absolute; top: 0.5rem; right: 0.5rem; background: rgba(245,158,11,0.9); border-radius: 5px; padding: 0.2rem 0.45rem; font-size: 0.68rem; font-weight: 700; color: #3a2606;">Hidden</div>
+              </sc-if>
+            </div>
+            <div style="padding: 1rem;">
+              <h3 style="font-size: 0.98rem; font-weight: 700; margin: 0 0 0.15rem;">{{ doc.displayName }}</h3>
+              <p style="font-size: 0.8rem; color: #6ec4ab; margin: 0 0 0.65rem;">{{ doc.displayTitle }}</p>
+              <div style="display: flex; gap: 0.4rem; flex-wrap: wrap;">
+                <button onClick="{{ doc.edit }}" style="flex: 1; min-width: 60px; padding: 0.35rem 0.5rem; border-radius: 6px; font-size: 0.76rem; border: none; cursor: pointer; font-weight: 500; font-family: inherit; background: rgba(96,165,250,0.15); color: #93c5fd;">Edit</button>
+                <button onClick="{{ doc.toggleVisible }}" style="flex: 1; min-width: 60px; padding: 0.35rem 0.5rem; border-radius: 6px; font-size: 0.76rem; border: none; cursor: pointer; font-weight: 500; font-family: inherit; background: rgba(255,255,255,0.08); color: rgba(255,255,255,0.7);">{{ doc.visibilityLabel }}</button>
+                <sc-if value="{{ doc.canRemove }}" hint-placeholder-val="{{ true }}">
+                  <button onClick="{{ doc.remove }}" style="flex: 1; min-width: 60px; padding: 0.35rem 0.5rem; border-radius: 6px; font-size: 0.76rem; border: none; cursor: pointer; font-weight: 500; font-family: inherit; background: rgba(245,158,11,0.15); color: #fcd34d;">Archive</button>
+                </sc-if>
+              </div>
+            </div>
+          </div>
+        </sc-for>
+      </div>
+    </sc-if>
+
+    <!-- APPROVALS -->
+    <sc-if value="{{ isApprovals }}" hint-placeholder-val="{{ false }}">
+      <h1 style="font-size: 1.5rem; font-weight: 600; margin: 0 0 0.4rem;">Approvals</h1>
+      <p style="font-size: 0.8rem; color: rgba(255,255,255,0.35); margin: 0 0 1.5rem;">Profile edits and photo uploads submitted by doctors. Nothing reaches the public site until approved here.</p>
+      <div style="display: flex; flex-direction: column; gap: 0.85rem;">
+        <sc-for list="{{ pendingChanges }}" as="ch" hint-placeholder-count="3">
+          <div style="background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.07); border-radius: 10px; padding: 1.1rem 1.25rem;">
+            <div style="display: flex; align-items: center; justify-content: space-between; gap: 1rem; flex-wrap: wrap; margin-bottom: 0.85rem;">
+              <div style="display: flex; align-items: center; gap: 0.7rem;">
+                <span style="font-size: 0.95rem; font-weight: 700;">{{ ch.doctorName }}</span>
+                <span style="font-size: 0.72rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; background: rgba(245,158,11,0.15); color: #fcd34d; border-radius: 999px; padding: 0.2rem 0.55rem;">{{ ch.fieldLabel }}</span>
+              </div>
+              <span style="font-size: 0.76rem; color: rgba(255,255,255,0.3);">{{ ch.submitted }}</span>
+            </div>
+            <div style="display: grid; grid-template-columns: {{ diffGrid }}; gap: 0.85rem; margin-bottom: 1rem;">
+              <div style="background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.06); border-radius: 8px; padding: 0.8rem;">
+                <div style="font-size: 0.68rem; text-transform: uppercase; letter-spacing: 0.06em; color: rgba(255,255,255,0.3); margin-bottom: 0.35rem;">Current</div>
+                <div style="font-size: 0.86rem; color: rgba(255,255,255,0.55); line-height: 1.5;">{{ ch.oldValue }}</div>
+              </div>
+              <div style="background: rgba(16,185,129,0.06); border: 1px solid rgba(16,185,129,0.18); border-radius: 8px; padding: 0.8rem;">
+                <div style="font-size: 0.68rem; text-transform: uppercase; letter-spacing: 0.06em; color: #6ee7b7; margin-bottom: 0.35rem;">Proposed</div>
+                <div style="font-size: 0.86rem; color: rgba(255,255,255,0.85); line-height: 1.5;">{{ ch.newValue }}</div>
+              </div>
+            </div>
+            <div style="display: flex; gap: 0.6rem; flex-wrap: wrap;">
+              <button onClick="{{ ch.approve }}" style="background: linear-gradient(135deg, #059669, #10b981); color: #fff; border: none; border-radius: 7px; padding: 0.5rem 1.1rem; font-size: 0.84rem; font-weight: 600; cursor: pointer; font-family: inherit;">Approve</button>
+              <button onClick="{{ ch.reject }}" style="background: rgba(239,68,68,0.12); border: 1px solid rgba(239,68,68,0.2); color: #fca5a5; border-radius: 7px; padding: 0.5rem 1.1rem; font-size: 0.84rem; font-weight: 600; cursor: pointer; font-family: inherit;">Reject</button>
+            </div>
+          </div>
+        </sc-for>
+        <sc-if value="{{ noPending }}" hint-placeholder-val="{{ false }}">
+          <div style="background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.06); border-radius: 10px; padding: 3rem; text-align: center; font-size: 0.9rem; color: rgba(255,255,255,0.35);">Nothing waiting for review.</div>
+        </sc-if>
+      </div>
+    </sc-if>
+
+  </main>
+
+  <!-- COMMAND PALETTE -->
+  <sc-if value="{{ paletteOpen }}" hint-placeholder-val="{{ false }}">
+    <div onClick="{{ closePalette }}" style="position: fixed; inset: 0; background: rgba(0,0,0,0.55); backdrop-filter: blur(4px); display: flex; align-items: flex-start; justify-content: center; padding: 12vh 1.25rem 0; z-index: 1200;">
+      <div onClick="{{ stopPropagation }}" style="background: #243b44; border: 1px solid rgba(255,255,255,0.12); border-radius: 12px; width: 100%; max-width: 520px; overflow: hidden; box-shadow: 0 24px 70px rgba(0,0,0,0.5);">
+        <input value="{{ paletteQuery }}" onChange="{{ onPaletteQuery }}" autoFocus="{{ true }}" placeholder="Search actions, posts, doctors…" style="width: 100%; box-sizing: border-box; background: transparent; border: none; border-bottom: 1px solid rgba(255,255,255,0.1); padding: 1.05rem 1.25rem; color: #fff; font-size: 0.98rem; outline: none;" />
+        <div style="max-height: 320px; overflow-y: auto; padding: 0.5rem;">
+          <sc-for list="{{ paletteResults }}" as="cmd" hint-placeholder-count="5">
+            <button onClick="{{ cmd.run }}" style="width: 100%; display: flex; align-items: center; gap: 0.85rem; background: none; border: none; text-align: left; padding: 0.7rem 0.85rem; border-radius: 8px; cursor: pointer; font-family: inherit; color: #fff;" style-hover="background:rgba(255,255,255,0.07);">
+              <span style="width: 24px; text-align: center; font-size: 0.9rem; opacity: 0.6;">{{ cmd.icon }}</span>
+              <span style="flex: 1; font-size: 0.9rem;">{{ cmd.label }}</span>
+              <span style="font-size: 0.72rem; color: rgba(255,255,255,0.35);">{{ cmd.hint }}</span>
+            </button>
+          </sc-for>
+          <sc-if value="{{ paletteEmpty }}" hint-placeholder-val="{{ false }}">
+            <div style="padding: 1.5rem; text-align: center; font-size: 0.88rem; color: rgba(255,255,255,0.35);">No matches</div>
+          </sc-if>
+        </div>
+      </div>
+    </div>
+  </sc-if>
+
+  <!-- TOAST -->
+  <sc-if value="{{ toastVisible }}" hint-placeholder-val="{{ false }}">
+    <div style="position: fixed; bottom: 1.5rem; right: 1.5rem; z-index: 1300; display: flex; align-items: center; gap: 0.6rem; background: #10b981; color: #06281f; padding: 0.8rem 1.2rem; border-radius: 8px; font-size: 0.88rem; font-weight: 600; box-shadow: 0 12px 32px rgba(16,185,129,0.35);">
+      <span>✓</span><span>{{ toastMessage }}</span>
+    </div>
+  </sc-if>
+
+  <!-- DOCTOR MODAL -->
+  <sc-if value="{{ doctorModalOpen }}" hint-placeholder-val="{{ false }}">
+    <div onClick="{{ closeDoctorModal }}" style="position: fixed; inset: 0; background: rgba(0,0,0,0.6); backdrop-filter: blur(4px); display: flex; align-items: center; justify-content: center; z-index: 1000; padding: 1.5rem;">
+      <div onClick="{{ stopPropagation }}" style="background: #243b44; border: 1px solid rgba(255,255,255,0.1); border-radius: 14px; padding: 1.75rem; width: 100%; max-width: 520px; max-height: 90vh; overflow-y: auto;">
+        <h2 style="font-size: 1.2rem; margin: 0 0 1.25rem; font-weight: 600;">{{ doctorForm.headerLabel }}</h2>
+        <div style="display: grid; grid-template-columns: 100px 1fr; gap: 1.25rem; margin-bottom: 1rem;">
+          <div style="width: 100px; height: 100px; border-radius: 10px; overflow: hidden; background: rgba(255,255,255,0.05);">
+            <image-slot id="{{ doctorForm.slotId }}" shape="rect" placeholder="Photo" style="width: 100%; height: 100%;"></image-slot>
+          </div>
+          <div style="display: flex; flex-direction: column; gap: 0.6rem;">
+            <input value="{{ doctorForm.name }}" onChange="{{ doctorForm.onNameChange }}" placeholder="Full name" style="width: 100%; box-sizing: border-box; background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.1); border-radius: 8px; padding: 0.55rem 0.75rem; color: #fff; font-size: 0.88rem; outline: none;" />
+            <input value="{{ doctorForm.title }}" onChange="{{ doctorForm.onTitleChange }}" placeholder="Title (e.g. Physiotherapist)" style="width: 100%; box-sizing: border-box; background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.1); border-radius: 8px; padding: 0.55rem 0.75rem; color: #fff; font-size: 0.88rem; outline: none;" />
+          </div>
+        </div>
+        <div style="display: flex; flex-direction: column; gap: 0.25rem; margin-bottom: 0.85rem;">
+          <label style="font-size: 0.76rem; color: rgba(255,255,255,0.5); font-weight: 500;">Specialty</label>
+          <input value="{{ doctorForm.specialty }}" onChange="{{ doctorForm.onSpecialtyChange }}" placeholder="e.g. Pediatric Physical Therapy" style="width: 100%; box-sizing: border-box; background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.1); border-radius: 8px; padding: 0.55rem 0.75rem; color: #fff; font-size: 0.88rem; outline: none;" />
+        </div>
+        <div style="display: flex; flex-direction: column; gap: 0.25rem; margin-bottom: 0.85rem;">
+          <label style="font-size: 0.76rem; color: rgba(255,255,255,0.5); font-weight: 500;">Bio</label>
+          <textarea value="{{ doctorForm.bio }}" onChange="{{ doctorForm.onBioChange }}" rows="3" placeholder="Short professional bio" style="width: 100%; box-sizing: border-box; background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.1); border-radius: 8px; padding: 0.55rem 0.75rem; color: #fff; font-size: 0.88rem; outline: none; resize: vertical;"></textarea>
+        </div>
+        <div style="display: grid; grid-template-columns: 1fr 100px; gap: 1rem; margin-bottom: 1.25rem;">
+          <div style="display: flex; flex-direction: column; gap: 0.25rem;">
+            <label style="font-size: 0.76rem; color: rgba(255,255,255,0.5); font-weight: 500;">Contact</label>
+            <input value="{{ doctorForm.contact }}" onChange="{{ doctorForm.onContactChange }}" placeholder="Email or phone" style="width: 100%; box-sizing: border-box; background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.1); border-radius: 8px; padding: 0.55rem 0.75rem; color: #fff; font-size: 0.88rem; outline: none;" />
+          </div>
+          <div style="display: flex; flex-direction: column; gap: 0.25rem;">
+            <label style="font-size: 0.76rem; color: rgba(255,255,255,0.5); font-weight: 500;">Order</label>
+            <input type="number" value="{{ doctorForm.order }}" onChange="{{ doctorForm.onOrderChange }}" style="width: 100%; box-sizing: border-box; background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.1); border-radius: 8px; padding: 0.55rem 0.75rem; color: #fff; font-size: 0.88rem; outline: none;" />
+          </div>
+        </div>
+        <div style="display: flex; justify-content: flex-end; gap: 0.6rem;">
+          <button onClick="{{ closeDoctorModal }}" style="background: rgba(255,255,255,0.08); color: rgba(255,255,255,0.7); border: 1px solid rgba(255,255,255,0.12); border-radius: 8px; padding: 0.55rem 1.1rem; font-size: 0.85rem; cursor: pointer; font-family: inherit;">Cancel</button>
+          <button onClick="{{ saveDoctor }}" style="background: linear-gradient(135deg, #059669, #10b981); color: #fff; border: none; border-radius: 8px; padding: 0.55rem 1.25rem; font-size: 0.85rem; font-weight: 600; cursor: pointer; font-family: inherit;">Save</button>
+        </div>
+      </div>
+    </div>
+  </sc-if>
+
+</div>
+
+</x-dc>
+<script type="text/x-dc" data-dc-script>
+class Component extends DCLogic {
+  categoryOptions = ["Recovery Tips", "Rehabilitation", "Treatments", "Sports", "Women's Health", "Guidance"];
+  roleOptions = ["Head Doctor", "Clinic Manager", "Staff"];
+  contentRoles = ["Head Doctor", "Clinic Manager"];
+
+  appointmentsSeed = [
+    { time: "09:00", patient: "Ahmad K.", status: "Checked In" },
+    { time: "10:30", patient: "Lina M.", status: "Scheduled" },
+    { time: "12:00", patient: "Yousef R.", status: "Scheduled" },
+    { time: "14:00", patient: "Sara T.", status: "Waiting" },
+    { time: "16:00", patient: "Omar H.", status: "Scheduled" },
+  ];
+
+  state = {
+    role: "Head Doctor",
+    section: "dashboard",
+    blogFilter: "All",
+    editingPostId: null,
+    postForm: null,
+    isNarrow: false,
+    compactNav: false,
+    posts: [
+      { id: 1, slotId: "blog-cover-1", lang: "EN", linkedId: 101, title: "5 Stretches to Ease Lower Back Pain at Home", category: "Recovery Tips", date: "Jul 2, 2026", status: "Published", publishAt: "", body: "" },
+      { id: 101, slotId: "blog-cover-1", lang: "AR", linkedId: 1, title: "٥ تمارين لتخفيف آلام أسفل الظهر في المنزل", category: "Recovery Tips", date: "Jul 2, 2026", status: "Published", publishAt: "", body: "" },
+      { id: 2, slotId: "blog-cover-2", lang: "EN", linkedId: null, title: "Understanding Post-Surgery Rehabilitation: What to Expect", category: "Rehabilitation", date: "Jun 18, 2026", status: "Published", publishAt: "", body: "" },
+      { id: 3, slotId: "blog-cover-3", lang: "EN", linkedId: null, title: "Dry Needling vs. Acupuncture: What's the Difference?", category: "Treatments", date: "Jun 4, 2026", status: "Published", publishAt: "", body: "" },
+      { id: 4, slotId: "blog-cover-4", lang: "EN", linkedId: null, title: "How Sports Physiotherapy Speeds Up Recovery", category: "Sports", date: "Aug 20, 2026", status: "Scheduled", publishAt: "2026-08-20T09:00", body: "" },
+      { id: 5, slotId: "blog-cover-5", lang: "EN", linkedId: null, title: "Pelvic Floor Health: Why It Matters at Every Age", category: "Women's Health", date: "May 7, 2026", status: "Published", publishAt: "", body: "" },
+      { id: 6, slotId: "blog-cover-6", lang: "EN", linkedId: null, title: "When Should You See a Physiotherapist?", category: "Guidance", date: "Apr 23, 2026", status: "Draft", publishAt: "", body: "" },
+      { id: 7, slotId: "blog-cover-7", lang: "EN", linkedId: null, title: "Choosing the Right Support Brace", category: "Guidance", date: "Feb 11, 2026", status: "Archived", publishAt: "", body: "" },
+    ],
+    doctors: [
+      { id: 1, real: true, notReal: false, canRemove: false, hidden: false, name: "Noor Hamami", title: "Head Physiotherapist", specialty: "Manual Therapy & Sports Rehab", bio: "Leads the clinical team with over 10 years of experience in manual therapy and sports rehabilitation.", contact: "noor@therapyjo.com", order: 1, photo: "public/noor_hamami_head_doctor.jpg", slotId: null },
+      { id: 2, real: false, notReal: true, canRemove: true, hidden: false, name: "", title: "", specialty: "", bio: "", contact: "", order: 2, photo: null, slotId: "doctor-photo-2" },
+      { id: 3, real: false, notReal: true, canRemove: true, hidden: false, name: "", title: "", specialty: "", bio: "", contact: "", order: 3, photo: null, slotId: "doctor-photo-3" },
+      { id: 4, real: false, notReal: true, canRemove: true, hidden: true, name: "", title: "", specialty: "", bio: "", contact: "", order: 4, photo: null, slotId: "doctor-photo-4" },
+      { id: 5, real: false, notReal: true, canRemove: true, hidden: false, name: "", title: "", specialty: "", bio: "", contact: "", order: 5, photo: null, slotId: "doctor-photo-5" },
+    ],
+    pendingChanges: [
+      { id: 1, doctorName: "Dr. Rana Sweiss", fieldLabel: "Bio", submitted: "2 hours ago", oldValue: "Physiotherapist specialising in pediatric care.", newValue: "Pediatric physiotherapist with eight years of experience in developmental movement disorders and post-operative care for children." },
+      { id: 2, doctorName: "Dr. Khalid Ma'ayah", fieldLabel: "Profile photo", submitted: "Yesterday", oldValue: "No photo on file.", newValue: "New portrait uploaded — awaiting review." },
+      { id: 3, doctorName: "Dr. Rana Sweiss", fieldLabel: "Specialty", submitted: "3 days ago", oldValue: "Pediatric Physical Therapy", newValue: "Pediatric Physical Therapy, Post-Op Rehabilitation" },
+    ],
+    doctorModalOpen: false,
+    editingDoctorId: null,
+    doctorForm: null,
+    paletteOpen: false,
+    paletteQuery: "",
+    toastMessage: "",
+    dragId: null,
+    dragOverId: null,
+    lastSaved: null,
+  };
+
+  showToast = (msg) => {
+    this.setState({ toastMessage: msg });
+    clearTimeout(this._toastTimer);
+    this._toastTimer = setTimeout(() => this.setState({ toastMessage: "" }), 2200);
+  };
+
+  canManage = (role) => this.contentRoles.indexOf(role) !== -1;
+
+  onRoleChange = (e) => {
+    const role = e.target.value;
+    const restricted = ["blog-list", "blog-edit", "doctors", "approvals"];
+    const leaving = !this.canManage(role) && restricted.indexOf(this.state.section) !== -1;
+    this.setState({ role, section: leaving ? "dashboard" : this.state.section, paletteOpen: false });
+  };
+
+  goDashboard = () => this.setState({ section: "dashboard" });
+  goBlogList = () => this.setState({ section: "blog-list" });
+  goDoctors = () => this.setState({ section: "doctors" });
+  goApprovals = () => this.setState({ section: "approvals" });
+  setBlogFilter = (f) => this.setState({ blogFilter: f });
+  stopPropagation = (e) => e.stopPropagation();
+
+  openPalette = () => this.setState({ paletteOpen: true, paletteQuery: "" });
+  closePalette = () => this.setState({ paletteOpen: false, paletteQuery: "" });
+  onPaletteQuery = (e) => this.setState({ paletteQuery: e.target.value });
+
+  handleKeydown = (e) => {
+    if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
+      e.preventDefault();
+      this.setState((s) => ({ paletteOpen: !s.paletteOpen, paletteQuery: "" }));
+    } else if (e.key === "Escape") {
+      this.setState({ paletteOpen: false });
+    }
+  };
+
+  handleResize = () => {
+    const narrow = window.innerWidth < 900;
+    const compactNav = window.innerWidth < 1250;
+    if (narrow !== this.state.isNarrow || compactNav !== this.state.compactNav) {
+      this.setState({ isNarrow: narrow, compactNav });
+    }
+  };
+
+  componentDidMount() {
+    window.addEventListener("keydown", this.handleKeydown);
+    window.addEventListener("resize", this.handleResize, { passive: true });
+    this.handleResize();
+  }
+  componentWillUnmount() {
+    window.removeEventListener("keydown", this.handleKeydown);
+    window.removeEventListener("resize", this.handleResize);
+    clearTimeout(this._toastTimer);
+  }
+
+  openNewPost = () => {
+    const nextId = Math.max(0, ...this.state.posts.map((p) => p.id)) + 1;
+    this.setState({
+      section: "blog-edit", editingPostId: null,
+      postForm: { title: "", category: this.categoryOptions[0], status: "Draft", lang: "EN", linkedId: null, publishAt: "", body: "", slotId: "blog-cover-" + nextId },
+    });
+  };
+  openEditPost = (post) => this.setState({ section: "blog-edit", editingPostId: post.id, postForm: { ...post } });
+  updatePostForm = (field, value) => this.setState((s) => ({ postForm: { ...s.postForm, [field]: value } }));
+  cancelPost = () => this.setState({ section: "blog-list", postForm: null, editingPostId: null });
+
+  savePost = () => {
+    this.setState((s) => {
+      const form = s.postForm;
+      if (!form) return {};
+      if (s.editingPostId) {
+        return { posts: s.posts.map((p) => (p.id === s.editingPostId ? { ...p, ...form } : p)), section: "blog-list", postForm: null, editingPostId: null, lastSaved: new Date() };
+      }
+      const nextId = Math.max(0, ...s.posts.map((p) => p.id)) + 1;
+      const date = new Date().toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+      return { posts: [{ id: nextId, ...form, date }, ...s.posts], section: "blog-list", postForm: null, editingPostId: null, lastSaved: new Date() };
+    });
+    this.showToast("Post saved");
+  };
+
+  archivePost = (id) => {
+    this.setState((s) => ({ posts: s.posts.map((p) => (p.id === id ? { ...p, status: "Archived" } : p)) }));
+    this.showToast("Moved to archive");
+  };
+  restorePost = (id) => {
+    this.setState((s) => ({ posts: s.posts.map((p) => (p.id === id ? { ...p, status: "Draft" } : p)) }));
+    this.showToast("Restored as draft");
+  };
+
+  createTranslation = () => {
+    const form = this.state.postForm;
+    if (!form) return;
+    const targetLang = form.lang === "EN" ? "AR" : "EN";
+    this.setState((s) => {
+      const nextId = Math.max(0, ...s.posts.map((p) => p.id)) + 1;
+      const base = s.editingPostId ? s.posts.map((p) => (p.id === s.editingPostId ? { ...p, linkedId: nextId } : p)) : s.posts;
+      const translation = { id: nextId, slotId: form.slotId, lang: targetLang, linkedId: s.editingPostId, title: "", category: form.category, date: "—", status: "Draft", publishAt: "", body: "" };
+      return { posts: [...base, translation], postForm: { ...translation }, editingPostId: nextId };
+    });
+    this.showToast("Translation draft created");
+  };
+  openTranslation = () => {
+    const linked = this.state.posts.find((p) => p.id === this.state.postForm.linkedId);
+    if (linked) this.openEditPost(linked);
+  };
+
+  openAddDoctor = () => {
+    const nextId = Math.max(0, ...this.state.doctors.map((d) => d.id)) + 1;
+    this.setState({
+      doctorModalOpen: true, editingDoctorId: null,
+      doctorForm: { name: "", title: "Physiotherapist", specialty: "", bio: "", contact: "", order: this.state.doctors.length + 1, slotId: "doctor-photo-" + nextId },
+    });
+  };
+  openEditDoctor = (doc) => this.setState({ doctorModalOpen: true, editingDoctorId: doc.id, doctorForm: { ...doc } });
+  updateDoctorForm = (field, value) => this.setState((s) => ({ doctorForm: { ...s.doctorForm, [field]: value } }));
+  closeDoctorModal = () => this.setState({ doctorModalOpen: false, doctorForm: null, editingDoctorId: null });
+  saveDoctor = () => {
+    this.setState((s) => {
+      const form = s.doctorForm;
+      if (!form) return {};
+      if (s.editingDoctorId) {
+        return { doctors: s.doctors.map((d) => (d.id === s.editingDoctorId ? { ...d, ...form } : d)), doctorModalOpen: false, doctorForm: null, editingDoctorId: null };
+      }
+      const nextId = Math.max(0, ...s.doctors.map((d) => d.id)) + 1;
+      return { doctors: [...s.doctors, { id: nextId, real: false, notReal: true, canRemove: true, hidden: false, ...form }], doctorModalOpen: false, doctorForm: null, editingDoctorId: null };
+    });
+    this.showToast("Doctor saved");
+  };
+  removeDoctor = (id) => {
+    this.setState((s) => ({ doctors: s.doctors.filter((d) => d.id !== id) }));
+    this.showToast("Doctor archived");
+  };
+  toggleDoctorVisible = (id) => {
+    this.setState((s) => ({ doctors: s.doctors.map((d) => (d.id === id ? { ...d, hidden: !d.hidden } : d)) }));
+  };
+
+  startDrag = (id) => this.setState({ dragId: id });
+  dragOver = (id, e) => { e.preventDefault(); if (this.state.dragOverId !== id) this.setState({ dragOverId: id }); };
+  endDrag = () => this.setState({ dragId: null, dragOverId: null });
+  dropOn = (targetId, e) => {
+    e.preventDefault();
+    const { dragId } = this.state;
+    if (dragId == null || dragId === targetId) return this.endDrag();
+    this.setState((s) => {
+      const list = [...s.doctors];
+      const from = list.findIndex((d) => d.id === dragId);
+      const to = list.findIndex((d) => d.id === targetId);
+      if (from < 0 || to < 0) return { dragId: null, dragOverId: null };
+      const [moved] = list.splice(from, 1);
+      list.splice(to, 0, moved);
+      return { doctors: list.map((d, i) => ({ ...d, order: i + 1 })), dragId: null, dragOverId: null };
+    });
+    this.showToast("Order updated");
+  };
+
+  approveChange = (id) => {
+    this.setState((s) => ({ pendingChanges: s.pendingChanges.filter((c) => c.id !== id) }));
+    this.showToast("Change approved and published");
+  };
+  rejectChange = (id) => {
+    this.setState((s) => ({ pendingChanges: s.pendingChanges.filter((c) => c.id !== id) }));
+    this.showToast("Change rejected");
+  };
+
+  statusStyle(status) {
+    if (status === "Published") return { bg: "rgba(16,185,129,0.15)", color: "#6ee7b7" };
+    if (status === "Scheduled") return { bg: "rgba(96,165,250,0.15)", color: "#93c5fd" };
+    if (status === "Archived") return { bg: "rgba(245,158,11,0.13)", color: "#fcd34d" };
+    return { bg: "rgba(255,255,255,0.08)", color: "rgba(255,255,255,0.5)" };
+  }
+
+  renderVals() {
+    const s = this.state;
+    const canManageContent = this.canManage(s.role);
+    const activeTab = { background: "rgba(255,255,255,0.1)" };
+
+    const posts = s.posts.map((p) => {
+      const st = this.statusStyle(p.status);
+      const linked = p.linkedId ? s.posts.find((x) => x.id === p.linkedId) : null;
+      return {
+        ...p,
+        statusLabel: p.status === "Scheduled" && p.publishAt ? "Scheduled" : p.status,
+        statusBg: st.bg,
+        statusColor: st.color,
+        isArchived: p.status === "Archived",
+        isLive: p.status !== "Archived",
+        translationNote: linked ? (p.lang === "EN" ? "Arabic version linked" : "English version linked") : "No translation",
+        edit: () => this.openEditPost(p),
+        archive: () => this.archivePost(p.id),
+        restore: () => this.restorePost(p.id),
+      };
+    });
+
+    const counts = {
+      All: posts.filter((p) => p.status !== "Archived").length,
+      Published: posts.filter((p) => p.status === "Published").length,
+      Scheduled: posts.filter((p) => p.status === "Scheduled").length,
+      Drafts: posts.filter((p) => p.status === "Draft").length,
+      Archived: posts.filter((p) => p.status === "Archived").length,
+    };
+    const blogFilters = ["All", "Published", "Scheduled", "Drafts", "Archived"].map((label) => {
+      const active = s.blogFilter === label;
+      return {
+        label, count: counts[label],
+        select: () => this.setBlogFilter(label),
+        bg: active ? "rgba(255,255,255,0.12)" : "transparent",
+        border: active ? "rgba(255,255,255,0.3)" : "rgba(255,255,255,0.1)",
+        color: active ? "#ffffff" : "rgba(255,255,255,0.55)",
+      };
+    });
+    const visiblePosts = posts.filter((p) => {
+      if (s.blogFilter === "All") return p.status !== "Archived";
+      if (s.blogFilter === "Drafts") return p.status === "Draft";
+      return p.status === s.blogFilter;
+    });
+
+    let postForm = null;
+    if (s.postForm) {
+      const f = s.postForm;
+      const isEn = f.lang === "EN";
+      const statusChoices = ["Draft", "Scheduled", "Published"].map((label) => {
+        const active = f.status === label;
+        const st = this.statusStyle(label);
+        return {
+          label,
+          select: () => this.updatePostForm("status", label),
+          bg: active ? st.bg : "transparent",
+          border: active ? st.color : "rgba(255,255,255,0.12)",
+          color: active ? st.color : "rgba(255,255,255,0.5)",
+        };
+      });
+      const linked = f.linkedId ? s.posts.find((x) => x.id === f.linkedId) : null;
+      postForm = {
+        ...f,
+        headerLabel: s.editingPostId ? "Edit Post" : "New Post",
+        onTitleChange: (e) => this.updatePostForm("title", e.target.value),
+        onCategoryChange: (e) => this.updatePostForm("category", e.target.value),
+        onBodyChange: (e) => this.updatePostForm("body", e.target.value),
+        onPublishAtChange: (e) => this.updatePostForm("publishAt", e.target.value),
+        setEn: () => this.updatePostForm("lang", "EN"),
+        setAr: () => this.updatePostForm("lang", "AR"),
+        unpublish: () => this.updatePostForm("status", "Draft"),
+        bodyDir: isEn ? "ltr" : "rtl",
+        enBg: isEn ? "rgba(255,255,255,0.12)" : "transparent",
+        enBorder: isEn ? "rgba(255,255,255,0.3)" : "rgba(255,255,255,0.12)",
+        enColor: isEn ? "#fff" : "rgba(255,255,255,0.5)",
+        arBg: !isEn ? "rgba(255,255,255,0.12)" : "transparent",
+        arBorder: !isEn ? "rgba(255,255,255,0.3)" : "rgba(255,255,255,0.12)",
+        arColor: !isEn ? "#fff" : "rgba(255,255,255,0.5)",
+        statusChoices,
+        isScheduled: f.status === "Scheduled",
+        isPublished: f.status === "Published",
+        translationStatus: linked
+          ? `Linked to the ${f.lang === "EN" ? "Arabic" : "English"} version: “${linked.title || "Untitled draft"}”.`
+          : `No ${f.lang === "EN" ? "Arabic" : "English"} version yet. Each language is its own post, linked as a pair.`,
+        translationCta: linked ? "Open translation" : `Create ${f.lang === "EN" ? "Arabic" : "English"} version`,
+        translationAction: linked ? this.openTranslation : this.createTranslation,
+      };
+    }
+
+    const doctors = s.doctors.map((d) => ({
+      ...d,
+      displayName: d.name || "Doctor Name",
+      displayTitle: d.title || "Physiotherapist",
+      visibilityLabel: d.hidden ? "Show" : "Hide",
+      cardOpacity: s.dragId === d.id ? 0.4 : (d.hidden ? 0.6 : 1),
+      dragBorder: s.dragOverId === d.id ? "#4CAF93" : "rgba(255,255,255,0.06)",
+      edit: () => this.openEditDoctor(d),
+      remove: () => this.removeDoctor(d.id),
+      toggleVisible: () => this.toggleDoctorVisible(d.id),
+      onDragStart: () => this.startDrag(d.id),
+      onDragOver: (e) => this.dragOver(d.id, e),
+      onDrop: (e) => this.dropOn(d.id, e),
+      onDragEnd: this.endDrag,
+    }));
+
+    const pendingChanges = s.pendingChanges.map((c) => ({
+      ...c,
+      approve: () => this.approveChange(c.id),
+      reject: () => this.rejectChange(c.id),
+    }));
+
+    const ownerStats = [
+      { label: "Pending approvals", value: String(s.pendingChanges.length), note: "Doctor profile edits", color: s.pendingChanges.length ? "#fcd34d" : "#ffffff", go: this.goApprovals },
+      { label: "Published posts", value: String(counts.Published), note: "Live on the site", color: "#6ee7b7", go: this.goBlogList },
+      { label: "Scheduled", value: String(counts.Scheduled), note: "Queued to go live", color: "#93c5fd", go: this.goBlogList },
+      { label: "Team on site", value: String(s.doctors.filter((d) => !d.hidden).length), note: "Visible doctors", color: "#ffffff", go: this.goDoctors },
+    ];
+
+    let doctorForm = null;
+    if (s.doctorForm) {
+      doctorForm = {
+        ...s.doctorForm,
+        headerLabel: s.editingDoctorId ? "Edit Doctor" : "Add Doctor",
+        onNameChange: (e) => this.updateDoctorForm("name", e.target.value),
+        onTitleChange: (e) => this.updateDoctorForm("title", e.target.value),
+        onSpecialtyChange: (e) => this.updateDoctorForm("specialty", e.target.value),
+        onBioChange: (e) => this.updateDoctorForm("bio", e.target.value),
+        onContactChange: (e) => this.updateDoctorForm("contact", e.target.value),
+        onOrderChange: (e) => this.updateDoctorForm("order", e.target.value),
+      };
+    }
+
+    const commands = [
+      { icon: "▦", label: "Go to Dashboard", hint: "Navigate", run: () => { this.goDashboard(); this.closePalette(); } },
+      ...(canManageContent ? [
+        { icon: "✎", label: "New blog post", hint: "Create", run: () => { this.openNewPost(); this.closePalette(); } },
+        { icon: "☰", label: "Go to Blog Posts", hint: "Navigate", run: () => { this.goBlogList(); this.closePalette(); } },
+        { icon: "✓", label: "Review pending approvals", hint: "Navigate", run: () => { this.goApprovals(); this.closePalette(); } },
+        { icon: "+", label: "Add doctor", hint: "Create", run: () => { this.goDoctors(); this.openAddDoctor(); this.closePalette(); } },
+        { icon: "◎", label: "Go to Doctors", hint: "Navigate", run: () => { this.goDoctors(); this.closePalette(); } },
+        ...s.posts.map((p) => ({ icon: "▪", label: p.title || "Untitled draft", hint: p.lang + " · " + p.status, run: () => { this.openEditPost(p); this.closePalette(); } })),
+      ] : []),
+    ];
+    const q = s.paletteQuery.trim().toLowerCase();
+    const paletteResults = q ? commands.filter((c) => c.label.toLowerCase().includes(q)) : commands.slice(0, 6);
+
+    return {
+      role: s.role, roleOptions: this.roleOptions, onRoleChange: this.onRoleChange,
+      canManageContent,
+      navTabsFlex: s.compactNav ? "1 1 100%" : "1 1 auto",
+      navTabsOrder: s.compactNav ? 3 : 1,
+      viewingAsDisplay: s.compactNav ? "none" : "inline",
+      userInitial: s.role === "Head Doctor" ? "N" : (s.role === "Clinic Manager" ? "M" : "S"),
+      contentAccessNote: "Head Doctor and Clinic Manager only. Staff accounts don't see this area at all.",
+      tabBg: {
+        dashboard: s.section === "dashboard" ? activeTab.background : "transparent",
+        blog: (s.section === "blog-list" || s.section === "blog-edit") ? activeTab.background : "transparent",
+        doctors: s.section === "doctors" ? activeTab.background : "transparent",
+        approvals: s.section === "approvals" ? activeTab.background : "transparent",
+      },
+      isDashboard: s.section === "dashboard",
+      isBlogList: s.section === "blog-list" && canManageContent,
+      isBlogEdit: s.section === "blog-edit" && canManageContent,
+      isDoctors: s.section === "doctors" && canManageContent,
+      isApprovals: s.section === "approvals" && canManageContent,
+      showOwnerStrip: canManageContent,
+      ownerStats,
+      todayLabel: new Date().toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric", year: "numeric" }),
+      appointments: this.appointmentsSeed,
+      visiblePosts, blogFilters, postForm, categoryOptions: this.categoryOptions,
+      noPosts: visiblePosts.length === 0,
+      editorGrid: s.isNarrow ? "1fr" : "1fr 340px",
+      diffGrid: s.isNarrow ? "1fr" : "1fr 1fr",
+      savedHint: s.lastSaved ? "Last saved " + s.lastSaved.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" }) : "Not saved yet",
+      doctors, doctorModalOpen: s.doctorModalOpen, doctorForm,
+      pendingChanges, noPending: pendingChanges.length === 0,
+      pendingCount: String(s.pendingChanges.length), hasPending: s.pendingChanges.length > 0,
+      paletteOpen: s.paletteOpen, paletteQuery: s.paletteQuery, paletteResults,
+      paletteEmpty: paletteResults.length === 0,
+      openPalette: this.openPalette, closePalette: this.closePalette, onPaletteQuery: this.onPaletteQuery,
+      toastVisible: !!s.toastMessage, toastMessage: s.toastMessage,
+      goDashboard: this.goDashboard, goBlogList: this.goBlogList, goDoctors: this.goDoctors, goApprovals: this.goApprovals,
+      openNewPost: this.openNewPost, cancelPost: this.cancelPost, savePost: this.savePost,
+      openAddDoctor: this.openAddDoctor, closeDoctorModal: this.closeDoctorModal, saveDoctor: this.saveDoctor,
+      stopPropagation: this.stopPropagation,
+    };
+  }
+}
+
+</script>
+</body>
+</html>

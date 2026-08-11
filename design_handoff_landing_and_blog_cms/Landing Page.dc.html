@@ -1,0 +1,818 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@600;700;800&family=Inter:wght@400;500;600&family=Bodoni+Moda:opsz,wght@6..96,500;6..96,600;6..96,700;6..96,800&family=Noto+Kufi+Arabic:wght@500;600;700&display=swap" rel="stylesheet">
+  <script src="./image-slot.js"></script>
+  <style>
+    html { scroll-behavior: smooth; }
+    body { margin: 0; }
+    a { color: inherit; text-decoration: none; }
+    @keyframes heroFadeUp { from { opacity: 0; transform: translateY(24px); } to { opacity: 1; transform: translateY(0); } }
+    @keyframes marquee { from { transform: translateX(0); } to { transform: translateX(-50%); } }
+  </style>
+</helmet>
+
+<div dir="{{ dir }}" style="font-family: {{ bodyFont }}; background: #f8f5ef; color: #1a2e35; position: relative; overflow-x: hidden;">
+
+  <div style="position: fixed; top: 0; left: 0; right: 0; height: 2px; z-index: 210; background: linear-gradient(90deg, {{ theme.primary }}, {{ theme.secondary }});"></div>
+
+  <!-- NAVBAR -->
+  <nav style="position: fixed; top: 2px; left: 0; right: 0; z-index: 200; background: rgba(26,46,53,0.78); backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px); border-bottom: 1px solid rgba(255,255,255,0.06);">
+    <div style="max-width: 1280px; margin: 0 auto; padding: 0.85rem 1.25rem; display: flex; align-items: center; justify-content: space-between; gap: 1rem; flex-wrap: nowrap;">
+      <a href="#hero" style="display: flex; align-items: center; flex-shrink: 0;">
+        <img src="public/logo.jpg" alt="Therapy Jo" style="height: 40px; width: auto; border-radius: 6px;" />
+      </a>
+      <div style="display: {{ desktopNavDisplay }}; align-items: center; gap: 0.95rem; flex-wrap: nowrap; overflow: hidden; min-width: 0;">
+        <a href="#about" style="font-size: 0.72rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; color: #ffffff; opacity: 0.75; white-space: nowrap;" style-hover="opacity:1;color:{{ theme.primaryLight }};">{{ t.nav.about }}</a>
+        <a href="#services" style="font-size: 0.72rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; color: #ffffff; opacity: 0.75; white-space: nowrap;" style-hover="opacity:1;color:{{ theme.primaryLight }};">{{ t.nav.services }}</a>
+        <a href="#doctors" style="font-size: 0.72rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; color: #ffffff; opacity: 0.75; white-space: nowrap;" style-hover="opacity:1;color:{{ theme.primaryLight }};">{{ t.nav.doctors }}</a>
+        <a href="#blog" style="font-size: 0.72rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; color: #ffffff; opacity: 0.75; white-space: nowrap;" style-hover="opacity:1;color:{{ theme.primaryLight }};">{{ t.nav.blog }}</a>
+        <a href="#reviews" style="font-size: 0.72rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; color: #ffffff; opacity: 0.75; white-space: nowrap;" style-hover="opacity:1;color:{{ theme.primaryLight }};">{{ t.nav.reviews }}</a>
+        <a href="#location" style="font-size: 0.72rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; color: #ffffff; opacity: 0.75; white-space: nowrap;" style-hover="opacity:1;color:{{ theme.primaryLight }};">{{ t.nav.location }}</a>
+        <a href="#contact" style="font-size: 0.72rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; color: #ffffff; opacity: 0.75; white-space: nowrap;" style-hover="opacity:1;color:{{ theme.primaryLight }};">{{ t.nav.contact }}</a>
+      </div>
+      <div style="display: flex; align-items: center; gap: 0.6rem; flex-shrink: 0;">
+        <button onClick="{{ toggleMenu }}" aria-label="Menu" style="display: {{ menuButtonDisplay }}; flex-direction: column; justify-content: center; gap: 4px; width: 44px; height: 44px; padding: 0 10px; background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.2); border-radius: 4px; cursor: pointer;">
+          <span style="display: block; height: 1.5px; background: #ffffff;"></span>
+          <span style="display: block; height: 1.5px; background: #ffffff;"></span>
+          <span style="display: block; height: 1.5px; background: #ffffff;"></span>
+        </button>
+        <button onClick="{{ toggleLang }}" style="padding: 0.4rem 0.9rem; font-size: 0.72rem; font-weight: 700; letter-spacing: 0.06em; border: 1px solid rgba(255,255,255,0.3); color: #ffffff; background: rgba(255,255,255,0.06); border-radius: 4px; cursor: pointer;" style-hover="background:rgba(255,255,255,0.18);">{{ langButtonLabel }}</button>
+        <a href="https://wa.me/962799819669" target="_blank" rel="noopener noreferrer" style="padding: 0.6rem 1.2rem; background: {{ theme.primary }}; color: #ffffff; border-radius: 4px; font-weight: 700; font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.06em; white-space: nowrap;" style-hover="background:{{ theme.primaryDark }};">{{ t.nav.bookNow }}</a>
+      </div>
+    </div>
+    <sc-if value="{{ menuOpen }}" hint-placeholder-val="{{ false }}">
+      <div style="border-top: 1px solid rgba(255,255,255,0.08); padding: 0.5rem 1.25rem 1rem; display: flex; flex-direction: column; max-height: 70vh; overflow-y: auto;">
+        <sc-for list="{{ navLinks }}" as="link" hint-placeholder-count="7">
+          <a href="{{ link.href }}" onClick="{{ closeMenu }}" style="display: flex; align-items: center; min-height: 48px; font-size: 0.85rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; color: rgba(255,255,255,0.85); border-bottom: 1px solid rgba(255,255,255,0.06);" style-hover="color:{{ theme.primaryLight }};">{{ link.label }}</a>
+        </sc-for>
+      </div>
+    </sc-if>
+  </nav>
+
+  <!-- HERO -->
+  <section id="hero" style="position: relative; min-height: 100vh; display: flex; align-items: center; justify-content: center; overflow: hidden; background: #1a2e35;">
+    <img src="public/joint-manipulation.webp" alt="" style="position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; opacity: 0.42;" />
+    <div style="position: absolute; inset: 0; background: linear-gradient(to bottom, rgba(15,26,31,0.72) 0%, rgba(15,26,31,0.5) 40%, rgba(15,26,31,0.92) 100%);"></div>
+    <div style="position: relative; z-index: 2; text-align: center; max-width: 840px; padding: 0 2rem; animation: heroFadeUp 0.9s ease;">
+      <div style="width: 34px; height: 2px; background: {{ theme.primary }}; margin: 0 auto 1.4rem;"></div>
+      <div style="display: inline-block; padding: 0.45rem 1.1rem; border: 1px solid rgba(255,255,255,0.28); border-radius: 999px; color: #ffffff; font-size: 0.74rem; font-weight: 500; letter-spacing: 0.08em; text-transform: uppercase; margin-bottom: 1.8rem;">{{ t.hero.badge }}</div>
+      <h1 style="font-family: {{ headingFont }}; font-size: clamp(2.8rem, 7.5vw, 5.6rem); font-weight: 700; color: #ffffff; line-height: 1.05; letter-spacing: -0.01em; margin: 0 0 1.3rem;">
+        {{ t.hero.title }}<br /><span style="font-style: italic; background: linear-gradient(135deg, {{ theme.primaryLight }}, {{ theme.secondaryLight }}); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;">{{ t.hero.titleHighlight }}</span> {{ t.hero.titleEnd }}
+      </h1>
+      <p style="font-size: clamp(1rem, 2vw, 1.15rem); color: rgba(255,255,255,0.78); max-width: 540px; margin: 0 auto 2.5rem; line-height: 1.7;">{{ t.hero.subtitle }}</p>
+      <div style="display: flex; gap: 1rem; justify-content: center; flex-wrap: wrap;">
+        <a href="https://wa.me/962799819669" target="_blank" rel="noopener noreferrer" style="padding: 1rem 2.2rem; background: {{ theme.primary }}; color: #ffffff; border-radius: 4px; font-weight: 700; font-size: 0.82rem; text-transform: uppercase; letter-spacing: 0.08em;" style-hover="background:{{ theme.primaryDark }};transform:translateY(-2px);">{{ t.hero.bookSession }}</a>
+        <a href="tel:+962799819669" style="padding: 1rem 2.2rem; background: transparent; border: 1px solid rgba(255,255,255,0.35); color: #ffffff; border-radius: 4px; font-weight: 700; font-size: 0.82rem; text-transform: uppercase; letter-spacing: 0.08em;" style-hover="background:rgba(255,255,255,0.1);transform:translateY(-2px);">{{ t.hero.callUs }}</a>
+      </div>
+    </div>
+  </section>
+
+  <!-- MARQUEE -->
+  <div style="background: #243b44; overflow: hidden; padding: 0.85rem 0; border-bottom: 1px solid rgba(255,255,255,0.06);">
+    <div style="display: flex; width: max-content; gap: 3rem; animation: marquee 30s linear infinite;">
+      <span style="font-family: {{ headingFont }}; font-size: 0.85rem; font-style: italic; color: rgba(255,255,255,0.55); white-space: nowrap; letter-spacing: 0.02em;">{{ tickerText }}</span>
+      <span style="font-family: {{ headingFont }}; font-size: 0.85rem; font-style: italic; color: rgba(255,255,255,0.55); white-space: nowrap; letter-spacing: 0.02em;">{{ tickerText }}</span>
+    </div>
+  </div>
+
+  <!-- ABOUT -->
+  <section id="about" style="scroll-margin-top: 90px; background: #f8f5ef; padding: {{ sectionPadding }};">
+    <div style="max-width: 1200px; margin: 0 auto; display: grid; grid-template-columns: {{ twoColGrid }}; gap: {{ aboutGap }}; align-items: center;">
+      <div style="position: relative;">
+        <div style="position: absolute; inset: 18px -18px -18px 18px; border: 2px solid {{ theme.primary }}; border-radius: 4px; z-index: 0;"></div>
+        <div style="position: relative; z-index: 1; border-radius: 4px; overflow: hidden; aspect-ratio: 4/3; box-shadow: 0 24px 60px rgba(26,46,53,0.18);">
+          <img src="public/cupping.webp" alt="Treatment session at Therapy Jo" style="width: 100%; height: 100%; object-fit: cover;" />
+        </div>
+      </div>
+      <div data-reveal="1" style="opacity: 0; transform: translateY(24px); transition: opacity 0.8s ease, transform 0.8s ease;">
+        <div style="font-family: {{ headingFont }}; font-style: italic; font-size: 0.95rem; font-weight: 600; color: {{ theme.primary }}; margin-bottom: 0.9rem;">{{ t.about.label }}</div>
+        <h2 style="font-family: {{ headingFont }}; font-size: clamp(2rem, 4vw, 2.9rem); font-weight: 700; color: #1a2e35; line-height: 1.18; margin: 0 0 1.2rem;">{{ t.about.title }}</h2>
+        <p style="font-size: 1.05rem; color: #4a6670; line-height: 1.8; margin: 0;">{{ t.about.description1 }}</p>
+        <p style="font-size: 1.05rem; color: #4a6670; line-height: 1.8; margin: 1rem 0 0;">{{ t.about.description2 }}</p>
+        <div data-counters="1" style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 0; margin-top: 2.5rem; border-top: 1px solid rgba(26,46,53,0.12);">
+          <div style="text-align: left; padding: 1.4rem 1.2rem 0 0;">
+            <div style="font-family: {{ headingFont }}; font-size: 2.1rem; font-weight: 700; color: #1a2e35;">{{ stat1Display }}</div>
+            <div style="font-size: 0.78rem; color: #7a9aa5; margin-top: 0.25rem;">{{ t.about.stat1Label }}</div>
+          </div>
+          <div style="text-align: left; padding: 1.4rem 1.2rem 0;">
+            <div style="font-family: {{ headingFont }}; font-size: 2.1rem; font-weight: 700; color: #1a2e35;">{{ stat2Display }}</div>
+            <div style="font-size: 0.78rem; color: #7a9aa5; margin-top: 0.25rem;">{{ t.about.stat2Label }}</div>
+          </div>
+          <div style="text-align: left; padding: 1.4rem 0 0 1.2rem;">
+            <div style="font-family: {{ headingFont }}; font-size: 2.1rem; font-weight: 700; color: #1a2e35;">{{ stat3Display }}</div>
+            <div style="font-size: 0.78rem; color: #7a9aa5; margin-top: 0.25rem;">{{ t.about.stat3Label }}</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- SERVICES -->
+  <section id="services" style="scroll-margin-top: 90px; background: #ffffff; padding: {{ sectionPadding }};">
+    <div style="max-width: 980px; margin: 0 auto;">
+      <div data-reveal="1" style="opacity: 0; transform: translateY(24px); transition: opacity 0.8s ease, transform 0.8s ease; text-align: center; max-width: 640px; margin: 0 auto 4rem;">
+        <div style="font-family: {{ headingFont }}; font-style: italic; font-size: 0.95rem; font-weight: 600; color: {{ theme.primary }}; margin-bottom: 0.9rem;">{{ t.services.label }}</div>
+        <h2 style="font-family: {{ headingFont }}; font-size: clamp(2rem, 4vw, 2.9rem); font-weight: 700; color: #1a2e35; margin: 0 0 0.9rem;">{{ t.services.title }}</h2>
+        <p style="font-size: 1.05rem; color: #4a6670; line-height: 1.7; margin: 0;">{{ t.services.subtitle }}</p>
+      </div>
+      <div style="display: flex; flex-direction: column; border-top: 1px solid rgba(26,46,53,0.1);">
+        <sc-for list="{{ services }}" as="svc" hint-placeholder-count="9">
+          <div style="display: flex; align-items: center; gap: 1.75rem; padding: 1.7rem 0.5rem; border-bottom: 1px solid rgba(26,46,53,0.1); transition: background 0.25s ease;" style-hover="background:#f8f5ef;">
+            <div style="font-family: {{ headingFont }}; font-size: 1.7rem; font-weight: 700; color: {{ theme.secondary }}; opacity: 0.3; width: 52px; flex-shrink: 0;">{{ svc.indexLabel }}</div>
+            <div style="width: 52px; height: 52px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; background: linear-gradient(160deg, #e8f5f0, #dff0ea); border-radius: 12px;">
+              <img src="{{ svc.icon }}" alt="" style="width: 30px; height: 30px;" />
+            </div>
+            <div style="flex: 1; min-width: 0;">
+              <h3 style="font-family: {{ headingFont }}; font-size: 1.12rem; font-weight: 700; color: #1a2e35; margin: 0 0 0.35rem;">{{ svc.title }}</h3>
+              <p style="font-size: 0.88rem; color: #4a6670; line-height: 1.55; margin: 0;">{{ svc.description }}</p>
+            </div>
+            <div style="font-size: 0.68rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.07em; color: {{ theme.secondary }}; flex-shrink: 0; display: none;">{{ svc.categoryLabel }}</div>
+          </div>
+        </sc-for>
+      </div>
+    </div>
+  </section>
+
+  <!-- BODY AREA FINDER -->
+  <section id="finder" style="scroll-margin-top: 90px; background: #f8f5ef; padding: {{ sectionPadding }}; border-top: 1px solid rgba(26,46,53,0.08);">
+    <div style="max-width: 1100px; margin: 0 auto;">
+      <div data-reveal="1" style="opacity: 0; transform: translateY(24px); transition: opacity 0.8s ease, transform 0.8s ease; text-align: center; max-width: 620px; margin: 0 auto 3.5rem;">
+        <div style="font-family: {{ headingFont }}; font-style: italic; font-size: 0.95rem; font-weight: 600; color: {{ theme.primary }}; margin-bottom: 0.9rem;">{{ t.finder.label }}</div>
+        <h2 style="font-family: {{ headingFont }}; font-size: clamp(2rem, 4vw, 2.9rem); font-weight: 700; color: #1a2e35; margin: 0 0 0.9rem;">{{ t.finder.title }}</h2>
+        <p style="font-size: 1.05rem; color: #4a6670; line-height: 1.7; margin: 0;">{{ t.finder.subtitle }}</p>
+      </div>
+      <div style="display: grid; grid-template-columns: {{ finderGrid }}; gap: 2.5rem; align-items: start;">
+        <div style="display: flex; flex-direction: column; gap: 0.5rem;">
+          <sc-for list="{{ finderAreas }}" as="area" hint-placeholder-count="6">
+            <button onClick="{{ area.select }}" style="display: flex; align-items: center; justify-content: space-between; gap: 0.75rem; min-height: 52px; padding: 0.85rem 1.1rem; text-align: start; cursor: pointer; font-family: inherit; font-size: 0.95rem; font-weight: 600; border-radius: 6px; border: 1px solid {{ area.borderColor }}; background: {{ area.bg }}; color: {{ area.color }}; transition: all 0.2s ease;">
+              <span>{{ area.name }}</span>
+              <span style="font-size: 1.1rem; opacity: 0.5;">{{ area.arrow }}</span>
+            </button>
+          </sc-for>
+        </div>
+        <div style="background: #ffffff; border: 1px solid rgba(26,46,53,0.08); border-radius: 8px; padding: 2.25rem; box-shadow: 0 8px 32px rgba(26,46,53,0.07);">
+          <div style="font-size: 0.7rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; color: {{ theme.secondary }}; margin-bottom: 0.6rem;">{{ t.finder.recommendedFor }}</div>
+          <h3 style="font-family: {{ headingFont }}; font-size: 1.65rem; font-weight: 700; color: #1a2e35; margin: 0 0 0.7rem;">{{ activeArea.name }}</h3>
+          <p style="font-size: 1rem; color: #4a6670; line-height: 1.7; margin: 0 0 1.75rem;">{{ activeArea.note }}</p>
+          <div style="display: flex; flex-direction: column; gap: 0.75rem; margin-bottom: 2rem;">
+            <sc-for list="{{ activeArea.treatments }}" as="tr" hint-placeholder-count="3">
+              <div style="display: flex; align-items: center; gap: 1rem; padding: 0.9rem 1rem; background: #f8f5ef; border-radius: 6px;">
+                <div style="width: 40px; height: 40px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; background: linear-gradient(160deg, #e8f5f0, #dff0ea); border-radius: 8px;">
+                  <img src="{{ tr.icon }}" alt="" style="width: 24px; height: 24px;" />
+                </div>
+                <div style="flex: 1; min-width: 0;">
+                  <div style="font-size: 0.95rem; font-weight: 700; color: #1a2e35;">{{ tr.title }}</div>
+                  <div style="font-size: 0.82rem; color: #7a9aa5;">{{ tr.categoryLabel }}</div>
+                </div>
+              </div>
+            </sc-for>
+          </div>
+          <a href="https://wa.me/962799819669" target="_blank" rel="noopener noreferrer" style="display: inline-block; padding: 0.95rem 2rem; background: {{ theme.primary }}; color: #ffffff; border-radius: 4px; font-weight: 700; font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.08em;" style-hover="background:{{ theme.primaryDark }};">{{ t.finder.cta }}</a>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- DOCTORS -->
+  <section id="doctors" style="scroll-margin-top: 90px; background: #1a2e35; padding: {{ sectionPadding }};">
+    <div style="max-width: 1200px; margin: 0 auto;">
+      <div data-reveal="1" style="opacity: 0; transform: translateY(24px); transition: opacity 0.8s ease, transform 0.8s ease; text-align: center; max-width: 600px; margin: 0 auto 4rem;">
+        <div style="font-family: {{ headingFont }}; font-style: italic; font-size: 0.95rem; font-weight: 600; color: {{ theme.primaryLight }}; margin-bottom: 0.9rem;">{{ t.doctors.label }}</div>
+        <h2 style="font-family: {{ headingFont }}; font-size: clamp(2rem, 4vw, 2.9rem); font-weight: 700; color: #ffffff; margin: 0 0 0.9rem;">{{ t.doctors.title }}</h2>
+        <p style="font-size: 1.05rem; color: rgba(255,255,255,0.6); line-height: 1.7; margin: 0;">{{ t.doctors.subtitle }}</p>
+      </div>
+      <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 1.5rem;">
+        <sc-for list="{{ doctors }}" as="doc" hint-placeholder-count="5">
+          <div style="position: relative; border-radius: 8px; overflow: hidden; aspect-ratio: 4/5; box-shadow: 0 20px 50px rgba(0,0,0,0.35); transition: transform 0.35s ease;" style-hover="transform:translateY(-6px);">
+            <sc-if value="{{ doc.real }}" hint-placeholder-val="{{ true }}">
+              <img src="{{ doc.photo }}" alt="{{ doc.displayName }}" style="position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover;" />
+            </sc-if>
+            <sc-if value="{{ doc.notReal }}" hint-placeholder-val="{{ false }}">
+              <image-slot id="{{ doc.slotId }}" shape="rect" placeholder="Doctor photo" style="position: absolute; inset: 0; width: 100%; height: 100%;"></image-slot>
+            </sc-if>
+            <div style="position: absolute; inset: 0; background: linear-gradient(to top, rgba(10,18,22,0.95) 0%, rgba(10,18,22,0.25) 55%, transparent 78%); pointer-events: none;"></div>
+            <div style="position: absolute; left: 0; right: 0; bottom: 0; padding: 1.3rem 1.1rem;">
+              <h3 style="font-family: {{ headingFont }}; font-size: 1.15rem; font-weight: 700; color: #ffffff; margin: 0 0 0.25rem;">{{ doc.displayName }}</h3>
+              <p style="font-size: 0.85rem; color: {{ theme.primaryLight }}; font-weight: 600; margin: 0 0 0.3rem;">{{ doc.roleLabel }}</p>
+              <p style="font-size: 0.76rem; color: rgba(255,255,255,0.55); margin: 0;">{{ doc.specialtyLabel }}</p>
+            </div>
+          </div>
+        </sc-for>
+      </div>
+    </div>
+  </section>
+
+  <!-- BLOG -->
+  <section id="blog" style="scroll-margin-top: 90px; background: #f8f5ef; padding: {{ sectionPadding }};">
+    <div style="max-width: 1200px; margin: 0 auto;">
+
+      <sc-if value="{{ isHome }}" hint-placeholder-val="{{ true }}">
+        <div data-reveal="1" style="opacity: 0; transform: translateY(24px); transition: opacity 0.8s ease, transform 0.8s ease; text-align: center; max-width: 640px; margin: 0 auto 4rem;">
+          <div style="font-family: {{ headingFont }}; font-style: italic; font-size: 0.95rem; font-weight: 600; color: {{ theme.primary }}; margin-bottom: 0.9rem;">{{ t.blog.label }}</div>
+          <h2 style="font-family: {{ headingFont }}; font-size: clamp(2rem, 4vw, 2.9rem); font-weight: 700; color: #1a2e35; margin: 0 0 0.9rem;">{{ t.blog.title }}</h2>
+          <p style="font-size: 1.05rem; color: #4a6670; line-height: 1.7; margin: 0;">{{ t.blog.subtitle }}</p>
+        </div>
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 1.75rem;">
+          <sc-for list="{{ blogPosts }}" as="post" hint-placeholder-count="6">
+            <div style="background: {{ cardBg }}; border: {{ cardBorder }}; backdrop-filter: {{ cardBackdropFilter }}; border-radius: 8px; overflow: hidden; box-shadow: {{ cardShadow }}; transition: transform 0.25s ease, box-shadow 0.25s ease;" style-hover="transform:translateY(-4px);box-shadow:0 16px 40px rgba(26,46,53,0.1);">
+              <div style="position: relative; width: 100%; aspect-ratio: 16/9; overflow: hidden; background: #e8f4f0;">
+                <image-slot id="{{ post.slotId }}" shape="rect" placeholder="Cover image" style="width: 100%; height: 100%;"></image-slot>
+              </div>
+              <div style="padding: 1.6rem;">
+                <div style="display: flex; align-items: center; gap: 0.6rem; margin-bottom: 0.85rem;">
+                  <span style="font-size: 0.68rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; color: {{ theme.secondary }};">{{ post.category }}</span>
+                  <span style="font-size: 0.68rem; color: #7a9aa5;">— {{ post.date }}</span>
+                </div>
+                <h3 style="font-family: {{ headingFont }}; font-size: 1.18rem; font-weight: 700; color: #1a2e35; margin: 0 0 0.7rem; line-height: 1.35;">{{ post.title }}</h3>
+                <p style="font-size: 0.9rem; color: #4a6670; line-height: 1.6; margin: 0 0 1.1rem;">{{ post.excerpt }}</p>
+                <button onClick="{{ post.open }}" style="display: inline-flex; align-items: center; gap: 0.4rem; background: none; border: none; border-bottom: 1px solid {{ theme.primary }}; color: {{ theme.primary }}; font-weight: 600; font-size: 0.82rem; text-transform: uppercase; letter-spacing: 0.04em; cursor: pointer; padding: 0 0 0.15rem; font-family: inherit;">{{ t.blog.readMore }}</button>
+              </div>
+            </div>
+          </sc-for>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{ isPost }}" hint-placeholder-val="{{ false }}">
+        <div style="max-width: 740px; margin: 0 auto;">
+          <button onClick="{{ closePost }}" style="display: inline-flex; align-items: center; gap: 0.4rem; background: none; border: none; color: {{ theme.primary }}; font-weight: 600; font-size: 0.82rem; text-transform: uppercase; letter-spacing: 0.05em; cursor: pointer; padding: 0; margin-bottom: 2.5rem; font-family: inherit;">← {{ t.blog.back }}</button>
+          <div style="display: flex; align-items: center; gap: 0.6rem; margin-bottom: 1.1rem;">
+            <span style="font-size: 0.7rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; color: {{ theme.secondary }};">{{ activePost.category }}</span>
+            <span style="font-size: 0.7rem; color: #7a9aa5;">— {{ activePost.date }}</span>
+          </div>
+          <h1 style="font-family: {{ headingFont }}; font-size: clamp(1.9rem, 4.5vw, 2.7rem); font-weight: 700; color: #1a2e35; line-height: 1.2; margin: 0 0 2rem;">{{ activePost.title }}</h1>
+          <div style="position: relative; width: 100%; aspect-ratio: 16/9; border-radius: 8px; overflow: hidden; background: #e8f4f0; margin-bottom: 2.2rem;">
+            <image-slot id="{{ activePost.slotId }}" shape="rect" placeholder="Cover image" style="width: 100%; height: 100%;"></image-slot>
+          </div>
+          <sc-for list="{{ activePost.body }}" as="para" hint-placeholder-count="3">
+            <p style="font-size: 1.08rem; color: #3d5158; line-height: 1.9; margin: 0 0 1.3rem;">{{ para }}</p>
+          </sc-for>
+        </div>
+      </sc-if>
+
+    </div>
+  </section>
+
+  <!-- REVIEWS -->
+  <section id="reviews" style="scroll-margin-top: 90px; background: #f8f5ef; padding: {{ sectionPadding }};">
+    <div style="max-width: 1200px; margin: 0 auto;">
+      <div data-reveal="1" style="opacity: 0; transform: translateY(24px); transition: opacity 0.8s ease, transform 0.8s ease; text-align: center; max-width: 600px; margin: 0 auto 3rem;">
+        <div style="font-family: {{ headingFont }}; font-style: italic; font-size: 0.95rem; font-weight: 600; color: {{ theme.primary }}; margin-bottom: 0.9rem;">{{ t.reviews.label }}</div>
+        <h2 style="font-family: {{ headingFont }}; font-size: clamp(2rem, 4vw, 2.9rem); font-weight: 700; color: #1a2e35; margin: 0 0 0.9rem;">{{ t.reviews.title }}</h2>
+        <p style="font-size: 1.05rem; color: #4a6670; line-height: 1.7; margin: 0;">{{ t.reviews.subtitle }}</p>
+      </div>
+
+      <div style="display: flex; align-items: center; justify-content: center; gap: 1.25rem; flex-wrap: wrap; background: #1a2e35; border-radius: 8px; padding: 1.5rem 2rem; max-width: 620px; margin: 0 auto 3.5rem;">
+        <div style="font-family: {{ headingFont }}; font-size: 2.6rem; font-weight: 800; color: #ffffff;">{{ ratingValue }}</div>
+        <div>
+          <div style="color: #d9b45c; font-size: 1.2rem; letter-spacing: 2px;">{{ ratingStars }}</div>
+          <div style="font-size: 0.85rem; color: rgba(255,255,255,0.6); margin-top: 0.2rem;">{{ t.reviews.basedOn }} {{ reviewCount }} {{ t.reviews.reviewsWord }}</div>
+        </div>
+        <a href="https://www.google.com/search?q=Therapy+Jo+Physiotherapy+Center+reviews" target="_blank" rel="noopener noreferrer" style="margin-inline-start: auto; padding: 0.65rem 1.3rem; background: {{ theme.primary }}; color: #ffffff; border-radius: 4px; font-weight: 700; font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.06em; white-space: nowrap;" style-hover="background:{{ theme.primaryDark }};">{{ t.reviews.cta }}</a>
+      </div>
+
+      <div style="max-width: 680px; margin: 0 auto; text-align: center;">
+        <div style="font-family: {{ headingFont }}; font-size: 4.5rem; font-style: italic; color: {{ theme.primary }}; opacity: 0.3; line-height: 0.5; margin-bottom: 1rem;">"</div>
+        <p style="font-family: {{ headingFont }}; font-size: clamp(1.25rem, 2.5vw, 1.6rem); font-style: italic; color: #1a2e35; line-height: 1.55; margin: 0 0 1.75rem;">{{ activeReview.text }}</p>
+        <div style="display: flex; align-items: center; justify-content: center; gap: 0.75rem; margin-bottom: 2rem;">
+          <div style="width: 38px; height: 38px; border-radius: 50%; background: {{ theme.secondary }}; color: #ffffff; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 0.8rem;">{{ activeReview.initial }}</div>
+          <div style="text-align: left;">
+            <div style="font-weight: 600; font-size: 0.88rem; color: #1a2e35;">{{ activeReview.name }}</div>
+            <div style="font-size: 0.8rem; letter-spacing: 1px;"><span style="color: #d9b45c;">{{ activeReview.starsFilled }}</span><span style="color: #d9dfe1;">{{ activeReview.starsEmpty }}</span></div>
+          </div>
+        </div>
+        <div style="display: flex; justify-content: center; gap: 0.55rem;">
+          <sc-for list="{{ reviews }}" as="rev" hint-placeholder-count="4">
+            <button onClick="{{ rev.select }}" style="width: 8px; height: 8px; padding: 0; border-radius: 50%; border: none; cursor: pointer; background: {{ rev.dotColor }};"></button>
+          </sc-for>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- LOCATION -->
+  <section id="location" style="scroll-margin-top: 90px; background: #ffffff; padding: {{ sectionPadding }};">
+    <div style="max-width: 1200px; margin: 0 auto; display: grid; grid-template-columns: {{ twoColGrid }}; gap: 3rem; align-items: start;">
+      <div style="border-radius: 4px; overflow: hidden; box-shadow: 0 20px 60px rgba(26,46,53,0.12); aspect-ratio: 4/3;">
+        <iframe src="https://www.google.com/maps/embed?pb=!1m18!1m12!1m3!1d3384.5!2d35.87!3d31.95!2m3!1f0!2f0!3f0!3m2!1i1024!2i768!4f13.1!3m3!1m2!1s0x0%3A0x0!2zMzHCsDU3JzAwLjAiTiAzNcKwNTInMTIuMCJF!5e0!3m2!1sen!2sjo!4v1700000000000" style="width: 100%; height: 100%; border: none;" loading="lazy" referrerpolicy="no-referrer-when-downgrade" title="Therapy Jo Location"></iframe>
+      </div>
+      <div>
+        <div style="font-family: {{ headingFont }}; font-style: italic; font-size: 0.95rem; font-weight: 600; color: {{ theme.primary }}; margin-bottom: 0.9rem;">{{ t.location.label }}</div>
+        <h2 style="font-family: {{ headingFont }}; font-size: clamp(2rem, 4vw, 2.9rem); font-weight: 700; color: #1a2e35; margin: 0 0 0.9rem;">{{ t.location.title }}</h2>
+        <p style="font-size: 1.05rem; color: #4a6670; line-height: 1.7; margin: 0 0 1.5rem;">{{ t.location.subtitle }}</p>
+        <div style="display: flex; gap: 1rem; align-items: flex-start; padding: 1.25rem 0; border-top: 1px solid rgba(26,46,53,0.1);">
+          <div style="width: 40px; height: 40px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; background: #f8f5ef; border-radius: 4px; color: {{ theme.primary }}; font-size: 1.1rem;">📍</div>
+          <div>
+            <h4 style="font-family: {{ headingFont }}; font-size: 1rem; font-weight: 600; margin: 0 0 0.25rem; color: #1a2e35;">{{ t.location.addressTitle }}</h4>
+            <p style="font-size: 0.9rem; color: #4a6670; margin: 0; line-height: 1.5;">{{ t.location.addressText }}</p>
+          </div>
+        </div>
+        <div style="padding: 1.25rem 0; border-top: 1px solid rgba(26,46,53,0.1);">
+          <h4 style="font-family: {{ headingFont }}; font-size: 1rem; font-weight: 600; margin: 0 0 0.75rem; color: #1a2e35;">{{ t.location.hoursTitle }}</h4>
+          <div style="display: flex; justify-content: space-between; padding: 0.5rem 0; font-size: 0.9rem; color: #4a6670; border-bottom: 1px solid rgba(26,46,53,0.06);"><span>{{ t.location.weekdays }}</span><span style="font-weight: 600; color: #1a2e35;">{{ t.location.weekdaysTime }}</span></div>
+          <div style="display: flex; justify-content: space-between; padding: 0.5rem 0; font-size: 0.9rem; color: #4a6670; border-bottom: 1px solid rgba(26,46,53,0.06);"><span>{{ t.location.thursday }}</span><span style="font-weight: 600; color: #1a2e35;">{{ t.location.thursdayTime }}</span></div>
+          <div style="display: flex; justify-content: space-between; padding: 0.5rem 0; font-size: 0.9rem; color: #4a6670;"><span>{{ t.location.friday }}</span><span style="font-weight: 600; color: #1a2e35;">{{ t.location.fridayTime }}</span></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- CONTACT CTA -->
+  <section id="contact" style="scroll-margin-top: 90px; background: linear-gradient(135deg, #1a2e35 0%, #243b44 100%); text-align: center; padding: {{ sectionPadding }};">
+    <div style="max-width: 700px; margin: 0 auto;">
+      <div style="font-family: {{ headingFont }}; font-style: italic; font-size: 0.95rem; font-weight: 600; color: {{ theme.primaryLight }}; margin-bottom: 0.9rem;">{{ t.contact.label }}</div>
+      <h2 style="font-family: {{ headingFont }}; font-size: clamp(2rem, 4vw, 2.9rem); font-weight: 700; color: #ffffff; margin: 0 0 0.9rem;">{{ t.contact.title }}</h2>
+      <p style="font-size: 1.05rem; color: rgba(255,255,255,0.7); line-height: 1.7; margin: 0 0 2.5rem;">{{ t.contact.subtitle }}</p>
+      <div style="display: flex; gap: 1rem; justify-content: center; flex-wrap: wrap;">
+        <a href="https://wa.me/962799819669" target="_blank" rel="noopener noreferrer" style="min-width: 190px; padding: 0.95rem 1.5rem; border-radius: 4px; border: 1px solid rgba(255,255,255,0.2); color: rgba(255,255,255,0.85); font-weight: 600; font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.06em;" style-hover="border-color:rgba(255,255,255,0.5);color:#ffffff;">{{ t.contact.whatsapp }}</a>
+        <a href="tel:+962799819669" style="min-width: 190px; padding: 0.95rem 1.5rem; border-radius: 4px; border: 1px solid rgba(255,255,255,0.2); color: rgba(255,255,255,0.85); font-weight: 600; font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.06em;" style-hover="border-color:rgba(255,255,255,0.5);color:#ffffff;">{{ t.contact.call }}</a>
+        <a href="https://instagram.com/therapyjocenter" target="_blank" rel="noopener noreferrer" style="min-width: 190px; padding: 0.95rem 1.5rem; border-radius: 4px; border: 1px solid rgba(255,255,255,0.2); color: rgba(255,255,255,0.85); font-weight: 600; font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.06em;" style-hover="border-color:rgba(255,255,255,0.5);color:#ffffff;">@therapyjocenter</a>
+      </div>
+    </div>
+  </section>
+
+  <!-- FOOTER -->
+  <footer style="background: #1a2e35; padding: 3rem 2rem 1.5rem; color: rgba(255,255,255,0.7);">
+    <div style="max-width: 1200px; margin: 0 auto;">
+      <div style="display: grid; grid-template-columns: {{ footerGrid }}; gap: {{ footerGap }}; margin-bottom: 2rem;">
+        <div>
+          <img src="public/logo.jpg" alt="Therapy Jo" style="height: 38px; width: auto; border-radius: 6px; margin-bottom: 1rem;" />
+          <p style="font-size: 0.9rem; line-height: 1.6; max-width: 300px; margin: 0;">{{ t.footer.description }}</p>
+        </div>
+        <div>
+          <h4 style="font-family: {{ headingFont }}; font-size: 1rem; font-weight: 600; color: #ffffff; margin: 0 0 1rem;">{{ t.footer.quickLinks }}</h4>
+          <a href="#about" style="display: block; font-size: 0.9rem; color: rgba(255,255,255,0.6); padding: 0.3rem 0;" style-hover="color:{{ theme.primaryLight }};">{{ t.footer.aboutUs }}</a>
+          <a href="#doctors" style="display: block; font-size: 0.9rem; color: rgba(255,255,255,0.6); padding: 0.3rem 0;" style-hover="color:{{ theme.primaryLight }};">{{ t.nav.doctors }}</a>
+          <a href="#blog" style="display: block; font-size: 0.9rem; color: rgba(255,255,255,0.6); padding: 0.3rem 0;" style-hover="color:{{ theme.primaryLight }};">{{ t.footer.blog }}</a>
+          <a href="#location" style="display: block; font-size: 0.9rem; color: rgba(255,255,255,0.6); padding: 0.3rem 0;" style-hover="color:{{ theme.primaryLight }};">{{ t.footer.location }}</a>
+        </div>
+        <div>
+          <h4 style="font-family: {{ headingFont }}; font-size: 1rem; font-weight: 600; color: #ffffff; margin: 0 0 1rem;">{{ t.footer.servicesTitle }}</h4>
+          <sc-for list="{{ services }}" as="svc" hint-placeholder-count="9">
+            <a href="#services" style="display: block; font-size: 0.9rem; color: rgba(255,255,255,0.6); padding: 0.3rem 0;" style-hover="color:{{ theme.primaryLight }};">{{ svc.title }}</a>
+          </sc-for>
+        </div>
+      </div>
+      <div style="border-top: 1px solid rgba(255,255,255,0.1); padding-top: 1.5rem; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 1rem; font-size: 0.8rem;">
+        <span>© {{ currentYear }} {{ t.footer.copyright }}</span>
+        <div style="display: flex; gap: 0.75rem;">
+          <a href="https://instagram.com/therapyjocenter" target="_blank" rel="noopener noreferrer" style="width: 38px; height: 38px; display: flex; align-items: center; justify-content: center; border: 1px solid rgba(255,255,255,0.15); border-radius: 4px; color: rgba(255,255,255,0.6);" style-hover="border-color:rgba(255,255,255,0.4);color:#ffffff;">IG</a>
+          <a href="https://wa.me/962799819669" target="_blank" rel="noopener noreferrer" style="width: 38px; height: 38px; display: flex; align-items: center; justify-content: center; border: 1px solid rgba(255,255,255,0.15); border-radius: 4px; color: rgba(255,255,255,0.6);" style-hover="border-color:rgba(255,255,255,0.4);color:#ffffff;">WA</a>
+          <a href="https://www.facebook.com/noorphysicaltherapy/" target="_blank" rel="noopener noreferrer" style="width: 38px; height: 38px; display: flex; align-items: center; justify-content: center; border: 1px solid rgba(255,255,255,0.15); border-radius: 4px; color: rgba(255,255,255,0.6);" style-hover="border-color:rgba(255,255,255,0.4);color:#ffffff;">FB</a>
+        </div>
+      </div>
+    </div>
+  </footer>
+
+  <!-- STICKY BOOKING BAR -->
+  <div style="position: fixed; left: 0; right: 0; bottom: 0; z-index: 160; background: rgba(26,46,53,0.95); backdrop-filter: blur(16px); border-top: 1px solid rgba(255,255,255,0.1); transform: {{ bookBarTransform }}; opacity: {{ bookBarOpacity }}; transition: transform 0.4s cubic-bezier(0.16,1,0.3,1), opacity 0.4s ease;">
+    <div style="max-width: 1280px; margin: 0 auto; padding: {{ bookBarPadding }}; display: flex; align-items: center; justify-content: space-between; gap: 1rem; flex-wrap: wrap;">
+      <div style="display: flex; align-items: baseline; gap: 0.75rem; flex-wrap: wrap;">
+        <span style="font-family: {{ headingFont }}; font-size: 1.05rem; font-style: italic; font-weight: 600; color: #ffffff;">{{ t.bookBar.title }}</span>
+        <span style="font-size: 0.82rem; color: {{ theme.primaryLight }};">{{ t.bookBar.slot }}</span>
+      </div>
+      <div style="display: flex; align-items: center; gap: 0.6rem;">
+        <a href="tel:+962799819669" style="padding: 0.65rem 1.3rem; border: 1px solid rgba(255,255,255,0.3); color: #ffffff; border-radius: 4px; font-weight: 700; font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.07em;" style-hover="background:rgba(255,255,255,0.12);">{{ t.hero.callUs }}</a>
+        <a href="https://wa.me/962799819669" target="_blank" rel="noopener noreferrer" style="padding: 0.65rem 1.5rem; background: {{ theme.primary }}; color: #ffffff; border-radius: 4px; font-weight: 700; font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.07em;" style-hover="background:{{ theme.primaryDark }};">{{ t.nav.bookNow }}</a>
+      </div>
+    </div>
+  </div>
+
+  <!-- WHATSAPP FLOAT -->
+  <a href="https://wa.me/962799819669" target="_blank" rel="noopener noreferrer" style="position: fixed; bottom: 1.5rem; right: 1.5rem; z-index: 150; width: 56px; height: 56px; display: {{ floatDisplay }}; align-items: center; justify-content: center; background: #25d366; border-radius: 50%; color: #ffffff; font-size: 1.4rem; box-shadow: 0 4px 20px rgba(37,211,102,0.4);" style-hover="transform:scale(1.08);">💬</a>
+
+</div>
+
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{
+  &quot;accentPalette&quot;: {
+    &quot;editor&quot;: &quot;color&quot;,
+    &quot;default&quot;: [&quot;#4CAF93&quot;, &quot;#3a8f77&quot;, &quot;#2A7AB5&quot;],
+    &quot;options&quot;: [
+      [&quot;#4CAF93&quot;, &quot;#3a8f77&quot;, &quot;#2A7AB5&quot;],
+      [&quot;#1F7A5C&quot;, &quot;#155843&quot;, &quot;#1A2E35&quot;],
+      [&quot;#B08D57&quot;, &quot;#8C6D3F&quot;, &quot;#1A2E35&quot;]
+    ],
+    &quot;tsType&quot;: &quot;string[]&quot;,
+    &quot;section&quot;: &quot;Premium look&quot;
+  },
+  &quot;typography&quot;: {
+    &quot;editor&quot;: &quot;enum&quot;,
+    &quot;default&quot;: &quot;Editorial&quot;,
+    &quot;options&quot;: [&quot;Modern&quot;, &quot;Editorial&quot;],
+    &quot;tsType&quot;: &quot;string&quot;,
+    &quot;section&quot;: &quot;Premium look&quot;
+  },
+  &quot;density&quot;: {
+    &quot;editor&quot;: &quot;enum&quot;,
+    &quot;default&quot;: &quot;Comfortable&quot;,
+    &quot;options&quot;: [&quot;Comfortable&quot;, &quot;Spacious&quot;],
+    &quot;tsType&quot;: &quot;string&quot;,
+    &quot;section&quot;: &quot;Premium look&quot;
+  },
+  &quot;cardStyle&quot;: {
+    &quot;editor&quot;: &quot;enum&quot;,
+    &quot;default&quot;: &quot;Soft&quot;,
+    &quot;options&quot;: [&quot;Soft&quot;, &quot;Glass&quot;],
+    &quot;tsType&quot;: &quot;string&quot;,
+    &quot;section&quot;: &quot;Premium look&quot;
+  }
+}">
+class Component extends DCLogic {
+  state = { lang: "en", view: "home", activePostId: null, activeReviewIndex: 0, activeAreaIndex: 0, counters: [0, 0, 0], showBookBar: false, isNarrow: false, isMobile: false, menuOpen: false };
+
+  areaMap = [
+    { serviceIndexes: [4, 8, 0] },
+    { serviceIndexes: [4, 0, 1] },
+    { serviceIndexes: [5, 6, 1] },
+    { serviceIndexes: [2, 3, 0] },
+    { serviceIndexes: [6, 5, 0] },
+    { serviceIndexes: [5, 8, 1] },
+  ];
+
+  servicesIcons = [
+    "public/icons/cold-laser.png",
+    "public/icons/radio-frequency.png",
+    "public/icons/pelvic-floor.png",
+    "public/icons/electromagnetic.png",
+    "public/icons/traction.png",
+    "public/icons/sport-rehab.png",
+    "public/icons/post-op.png",
+    "public/icons/pediatric.png",
+    "public/icons/dry-needling.png",
+  ];
+
+  doctorsData = [
+    { id: 1, real: true, notReal: false, name: "Noor Hamami", photo: "public/noor_hamami_head_doctor.jpg", specialty: "Manual Therapy & Sports Rehab", slotId: null },
+    { id: 2, real: false, notReal: true, name: null, photo: null, specialty: null, slotId: "doctor-photo-2" },
+    { id: 3, real: false, notReal: true, name: null, photo: null, specialty: null, slotId: "doctor-photo-3" },
+    { id: 4, real: false, notReal: true, name: null, photo: null, specialty: null, slotId: "doctor-photo-4" },
+    { id: 5, real: false, notReal: true, name: null, photo: null, specialty: null, slotId: "doctor-photo-5" },
+  ];
+
+  blogPostsData = [
+    {
+      id: 1, slotId: "blog-cover-1", category: "Recovery Tips", date: "Jul 2, 2026",
+      title: "5 Stretches to Ease Lower Back Pain at Home",
+      excerpt: "Simple, physiotherapist-approved stretches you can do between sessions to relieve tension and improve mobility.",
+      body: [
+        "Lower back pain often comes from tight hip flexors, hamstrings, and a weak core rather than the back itself. A few minutes of daily stretching can relieve pressure on the spine and improve how you move throughout the day.",
+        "Try a supine knee-to-chest hold, a seated spinal twist, a cat-cow flow, a child's pose, and a gentle hamstring stretch against a wall. Hold each position for 20 to 30 seconds and breathe slowly.",
+        "These stretches are a starting point, not a diagnosis. If pain persists beyond a few days or radiates down your leg, book a session so we can assess what's actually going on.",
+      ],
+    },
+    {
+      id: 2, slotId: "blog-cover-2", category: "Rehabilitation", date: "Jun 18, 2026",
+      title: "Understanding Post-Surgery Rehabilitation: What to Expect",
+      excerpt: "A look at how a structured rehab plan supports healing in the weeks after an operation.",
+      body: [
+        "Surgery repairs the structure; rehabilitation restores the function. The first weeks after an operation focus on protecting the healing tissue while keeping nearby joints and muscles from stiffening up.",
+        "A typical plan moves through phases: gentle range-of-motion work, then progressive strengthening, then a return to normal activity or sport. Your therapist adjusts the pace based on how your body responds, not a fixed calendar.",
+        "Consistency matters more than intensity early on. Missing sessions or pushing too hard both slow recovery down — the goal is steady, measurable progress.",
+      ],
+    },
+    {
+      id: 3, slotId: "blog-cover-3", category: "Treatments", date: "Jun 4, 2026",
+      title: "Dry Needling vs. Acupuncture: What's the Difference?",
+      excerpt: "Two techniques that look similar on the surface but come from different traditions and target different goals.",
+      body: [
+        "Both use thin, sterile needles inserted into the skin, which is where the similarity mostly ends. Acupuncture is rooted in traditional Chinese medicine and targets meridian points to balance the body's energy.",
+        "Dry needling is a modern technique grounded in Western anatomy. It targets myofascial trigger points — tight knots in muscle — to release tension and reduce referred pain.",
+        "Which one helps depends on what you're treating. During an assessment, we'll tell you which technique fits your condition, or whether another approach is a better fit altogether.",
+      ],
+    },
+    {
+      id: 4, slotId: "blog-cover-4", category: "Sports", date: "May 21, 2026",
+      title: "How Sports Physiotherapy Speeds Up Recovery",
+      excerpt: "Why athletes work with a physiotherapist long before and after an injury, not just during it.",
+      body: [
+        "Athletes who work with a physiotherapist before an injury tend to recover faster after one. Baseline strength and mobility data make it easier to spot what's changed and target treatment precisely.",
+        "Sports rehab programs combine manual therapy with sport-specific movement retraining, so recovery doesn't stop at 'pain-free' — it continues until the athlete can cut, jump, or lift with full confidence.",
+        "Returning too early is the most common setback we see. A structured program includes clear benchmarks for return to play, not just a date on the calendar.",
+      ],
+    },
+    {
+      id: 5, slotId: "blog-cover-5", category: "Women's Health", date: "May 7, 2026",
+      title: "Pelvic Floor Health: Why It Matters at Every Age",
+      excerpt: "Pelvic floor therapy isn't just for postpartum recovery. Here's who else benefits.",
+      body: [
+        "Pelvic floor therapy is best known for postpartum recovery, but the muscles involved support bladder control, core stability, and posture for everyone, at every stage of life.",
+        "Athletes, people recovering from abdominal or pelvic surgery, and anyone dealing with chronic lower back pain can all benefit from an assessment, regardless of age or gender.",
+        "Sessions are private, gradual, and led by a specialist trained specifically in pelvic floor rehabilitation. There's nothing to be uncomfortable about in asking for an evaluation.",
+      ],
+    },
+    {
+      id: 6, slotId: "blog-cover-6", category: "Guidance", date: "Apr 23, 2026",
+      title: "When Should You See a Physiotherapist?",
+      excerpt: "Common signs that it's time to book a consultation, rather than waiting for pain to pass.",
+      body: [
+        "Many people wait for pain to become unbearable before booking an appointment. Earlier is almost always better — small movement issues are easier to correct before they turn into compensations elsewhere.",
+        "Common signs it's time to come in: pain that lasts more than a few days, stiffness that limits daily movement, a recent injury, or reduced strength on one side of the body.",
+        "A first visit is really just a conversation and an assessment. We'll tell you honestly whether physiotherapy is the right next step for what you're experiencing.",
+      ],
+    },
+  ];
+
+  reviewsData = [
+    { name: "R. Sami", initial: "R", rating: 5, text: "Professional, attentive, and my shoulder pain is finally gone after a few sessions." },
+    { name: "L. Haddad", initial: "L", rating: 5, text: "Noor and the team really listen. The post-op program got me back on my feet quickly." },
+    { name: "M. Odeh", initial: "M", rating: 4, text: "Clean clinic, friendly staff, and appointments always run on time." },
+    { name: "D. Nassar", initial: "D", rating: 5, text: "Best physiotherapy experience I've had in Amman. Highly recommend the sports rehab program." },
+  ];
+
+  translations = {
+    en: {
+      nav: { about: "About", services: "Services", doctors: "Our Team", blog: "Blog", reviews: "Reviews", location: "Location", contact: "Contact", bookNow: "Book Now" },
+      hero: { badge: "Physiotherapy & Wellness Center", title: "Your Path to", titleHighlight: "Recovery", titleEnd: "Starts Here", subtitle: "Professional physiotherapy treatments in Amman, Jordan. Expert care through advanced technology, manual therapy, and rehabilitation programs.", bookSession: "Book a Session", callUs: "Call Us" },
+      about: { label: "About Us", title: "Your Trusted Physiotherapy Partner in Amman", description1: "At Therapy Jo, we believe in a holistic approach to rehabilitation and wellness. Our team of certified physiotherapists combines evidence-based techniques with cutting-edge tools to deliver personalized treatment plans that get you back to doing what you love.", description2: "From sports injuries to chronic pain management, we are dedicated to helping you move better, feel better, and live better.", stat1Number: "500+", stat1Label: "Happy Patients", stat2Number: "10+", stat2Label: "Years Experience", stat3Number: "9", stat3Label: "Specializations" },
+      services: {
+        label: "Our Services", title: "What We Offer", subtitle: "A complete range of professional physiotherapy treatments designed to help you heal, recover, and thrive.",
+        items: [
+          { title: "Cold Laser Therapy", description: "Non-invasive light therapy to reduce pain and inflammation, accelerating tissue repair at the cellular level.", category: "technology" },
+          { title: "Radio Frequency Therapy", description: "Targeted heat therapy to improve circulation and promote tissue healing for deep pain relief.", category: "technology" },
+          { title: "Pelvic Floor Rehabilitation", description: "Specialized rehabilitation programs to strengthen and restore pelvic floor muscle function.", category: "rehabilitation" },
+          { title: "Electromagnetic Pelvic Floor", description: "Advanced electromagnetic stimulation technology for non-invasive pelvic floor muscle strengthening.", category: "technology" },
+          { title: "Traction Therapy", description: "Spinal decompression traction for treating disc herniation, relieving nerve pressure and back pain.", category: "manual" },
+          { title: "Sport Rehabilitation", description: "Comprehensive sport-specific recovery programs to get athletes back to peak performance safely.", category: "rehabilitation" },
+          { title: "Post-Op Rehabilitation", description: "Tailored exercise programs to aid recovery after surgery, restoring strength and mobility.", category: "rehabilitation" },
+          { title: "Pediatric Physical Therapy", description: "Gentle, specialized therapy for children to support developmental milestones and movement disorders.", category: "rehabilitation" },
+          { title: "Dry Needling & Acupuncture", description: "Precise needling techniques to release muscle tension, trigger points, and promote natural recovery.", category: "manual" },
+        ],
+        categories: { technology: "Technology", manual: "Manual Therapy", rehabilitation: "Rehabilitation" },
+      },
+      doctors: { label: "Our Team", title: "Meet Our Physiotherapists", subtitle: "A team of certified specialists dedicated to your recovery.", headRole: "Head Physiotherapist", genericRole: "Physiotherapist", namePlaceholder: "Doctor Name", specialtyPlaceholder: "Profile coming soon" },
+      blog: { label: "Health & Recovery Blog", title: "From the Clinic", subtitle: "Tips, insights and updates from our physiotherapy team.", readMore: "Read Article", back: "Back to Blog" },
+      reviews: { label: "Patient Reviews", title: "What Our Patients Say", subtitle: "Real feedback from the people we've treated.", basedOn: "Based on", reviewsWord: "Google reviews", cta: "See All Reviews on Google" },
+      location: { label: "Find Us", title: "Visit Our Clinic", subtitle: "Conveniently located in Amman, Jordan. We're easy to find and ready to help you on your path to recovery.", addressTitle: "Therapy Jo Physiotherapy Center", addressText: "Az-Zubayr Ben Al-Awwam St., Amman, Jordan", hoursTitle: "Working Hours", weekdays: "Saturday – Wednesday", weekdaysTime: "10:00 AM – 7:00 PM", thursday: "Thursday", thursdayTime: "10:00 AM – 3:00 PM", friday: "Friday", fridayTime: "10:00 AM – 7:00 PM" },
+      contact: { label: "Get in Touch", title: "Ready to Start Your Recovery?", subtitle: "Contact us today to book a consultation or learn more about our services. We're here to help you feel your best.", whatsapp: "WhatsApp Us", call: "Call Now" },
+      footer: { description: "Professional physiotherapy services in Amman, Jordan. Helping you heal, recover, and live your best life.", quickLinks: "Quick Links", aboutUs: "About Us", location: "Location", blog: "Blog", servicesTitle: "Services", copyright: "Therapy Jo. All rights reserved." },
+      tagline: "Not your typical physiotherapist",
+      bookBar: { title: "Ready when you are.", slot: "Next available: today, 4:00 PM" },
+      finder: {
+        label: "Treatment Finder", title: "Where does it hurt?", subtitle: "Choose the area that's troubling you and we'll show the treatments we'd typically start with.",
+        recommendedFor: "Recommended for", cta: "Book This Treatment",
+        areas: [
+          { name: "Neck & Shoulders", note: "Desk posture, tension headaches, and restricted rotation usually respond to a mix of manual release and needling." },
+          { name: "Lower Back", note: "For disc pressure and chronic stiffness we combine decompression with targeted soft-tissue work." },
+          { name: "Knee & Leg", note: "Whether it's overuse or a recovering ligament, the focus is controlled loading and gradual return to full range." },
+          { name: "Hip & Pelvis", note: "Pelvic floor and deep hip work, including non-invasive electromagnetic strengthening where appropriate." },
+          { name: "After Surgery", note: "A staged plan that protects the repair first, then rebuilds strength and mobility week by week." },
+          { name: "Sports Injury", note: "Sport-specific rehab with clear return-to-play benchmarks, not just a date on the calendar." },
+        ],
+      },
+    },
+    ar: {
+      nav: { about: "من نحن", services: "خدماتنا", doctors: "فريقنا", blog: "المدونة", reviews: "التقييمات", location: "الموقع", contact: "تواصل معنا", bookNow: "احجز الآن" },
+      hero: { badge: "مركز العلاج الطبيعي والعافية", title: "طريقك نحو", titleHighlight: "التعافي", titleEnd: "يبدأ هنا", subtitle: "خدمات العلاج الطبيعي المتخصصة في عمّان، الأردن. رعاية متميزة من خلال التكنولوجيا المتقدمة والعلاج اليدوي وبرامج التأهيل.", bookSession: "احجز جلسة", callUs: "اتصل بنا" },
+      about: { label: "من نحن", title: "شريكك الموثوق في العلاج الطبيعي في عمّان", description1: "في ثيرابي جو، نؤمن بالنهج الشامل لإعادة التأهيل والعافية. يجمع فريقنا من أخصائيي العلاج الطبيعي المعتمدين بين التقنيات القائمة على الأدلة والأدوات المتطورة لتقديم خطط علاجية مخصصة تعيدك لممارسة ما تحب.", description2: "من الإصابات الرياضية إلى إدارة الألم المزمن، نحن ملتزمون بمساعدتك على التحرك بشكل أفضل والشعور بشكل أفضل والعيش بشكل أفضل.", stat1Number: "500+", stat1Label: "مريض سعيد", stat2Number: "10+", stat2Label: "سنوات خبرة", stat3Number: "9", stat3Label: "تخصصات" },
+      services: {
+        label: "خدماتنا", title: "ماذا نقدم", subtitle: "مجموعة كاملة من العلاجات الطبيعية المتخصصة المصممة لمساعدتك على الشفاء والتعافي والازدهار.",
+        items: [
+          { title: "العلاج بالليزر البارد", description: "علاج ضوئي غير جراحي لتقليل الألم والالتهاب وتسريع إصلاح الأنسجة على المستوى الخلوي.", category: "technology" },
+          { title: "العلاج بالترددات الراديوية", description: "علاج حراري موجّه لتحسين الدورة الدموية وتعزيز شفاء الأنسجة لتخفيف الألم العميق.", category: "technology" },
+          { title: "تأهيل عضلات الحوض", description: "برامج تأهيل متخصصة لتقوية واستعادة وظائف عضلات قاع الحوض.", category: "rehabilitation" },
+          { title: "الكهرومغناطيسي لعضلات الحوض", description: "تقنية تحفيز كهرومغناطيسي متقدمة لتقوية عضلات قاع الحوض بدون تدخل جراحي.", category: "technology" },
+          { title: "علاج الشد (الجر)", description: "شد العمود الفقري لعلاج الانزلاق الغضروفي وتخفيف ضغط الأعصاب وآلام الظهر.", category: "manual" },
+          { title: "التأهيل الرياضي", description: "برامج تعافي رياضية شاملة لإعادة الرياضيين إلى أعلى مستويات الأداء بأمان.", category: "rehabilitation" },
+          { title: "تأهيل ما بعد العمليات", description: "برامج تمارين مخصصة للمساعدة في التعافي بعد الجراحة واستعادة القوة والحركة.", category: "rehabilitation" },
+          { title: "العلاج الطبيعي للأطفال", description: "علاج لطيف ومتخصص للأطفال لدعم مراحل النمو واضطرابات الحركة.", category: "rehabilitation" },
+          { title: "الإبر الجافة والوخز بالإبر", description: "تقنيات وخز دقيقة لتحرير توتر العضلات ونقاط الزناد وتعزيز التعافي الطبيعي.", category: "manual" },
+        ],
+        categories: { technology: "التكنولوجيا", manual: "العلاج اليدوي", rehabilitation: "التأهيل" },
+      },
+      doctors: { label: "فريقنا", title: "تعرف على أخصائيي العلاج الطبيعي", subtitle: "فريق من الأخصائيين المعتمدين لمرافقتك في رحلة التعافي.", headRole: "رئيس الأخصائيين", genericRole: "أخصائي علاج طبيعي", namePlaceholder: "اسم الطبيب", specialtyPlaceholder: "سيتم الإضافة قريباً" },
+      blog: { label: "مدونة الصحة والتعافي", title: "من العيادة", subtitle: "نصائح ومقالات من فريق العلاج الطبيعي لدينا.", readMore: "اقرأ المقال", back: "العودة إلى المدونة" },
+      reviews: { label: "آراء المرضى", title: "ماذا يقول مرضانا", subtitle: "آراء حقيقية من المرضى الذين عالجناهم.", basedOn: "استناداً إلى", reviewsWord: "تقييم على Google", cta: "عرض جميع التقييمات على Google" },
+      location: { label: "موقعنا", title: "زُر عيادتنا", subtitle: "موقع مناسب في عمّان، الأردن. يسهل الوصول إلينا ونحن مستعدون لمساعدتك في رحلة التعافي.", addressTitle: "مركز ثيرابي جو للعلاج الطبيعي", addressText: "شارع الزبير بن العوام، عمّان، الأردن", hoursTitle: "ساعات العمل", weekdays: "السبت – الأربعاء", weekdaysTime: "١٠:٠٠ ص – ٧:٠٠ م", thursday: "الخميس", thursdayTime: "١٠:٠٠ ص – ٣:٠٠ م", friday: "الجمعة", fridayTime: "١٠:٠٠ ص – ٧:٠٠ م" },
+      contact: { label: "تواصل معنا", title: "مستعد لبدء رحلة التعافي؟", subtitle: "تواصل معنا اليوم لحجز استشارة أو لمعرفة المزيد عن خدماتنا. نحن هنا لمساعدتك على الشعور بأفضل حال.", whatsapp: "واتساب", call: "اتصل الآن" },
+      footer: { description: "خدمات العلاج الطبيعي المتخصصة في عمّان، الأردن. نساعدك على الشفاء والتعافي والعيش بأفضل حال.", quickLinks: "روابط سريعة", aboutUs: "من نحن", location: "الموقع", blog: "المدونة", servicesTitle: "خدماتنا", copyright: "ثيرابي جو. جميع الحقوق محفوظة." },
+      tagline: "لسنا مجرد أخصائيي علاج طبيعي",
+      bookBar: { title: "نحن جاهزون عندما تكون مستعداً.", slot: "أقرب موعد متاح: اليوم ٤:٠٠ م" },
+      finder: {
+        label: "دليل العلاج", title: "أين تشعر بالألم؟", subtitle: "اختر المنطقة التي تزعجك وسنعرض العلاجات التي نبدأ بها عادةً.",
+        recommendedFor: "موصى به لـ", cta: "احجز هذا العلاج",
+        areas: [
+          { name: "الرقبة والكتفين", note: "الجلوس الطويل وصداع التوتر وتقييد الحركة تستجيب عادةً لمزيج من العلاج اليدوي والإبر الجافة." },
+          { name: "أسفل الظهر", note: "لعلاج ضغط الأقراص والتيبس المزمن نجمع بين شد العمود الفقري والعمل على الأنسجة الرخوة." },
+          { name: "الركبة والساق", note: "سواء كان إجهاداً متكرراً أو رباطاً في طور التعافي، نركز على التحميل المتحكم به والعودة التدريجية للحركة الكاملة." },
+          { name: "الحوض والورك", note: "عمل متخصص على قاع الحوض والورك العميق، مع التحفيز الكهرومغناطيسي غير الجراحي عند الحاجة." },
+          { name: "بعد العمليات", note: "خطة متدرجة تحمي منطقة الجراحة أولاً، ثم تبني القوة والحركة أسبوعاً بعد أسبوع." },
+          { name: "الإصابات الرياضية", note: "تأهيل رياضي متخصص مع معايير واضحة للعودة إلى الملعب، وليس مجرد تاريخ محدد." },
+        ],
+      },
+    },
+  };
+
+  toggleLang = () => this.setState((s) => ({ lang: s.lang === "en" ? "ar" : "en" }));
+  openPost = (id) => this.setState({ view: "post", activePostId: id });
+  closePost = () => this.setState({ view: "home", activePostId: null });
+  selectReview = (i) => this.setState({ activeReviewIndex: i });
+  selectArea = (i) => this.setState({ activeAreaIndex: i });
+
+  runCounters() {
+    if (this._countersRan) return;
+    this._countersRan = true;
+    const targets = [500, 10, 9];
+    const start = performance.now();
+    const duration = 1400;
+    const tick = (now) => {
+      const p = Math.min(1, (now - start) / duration);
+      const eased = 1 - Math.pow(1 - p, 3);
+      this.setState({ counters: targets.map((tv) => Math.round(tv * eased)) });
+      if (p < 1) requestAnimationFrame(tick);
+    };
+    requestAnimationFrame(tick);
+  }
+
+  toggleMenu = () => this.setState((s) => ({ menuOpen: !s.menuOpen }));
+  closeMenu = () => this.setState({ menuOpen: false });
+
+  handleResize = () => {
+    const narrow = window.innerWidth < 1000;
+    const mobile = window.innerWidth < 760;
+    if (narrow !== this.state.isNarrow || mobile !== this.state.isMobile) {
+      this.setState({ isNarrow: narrow, isMobile: mobile, menuOpen: narrow ? this.state.menuOpen : false });
+    }
+  };
+
+  handleScroll = () => {
+    const show = window.scrollY > window.innerHeight * 0.85;
+    if (show !== this.state.showBookBar) this.setState({ showBookBar: show });
+  };
+
+  setupReveal() {
+    if (!window.IntersectionObserver) return;
+    const els = document.querySelectorAll('[data-reveal]:not([data-revealed])');
+    if (!els.length) return;
+    if (!this._observer) {
+      this._observer = new IntersectionObserver((entries) => {
+        entries.forEach((entry) => {
+          if (entry.isIntersecting) {
+            entry.target.style.opacity = "1";
+            entry.target.style.transform = "translateY(0)";
+            entry.target.setAttribute("data-revealed", "1");
+            this._observer.unobserve(entry.target);
+          }
+        });
+      }, { threshold: 0.15 });
+    }
+    els.forEach((el) => this._observer.observe(el));
+
+    const counterEl = document.querySelector('[data-counters]');
+    if (counterEl && !this._counterObserver) {
+      this._counterObserver = new IntersectionObserver((entries) => {
+        entries.forEach((entry) => {
+          if (entry.isIntersecting) { this.runCounters(); this._counterObserver.unobserve(entry.target); }
+        });
+      }, { threshold: 0.3 });
+      this._counterObserver.observe(counterEl);
+    }
+  }
+
+  componentDidMount() {
+    this.setupReveal();
+    window.addEventListener("scroll", this.handleScroll, { passive: true });
+    window.addEventListener("resize", this.handleResize, { passive: true });
+    this.handleScroll();
+    this.handleResize();
+  }
+  componentDidUpdate() { this.setupReveal(); }
+  componentWillUnmount() {
+    window.removeEventListener("scroll", this.handleScroll);
+    window.removeEventListener("resize", this.handleResize);
+  }
+
+  renderVals() {
+    const lang = this.state.lang;
+    const t = this.translations[lang];
+    const dir = lang === "ar" ? "rtl" : "ltr";
+
+    const typography = this.props.typography ?? "Editorial";
+    const headingFont = lang === "ar" ? "'Noto Kufi Arabic', sans-serif" : (typography === "Editorial" ? "'Bodoni Moda', serif" : "'Outfit', sans-serif");
+    const bodyFont = lang === "ar" ? "'Noto Kufi Arabic', sans-serif" : "'Inter', sans-serif";
+    const langButtonLabel = lang === "en" ? "عربي" : "EN";
+
+    const palette = this.props.accentPalette ?? ["#4CAF93", "#3a8f77", "#2A7AB5"];
+    const [pPrimary, pPrimaryDark, pSecondary] = palette;
+    const theme = {
+      primary: pPrimary,
+      primaryDark: pPrimaryDark,
+      primaryLight: `color-mix(in srgb, ${pPrimary} 55%, white)`,
+      secondary: pSecondary,
+      secondaryLight: `color-mix(in srgb, ${pSecondary} 55%, white)`,
+    };
+
+    const density = this.props.density ?? "Comfortable";
+    const sectionPadding = density === "Spacious" ? "clamp(5.5rem, 10vw, 9rem) 2rem" : "clamp(4rem, 8vw, 7rem) 2rem";
+
+    const isGlass = (this.props.cardStyle ?? "Soft") === "Glass";
+    const cardBg = isGlass ? "rgba(255,255,255,0.55)" : "#ffffff";
+    const cardBorder = isGlass ? "1px solid rgba(255,255,255,0.6)" : "1px solid rgba(26,46,53,0.06)";
+    const cardBackdropFilter = isGlass ? "blur(12px)" : "none";
+    const cardShadow = isGlass ? "0 8px 32px rgba(26,46,53,0.1)" : "0 4px 16px rgba(26,46,53,0.06)";
+
+    const services = t.services.items.map((it, i) => ({
+      ...it,
+      icon: this.servicesIcons[i],
+      categoryLabel: t.services.categories[it.category],
+      indexLabel: String(i + 1).padStart(2, "0"),
+    }));
+
+    const doctors = this.doctorsData.map((d) =>
+      d.real
+        ? { ...d, displayName: d.name, roleLabel: t.doctors.headRole, specialtyLabel: d.specialty }
+        : { ...d, displayName: t.doctors.namePlaceholder, roleLabel: t.doctors.genericRole, specialtyLabel: t.doctors.specialtyPlaceholder }
+    );
+
+    const blogPosts = this.blogPostsData.map((p) => ({ ...p, open: () => this.openPost(p.id) }));
+    const activePost = this.blogPostsData.find((p) => p.id === this.state.activePostId) || null;
+
+    const reviews = this.reviewsData.map((r, i) => ({
+      ...r,
+      starsFilled: "★".repeat(r.rating),
+      starsEmpty: "★".repeat(5 - r.rating),
+      select: () => this.selectReview(i),
+      dotColor: i === this.state.activeReviewIndex ? theme.primary : "#d9dfe1",
+    }));
+    const activeReview = reviews[this.state.activeReviewIndex] || reviews[0];
+
+    const arrowGlyph = dir === "rtl" ? "←" : "→";
+    const finderAreas = t.finder.areas.map((a, i) => {
+      const active = i === this.state.activeAreaIndex;
+      return {
+        ...a,
+        select: () => this.selectArea(i),
+        arrow: active ? arrowGlyph : "",
+        bg: active ? "#1a2e35" : "#ffffff",
+        color: active ? "#ffffff" : "#1a2e35",
+        borderColor: active ? "#1a2e35" : "rgba(26,46,53,0.12)",
+        treatments: this.areaMap[i].serviceIndexes.map((si) => services[si]).filter(Boolean),
+      };
+    });
+    const activeArea = finderAreas[this.state.activeAreaIndex] || finderAreas[0];
+
+    const [c1, c2, c3] = this.state.counters;
+    const stat1Display = c1 >= 500 ? t.about.stat1Number : String(c1);
+    const stat2Display = c2 >= 10 ? t.about.stat2Number : String(c2);
+    const stat3Display = String(c3);
+
+    const tickerText = [
+      t.hero.badge,
+      `${t.about.stat1Number} ${t.about.stat1Label}`,
+      `${t.about.stat2Number} ${t.about.stat2Label}`,
+      `${t.about.stat3Number} ${t.about.stat3Label}`,
+      t.tagline,
+    ].join("   •   ") + "   •   ";
+
+    return {
+      dir, bodyFont, headingFont, langButtonLabel, t, theme,
+      sectionPadding, cardBg, cardBorder, cardBackdropFilter, cardShadow, tickerText,
+      services, doctors, blogPosts, activePost, reviews, activeReview,
+      finderAreas, activeArea, stat1Display, stat2Display, stat3Display,
+      twoColGrid: this.state.isNarrow ? "1fr" : "1fr 1fr",
+      aboutGap: this.state.isNarrow ? "2.5rem" : "5rem",
+      finderGrid: this.state.isNarrow ? "1fr" : "300px 1fr",
+      footerGrid: this.state.isMobile ? "1fr" : (this.state.isNarrow ? "1fr 1fr" : "1.5fr 1fr 1fr"),
+      footerGap: this.state.isMobile ? "2rem" : "3rem",
+      floatDisplay: this.state.isMobile && this.state.showBookBar ? "none" : "flex",
+      bookBarPadding: this.state.isMobile ? "0.85rem 1.25rem" : "0.85rem 6rem 0.85rem 2rem",
+      desktopNavDisplay: this.state.isNarrow ? "none" : "flex",
+      menuButtonDisplay: this.state.isNarrow ? "flex" : "none",
+      menuOpen: this.state.isNarrow && this.state.menuOpen,
+      toggleMenu: this.toggleMenu,
+      closeMenu: this.closeMenu,
+      navLinks: [
+        { href: "#about", label: t.nav.about },
+        { href: "#services", label: t.nav.services },
+        { href: "#finder", label: t.finder.title },
+        { href: "#doctors", label: t.nav.doctors },
+        { href: "#blog", label: t.nav.blog },
+        { href: "#reviews", label: t.nav.reviews },
+        { href: "#location", label: t.nav.location },
+        { href: "#contact", label: t.nav.contact },
+      ],
+      bookBarTransform: this.state.showBookBar ? "translateY(0)" : "translateY(110%)",
+      bookBarOpacity: this.state.showBookBar ? 1 : 0,
+      isHome: this.state.view === "home",
+      isPost: this.state.view === "post",
+      ratingValue: "4.9",
+      ratingStars: "★★★★★",
+      reviewCount: "300+",
+      currentYear: new Date().getFullYear(),
+      toggleLang: this.toggleLang,
+      closePost: this.closePost,
+    };
+  }
+}
+
+</script>
+</body>
+</html>
