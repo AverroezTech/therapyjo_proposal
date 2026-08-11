@@ -38,6 +38,33 @@ enum PaymentType {
   INSURANCE
 }
 
+enum PostStatus {
+  DRAFT
+  SCHEDULED
+  PUBLISHED
+  ARCHIVED
+}
+
+enum PostLang {
+  EN
+  AR
+}
+
+enum ChangeField {
+  NAME
+  TITLE
+  SPECIALTY
+  BIO
+  CONTACT
+  PHOTO
+}
+
+enum ChangeStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
 // ─── User (Doctors, Secretaries, Admin) ───────────────
 
 model User {
@@ -58,6 +85,7 @@ model User {
   // Relations
   reservations   Reservation[]    // doctor's reservations
   notes          Note[]           // notes linked to doctor
+  doctorProfile  DoctorProfile?   // public-site profile, if this user has one
 }
 
 // ─── Patient ──────────────────────────────────────────
@@ -172,4 +200,61 @@ model Note {
   createdAt       DateTime     @default(now())
 
   doctor          User         @relation(fields: [doctorId], references: [id])
+}
+
+// ─── Blog (public content) ────────────────────────────
+
+model BlogPost {
+  id          String      @id @default(cuid())
+  slug        String      @unique
+  lang        PostLang
+  linkedId    String?     @unique
+  linked      BlogPost?   @relation("PostTranslation", fields: [linkedId], references: [id])
+  linkedFrom  BlogPost?   @relation("PostTranslation")
+  title       String
+  category    String
+  body        String
+  coverImage  String?
+  status      PostStatus  @default(DRAFT)
+  publishAt   DateTime?
+  publishedAt DateTime?
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+}
+
+// ─── Doctor profile (public site, CMS-managed) ────────
+
+model DoctorProfile {
+  id        String   @id @default(cuid())
+  userId    String?  @unique   // linked login account, if the doctor has one
+  user      User?    @relation(fields: [userId], references: [id])
+  name      String
+  title     String
+  specialty String
+  bio       String?
+  contact   String?
+  photo     String?
+  order     Int      @default(0)
+  hidden    Boolean  @default(false)
+  archived  Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  pendingChanges PendingChange[]
+}
+
+// ─── Doctor profile edit approvals ────────────────────
+
+model PendingChange {
+  id          String        @id @default(cuid())
+  doctorId    String
+  doctor      DoctorProfile @relation(fields: [doctorId], references: [id], onDelete: Cascade)
+  field       ChangeField
+  oldValue    String
+  newValue    String
+  submittedAt DateTime      @default(now())
+  submittedBy String
+  status      ChangeStatus  @default(PENDING)
+  reviewedBy  String?
+  reviewedAt  DateTime?
 }
