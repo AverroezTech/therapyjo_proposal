@@ -3,7 +3,9 @@ export const translations = {
         nav: {
             about: "About",
             services: "Services",
-            staff: "Our Expert",
+            doctors: "Our Team",
+            blog: "Blog",
+            reviews: "Reviews",
             location: "Location",
             contact: "Contact",
             bookNow: "Book Now",
@@ -17,7 +19,6 @@ export const translations = {
                 "Professional physiotherapy treatments in Amman, Jordan. Expert care through advanced technology, manual therapy, and rehabilitation programs.",
             bookSession: "Book a Session",
             callUs: "Call Us",
-            scroll: "Scroll",
         },
         about: {
             label: "About Us",
@@ -95,11 +96,48 @@ export const translations = {
                 },
             ],
             categories: {
-                all: "All",
                 technology: "Technology",
                 manual: "Manual Therapy",
                 rehabilitation: "Rehabilitation",
             },
+        },
+        finder: {
+            label: "Treatment Finder",
+            title: "Where does it hurt?",
+            subtitle: "Choose the area that's troubling you and we'll show the treatments we'd typically start with.",
+            recommendedFor: "Recommended for",
+            cta: "Book This Treatment",
+            areas: [
+                { name: "Neck & Shoulders", note: "Desk posture, tension headaches, and restricted rotation usually respond to a mix of manual release and needling.", serviceIndexes: [4, 8, 0] },
+                { name: "Lower Back", note: "For disc pressure and chronic stiffness we combine decompression with targeted soft-tissue work.", serviceIndexes: [4, 0, 1] },
+                { name: "Knee & Leg", note: "Whether it's overuse or a recovering ligament, the focus is controlled loading and gradual return to full range.", serviceIndexes: [5, 6, 1] },
+                { name: "Hip & Pelvis", note: "Pelvic floor and deep hip work, including non-invasive electromagnetic strengthening where appropriate.", serviceIndexes: [2, 3, 0] },
+                { name: "After Surgery", note: "A staged plan that protects the repair first, then rebuilds strength and mobility week by week.", serviceIndexes: [6, 5, 0] },
+                { name: "Sports Injury", note: "Sport-specific rehab with clear return-to-play benchmarks, not just a date on the calendar.", serviceIndexes: [5, 8, 1] },
+            ],
+        },
+        doctors: {
+            label: "Our Team",
+            title: "Meet Our Physiotherapists",
+            subtitle: "A team of certified specialists dedicated to your recovery.",
+            empty: "Team profiles coming soon.",
+        },
+        blog: {
+            label: "Health & Recovery Blog",
+            title: "From the Clinic",
+            subtitle: "Tips, insights and updates from our physiotherapy team.",
+            readMore: "Read Article",
+            back: "Back to Blog",
+            empty: "No posts yet — check back soon.",
+            viewAll: "View All Posts",
+        },
+        reviews: {
+            label: "Patient Reviews",
+            title: "What Our Patients Say",
+            subtitle: "Real feedback from the people we've treated.",
+            basedOn: "Based on",
+            reviewsWord: "Google reviews",
+            cta: "See All Reviews on Google",
         },
         location: {
             label: "Find Us",
@@ -108,7 +146,6 @@ export const translations = {
                 "Conveniently located in Amman, Jordan. We're easy to find and ready to help you on your path to recovery.",
             addressTitle: "Therapy Jo Physiotherapy Center",
             addressText: "Az-Zubayr Ben Al-Awwam St., Amman, Jordan",
-            contactTitle: "Contact",
             hoursTitle: "Working Hours",
             weekdays: "Saturday – Wednesday",
             weekdaysTime: "10:00 AM – 7:00 PM",
@@ -125,28 +162,29 @@ export const translations = {
             whatsapp: "WhatsApp Us",
             call: "Call Now",
         },
-        staff: {
-            label: "Our Expert",
-            title: "Meet Our Head Specialist",
-            subtitle: "Led by a certified professional dedicated to guiding you through your recovery journey.",
-        },
         footer: {
             description:
                 "Professional physiotherapy services in Amman, Jordan. Helping you heal, recover, and live your best life.",
             quickLinks: "Quick Links",
             aboutUs: "About Us",
-            services: "Services",
+            blog: "Blog",
             location: "Location",
-            contact: "Contact",
             servicesTitle: "Services",
             copyright: "Therapy Jo. All rights reserved.",
+        },
+        tagline: "Not your typical physiotherapist",
+        bookBar: {
+            title: "Ready when you are.",
+            slot: "Message us to find the next available slot",
         },
     },
     ar: {
         nav: {
             about: "من نحن",
             services: "خدماتنا",
-            staff: "خبيرنا",
+            doctors: "فريقنا",
+            blog: "المدونة",
+            reviews: "التقييمات",
             location: "الموقع",
             contact: "تواصل معنا",
             bookNow: "احجز الآن",
@@ -160,7 +198,6 @@ export const translations = {
                 "خدمات العلاج الطبيعي المتخصصة في عمّان، الأردن. رعاية متميزة من خلال التكنولوجيا المتقدمة والعلاج اليدوي وبرامج التأهيل.",
             bookSession: "احجز جلسة",
             callUs: "اتصل بنا",
-            scroll: "مرر",
         },
         about: {
             label: "من نحن",
@@ -196,8 +233,7 @@ export const translations = {
                 },
                 {
                     title: "تأهيل عضلات الحوض",
-                    description:
-                        "برامج تأهيل متخصصة لتقوية واستعادة وظائف عضلات قاع الحوض.",
+                    description: "برامج تأهيل متخصصة لتقوية واستعادة وظائف عضلات قاع الحوض.",
                     category: "rehabilitation",
                 },
                 {
@@ -226,8 +262,7 @@ export const translations = {
                 },
                 {
                     title: "العلاج الطبيعي للأطفال",
-                    description:
-                        "علاج لطيف ومتخصص للأطفال لدعم مراحل النمو واضطرابات الحركة.",
+                    description: "علاج لطيف ومتخصص للأطفال لدعم مراحل النمو واضطرابات الحركة.",
                     category: "rehabilitation",
                 },
                 {
@@ -238,11 +273,48 @@ export const translations = {
                 },
             ],
             categories: {
-                all: "الكل",
                 technology: "التكنولوجيا",
                 manual: "العلاج اليدوي",
                 rehabilitation: "التأهيل",
             },
+        },
+        finder: {
+            label: "دليل العلاج",
+            title: "أين تشعر بالألم؟",
+            subtitle: "اختر المنطقة التي تزعجك وسنعرض العلاجات التي نبدأ بها عادةً.",
+            recommendedFor: "موصى به لـ",
+            cta: "احجز هذا العلاج",
+            areas: [
+                { name: "الرقبة والكتفين", note: "الجلوس الطويل وصداع التوتر وتقييد الحركة تستجيب عادةً لمزيج من العلاج اليدوي والإبر الجافة.", serviceIndexes: [4, 8, 0] },
+                { name: "أسفل الظهر", note: "لعلاج ضغط الأقراص والتيبس المزمن نجمع بين شد العمود الفقري والعمل على الأنسجة الرخوة.", serviceIndexes: [4, 0, 1] },
+                { name: "الركبة والساق", note: "سواء كان إجهاداً متكرراً أو رباطاً في طور التعافي، نركز على التحميل المتحكم به والعودة التدريجية للحركة الكاملة.", serviceIndexes: [5, 6, 1] },
+                { name: "الحوض والورك", note: "عمل متخصص على قاع الحوض والورك العميق، مع التحفيز الكهرومغناطيسي غير الجراحي عند الحاجة.", serviceIndexes: [2, 3, 0] },
+                { name: "بعد العمليات", note: "خطة متدرجة تحمي منطقة الجراحة أولاً، ثم تبني القوة والحركة أسبوعاً بعد أسبوع.", serviceIndexes: [6, 5, 0] },
+                { name: "الإصابات الرياضية", note: "تأهيل رياضي متخصص مع معايير واضحة للعودة إلى الملعب، وليس مجرد تاريخ محدد.", serviceIndexes: [5, 8, 1] },
+            ],
+        },
+        doctors: {
+            label: "فريقنا",
+            title: "تعرف على أخصائيي العلاج الطبيعي",
+            subtitle: "فريق من الأخصائيين المعتمدين لمرافقتك في رحلة التعافي.",
+            empty: "الملفات الشخصية للفريق قريباً.",
+        },
+        blog: {
+            label: "مدونة الصحة والتعافي",
+            title: "من العيادة",
+            subtitle: "نصائح ومقالات من فريق العلاج الطبيعي لدينا.",
+            readMore: "اقرأ المقال",
+            back: "العودة إلى المدونة",
+            empty: "لا توجد مقالات بعد — تابعونا قريباً.",
+            viewAll: "عرض جميع المقالات",
+        },
+        reviews: {
+            label: "آراء المرضى",
+            title: "ماذا يقول مرضانا",
+            subtitle: "آراء حقيقية من المرضى الذين عالجناهم.",
+            basedOn: "استناداً إلى",
+            reviewsWord: "تقييم على Google",
+            cta: "عرض جميع التقييمات على Google",
         },
         location: {
             label: "موقعنا",
@@ -251,7 +323,6 @@ export const translations = {
                 "موقع مناسب في عمّان، الأردن. يسهل الوصول إلينا ونحن مستعدون لمساعدتك في رحلة التعافي.",
             addressTitle: "مركز ثيرابي جو للعلاج الطبيعي",
             addressText: "شارع الزبير بن العوام، عمّان، الأردن",
-            contactTitle: "التواصل",
             hoursTitle: "ساعات العمل",
             weekdays: "السبت – الأربعاء",
             weekdaysTime: "١٠:٠٠ ص – ٧:٠٠ م",
@@ -268,21 +339,20 @@ export const translations = {
             whatsapp: "واتساب",
             call: "اتصل الآن",
         },
-        staff: {
-            label: "خبيرنا",
-            title: "تعرّف على رئيس الأخصائيين",
-            subtitle: "بقيادة أخصائي معتمد ملتزم بإرشادك خلال رحلة التعافي.",
-        },
         footer: {
             description:
                 "خدمات العلاج الطبيعي المتخصصة في عمّان، الأردن. نساعدك على الشفاء والتعافي والعيش بأفضل حال.",
             quickLinks: "روابط سريعة",
             aboutUs: "من نحن",
-            services: "خدماتنا",
+            blog: "المدونة",
             location: "الموقع",
-            contact: "تواصل معنا",
             servicesTitle: "خدماتنا",
             copyright: "ثيرابي جو. جميع الحقوق محفوظة.",
+        },
+        tagline: "لسنا مجرد أخصائيي علاج طبيعي",
+        bookBar: {
+            title: "نحن جاهزون عندما تكون مستعداً.",
+            slot: "راسلنا لمعرفة أقرب موعد متاح",
         },
     },
 };
@@ -296,17 +366,24 @@ interface ServiceItem {
 }
 
 interface ServiceCategories {
-    all: string;
     technology: string;
     manual: string;
     rehabilitation: string;
+}
+
+interface FinderArea {
+    name: string;
+    note: string;
+    serviceIndexes: number[];
 }
 
 export interface Translations {
     nav: {
         about: string;
         services: string;
-        staff: string;
+        doctors: string;
+        blog: string;
+        reviews: string;
         location: string;
         contact: string;
         bookNow: string;
@@ -319,7 +396,6 @@ export interface Translations {
         subtitle: string;
         bookSession: string;
         callUs: string;
-        scroll: string;
     };
     about: {
         label: string;
@@ -340,13 +416,43 @@ export interface Translations {
         items: ServiceItem[];
         categories: ServiceCategories;
     };
+    finder: {
+        label: string;
+        title: string;
+        subtitle: string;
+        recommendedFor: string;
+        cta: string;
+        areas: FinderArea[];
+    };
+    doctors: {
+        label: string;
+        title: string;
+        subtitle: string;
+        empty: string;
+    };
+    blog: {
+        label: string;
+        title: string;
+        subtitle: string;
+        readMore: string;
+        back: string;
+        empty: string;
+        viewAll: string;
+    };
+    reviews: {
+        label: string;
+        title: string;
+        subtitle: string;
+        basedOn: string;
+        reviewsWord: string;
+        cta: string;
+    };
     location: {
         label: string;
         title: string;
         subtitle: string;
         addressTitle: string;
         addressText: string;
-        contactTitle: string;
         hoursTitle: string;
         weekdays: string;
         weekdaysTime: string;
@@ -362,19 +468,18 @@ export interface Translations {
         whatsapp: string;
         call: string;
     };
-    staff: {
-        label: string;
-        title: string;
-        subtitle: string;
-    };
     footer: {
         description: string;
         quickLinks: string;
         aboutUs: string;
-        services: string;
+        blog: string;
         location: string;
-        contact: string;
         servicesTitle: string;
         copyright: string;
+    };
+    tagline: string;
+    bookBar: {
+        title: string;
+        slot: string;
     };
 }

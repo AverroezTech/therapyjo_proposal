@@ -9,18 +9,16 @@ gsap.registerPlugin(ScrollTrigger);
 export default function GSAPAnimations() {
     useEffect(() => {
         const ctx = gsap.context(() => {
-            // Hero entrance
+            // Hero entrance (background fade-up is handled by the heroFadeUp CSS keyframe)
             const heroTl = gsap.timeline({ delay: 0.3 });
             heroTl
-                .from(".hero-logo", { y: 30, opacity: 0, duration: 0.8, ease: "power3.out" })
-                .from(".hero-badge", { y: 20, opacity: 0, duration: 0.6, ease: "power3.out" }, "-=0.4")
+                .from(".hero-badge", { y: 20, opacity: 0, duration: 0.6, ease: "power3.out" })
                 .from(".hero-title", { y: 40, opacity: 0, duration: 0.8, ease: "power3.out" }, "-=0.3")
                 .from(".hero-subtitle", { y: 30, opacity: 0, duration: 0.6, ease: "power3.out" }, "-=0.4")
-                .from(".hero-actions", { y: 20, opacity: 0, duration: 0.6, ease: "power3.out" }, "-=0.3")
-                .from(".hero-scroll-indicator", { opacity: 0, duration: 0.5, ease: "power2.out" }, "-=0.2");
+                .from(".hero-actions", { y: 20, opacity: 0, duration: 0.6, ease: "power3.out" }, "-=0.3");
 
             // General reveals
-            gsap.utils.toArray<HTMLElement>(".gsap-reveal").forEach((el) => {
+            gsap.utils.toArray<HTMLElement>(".gsap-reveal, .reveal").forEach((el) => {
                 gsap.fromTo(el, { y: 40, opacity: 0 }, {
                     y: 0, opacity: 1, duration: 0.8, ease: "power3.out",
                     scrollTrigger: { trigger: el, start: "top 85%", toggleActions: "play none none none" },
@@ -41,14 +39,14 @@ export default function GSAPAnimations() {
                 });
             });
 
-            // Service cards staggered reveal
-            const serviceCards = gsap.utils.toArray<HTMLElement>(".service-card");
-            if (serviceCards.length) {
-                serviceCards.forEach((card, i) => {
-                    gsap.fromTo(card, { y: 30, opacity: 0 }, {
+            // Services rows staggered reveal
+            const svcRows = gsap.utils.toArray<HTMLElement>(".svc-row");
+            if (svcRows.length) {
+                svcRows.forEach((row, i) => {
+                    gsap.fromTo(row, { y: 20, opacity: 0 }, {
                         y: 0, opacity: 1, duration: 0.5, ease: "power3.out",
-                        delay: i * 0.06,
-                        scrollTrigger: { trigger: card, start: "top 90%", toggleActions: "play none none none" },
+                        delay: i * 0.04,
+                        scrollTrigger: { trigger: row, start: "top 92%", toggleActions: "play none none none" },
                     });
                 });
             }

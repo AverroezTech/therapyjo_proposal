@@ -1,15 +1,16 @@
 "use client";
 
-import Navbar from "./components/Navbar";
+import SiteChrome from "./components/SiteChrome";
 import Hero from "./components/Hero";
+import Marquee from "./components/Marquee";
 import About from "./components/About";
 import Services from "./components/Services";
-import Staff from "./components/Staff";
+import Finder from "./components/Finder";
+import Doctors from "./components/Doctors";
+import BlogPreview from "./components/BlogPreview";
+import Reviews from "./components/Reviews";
 import Location from "./components/Location";
 import ContactCTA from "./components/ContactCTA";
-import Footer from "./components/Footer";
-import WhatsAppFloat from "./components/WhatsAppFloat";
-import GSAPAnimations from "./components/GSAPAnimations";
 import { useLanguage } from "./i18n/LanguageContext";
 
 export default function Home() {
@@ -17,18 +18,18 @@ export default function Home() {
 
   return (
     <div key={lang}>
-      <GSAPAnimations />
-      <Navbar />
-      <main>
+      <SiteChrome>
         <Hero />
+        <Marquee />
         <About />
         <Services />
-        <Staff />
+        <Finder />
+        <Doctors />
+        <BlogPreview />
+        <Reviews />
         <Location />
         <ContactCTA />
-      </main>
-      <Footer />
-      <WhatsAppFloat />
+      </SiteChrome>
     </div>
   );
 }

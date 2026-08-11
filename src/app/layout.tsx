@@ -1,4 +1,4 @@
-import { Inter, Outfit, Noto_Kufi_Arabic } from "next/font/google";
+import { Inter, Outfit, Noto_Kufi_Arabic, Bodoni_Moda } from "next/font/google";
 import "./globals.css";
 import { LanguageProvider } from "./i18n/LanguageContext";
 import Providers from "./providers";
@@ -18,6 +18,12 @@ const outfit = Outfit({
 const notoKufi = Noto_Kufi_Arabic({
   subsets: ["arabic"],
   variable: "--font-arabic",
+  display: "swap",
+});
+
+const bodoniModa = Bodoni_Moda({
+  subsets: ["latin"],
+  variable: "--font-serif",
   display: "swap",
 });
 
@@ -54,7 +60,7 @@ export default function RootLayout({
   return (
     <html lang="en" dir="ltr">
       <body
-        className={`${inter.variable} ${outfit.variable} ${notoKufi.variable}`}
+        className={`${inter.variable} ${outfit.variable} ${notoKufi.variable} ${bodoniModa.variable}`}
       >
         <Providers>
           <LanguageProvider>{children}</LanguageProvider>

@@ -1,12 +1,12 @@
 "use client";
 
-export default function WhatsAppFloat() {
+export default function WhatsAppFloat({ barVisible = false }: { barVisible?: boolean }) {
     return (
         <a
             href="https://wa.me/962799819669"
             target="_blank"
             rel="noopener noreferrer"
-            className="whatsapp-float"
+            className={`whatsapp-float ${barVisible ? "bar-visible" : ""}`}
             aria-label="Chat on WhatsApp"
         >
             <svg width="28" height="28" viewBox="0 0 24 24" fill="currentColor">
