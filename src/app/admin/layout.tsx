@@ -22,6 +22,11 @@ const noteItems: DropdownItem[] = [
     { href: "/admin/notes", label: "View Notes", icon: "📝" },
 ];
 
+const doctorItems: DropdownItem[] = [
+    { href: "/admin/doctors", label: "View Doctors", icon: "🩺" },
+    { href: "/admin/doctors/archived", label: "Archived", icon: "🗄️" },
+];
+
 function NavDropdown({
     label,
     items,
@@ -97,6 +102,14 @@ export default function AdminLayout({
     const pathname = usePathname();
     const { data: session, status } = useSession();
     const router = useRouter();
+    const [pendingCount, setPendingCount] = useState(0);
+
+    useEffect(() => {
+        fetch("/api/pending-changes")
+            .then((res) => (res.ok ? res.json() : []))
+            .then((data) => setPendingCount(Array.isArray(data) ? data.length : 0))
+            .catch(() => {});
+    }, [pathname]);
 
     // When page becomes visible again (back/forward nav from bfcache),
     // re-check the session. If signed out, redirect to login.
@@ -150,6 +163,27 @@ export default function AdminLayout({
                         items={noteItems}
                         isActive={pathname.startsWith("/admin/notes")}
                     />
+
+                    <span className="nav-divider" />
+
+                    <Link
+                        href="/admin/blog"
+                        className={`nav-link ${pathname.startsWith("/admin/blog") ? "active" : ""}`}
+                    >
+                        Blog
+                    </Link>
+                    <NavDropdown
+                        label="Doctors"
+                        items={doctorItems}
+                        isActive={pathname.startsWith("/admin/doctors")}
+                    />
+                    <Link
+                        href="/admin/approvals"
+                        className={`nav-link ${pathname.startsWith("/admin/approvals") ? "active" : ""}`}
+                    >
+                        Approvals
+                        {pendingCount > 0 && <span className="badge">{pendingCount}</span>}
+                    </Link>
                 </div>
 
                 <div className="nav-user">
@@ -184,9 +218,12 @@ export default function AdminLayout({
                 .admin-nav {
                     display: flex;
                     align-items: center;
+                    flex-wrap: wrap;
+                    row-gap: 0.35rem;
                     gap: 1.5rem;
-                    padding: 0 2rem;
-                    height: 56px;
+                    padding: 0.5rem 2rem;
+                    min-height: 56px;
+                    box-sizing: border-box;
                     background: rgba(26, 46, 53, 0.7);
                     backdrop-filter: blur(20px);
                     -webkit-backdrop-filter: blur(20px);
@@ -206,6 +243,7 @@ export default function AdminLayout({
                 .nav-links {
                     display: flex;
                     align-items: center;
+                    flex-wrap: wrap;
                     gap: 0.1rem;
                     flex: 1;
                 }
@@ -234,6 +272,17 @@ export default function AdminLayout({
                 }
                 :global(.nav-link.active) {
                     color: var(--primary, #4CAF93);
+                }
+
+                /* ── Divider & badge ── */
+                .nav-divider {
+                    width: 1px; height: 20px; background: rgba(255,255,255,0.1); margin: 0 0.35rem; flex-shrink: 0;
+                }
+                :global(.badge) {
+                    display: inline-flex; align-items: center; justify-content: center;
+                    background: #f59e0b; color: #3a2606; border-radius: 999px;
+                    min-width: 17px; height: 17px; padding: 0 0.3rem; font-size: 0.68rem;
+                    font-weight: 700; margin-inline-start: 0.35rem;
                 }
 
                 /* ── Chevron ── */

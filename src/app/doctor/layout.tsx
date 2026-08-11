@@ -8,6 +8,7 @@ import Link from "next/link";
 const navItems = [
     { href: "/doctor", label: "My Schedule", icon: "📅" },
     { href: "/doctor/notes", label: "Notes", icon: "📝" },
+    { href: "/doctor/profile", label: "My Profile", icon: "👤" },
 ];
 
 export default function DoctorLayout({ children }: { children: React.ReactNode }) {
