@@ -138,6 +138,7 @@ export const translations = {
             basedOn: "Based on",
             reviewsWord: "Google reviews",
             cta: "See All Reviews on Google",
+            readFull: "Read the full review on Google",
         },
         location: {
             label: "Find Us",
@@ -315,6 +316,7 @@ export const translations = {
             basedOn: "استناداً إلى",
             reviewsWord: "تقييم على Google",
             cta: "عرض جميع التقييمات على Google",
+            readFull: "اقرأ التقييم كاملاً على Google",
         },
         location: {
             label: "موقعنا",
@@ -446,6 +448,7 @@ export interface Translations {
         basedOn: string;
         reviewsWord: string;
         cta: string;
+        readFull: string;
     };
     location: {
         label: string;

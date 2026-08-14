@@ -1246,6 +1246,22 @@ ol {
   background: var(--primary-dark);
 }
 
+.reviews-rating-card.is-unavailable .reviews-rating-cta {
+  margin-inline-start: 0;
+}
+
+.reviews-quote-more {
+  margin: -1rem 0 1.75rem;
+  font-size: 0.8rem;
+}
+
+.reviews-quote-more a {
+  color: var(--secondary);
+  font-weight: 600;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
 .reviews-spotlight {
   max-width: 680px;
   margin: 0 auto;
