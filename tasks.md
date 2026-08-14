@@ -18,7 +18,7 @@ Two things that bear repeating here, because this is the file both agents open:
 | TJ-001 | Sync the Project Profile with the shipped app | DONE — merged `84aaa1c` | `docs/sync-project-profile` |
 | TJ-002 | Remove unreferenced root assets | DONE — merged `26cd5b5` | `chore/prune-root-assets` |
 | TJ-003 | Replace placeholder Google Maps embed | READY | `content/real-maps-embed` |
-| TJ-004 | Source Google Reviews from a real API | READY | `feat/google-reviews-api` |
+| TJ-004 | Source Google Reviews from a real API | DONE — merged `643c558` | `feat/google-reviews-api` |
 | TJ-005 | Move content gating to a role capability | BACKLOG — decision resolved, pass pending | — |
 | TJ-006 | Remove duplicate root icon files | READY | `chore/remove-icon-duplicates` |
 
@@ -193,8 +193,23 @@ One file, one line, no dependency implications.
 
 ### TJ-004 — Source Google Reviews from a real API
 
-- **Status:** READY
+- **Status:** DONE — commit `8df1861` on `feat/google-reviews-api`, merged to `master` as `643c558`
 - **Branch:** `feat/google-reviews-api`
+
+**Planner verification:** 2026-08-14 — read the full diff rather than relying on the executor's report. Exactly four files (`A` the route, `M` the other three), one commit, `master` an ancestor, no history rewrite. Read both new files end to end and confirmed them byte-faithful to the Instructions. Re-ran the build myself: exit 0, and the route table prints `○ /api/public/reviews  1h`, which is the evidence the hourly revalidate is actually in effect rather than merely written down. Re-ran every grep: zero fabrication hits, key confined to the server route, no `NEXT_PUBLIC_GOOGLE`, `readFull` present three times. Live route check returned `available: true` with rating 4.9, count 367, and five real reviewers.
+
+**Two defects in this task's own Verification section, both mine, both confirmed by the executor:**
+
+1. **`npm run lint` was never passable.** I added it without checking the baseline. `master` at `a6f3e49` fails with **76 problems (43 errors)** across `src/app/admin/*`, generated Prisma files, and the design-handoff bundle. The branch produces the identical 76 — TJ-004 added none — and `npx eslint` against the three touched TS/TSX files returns zero. The step has been struck below. Do not re-add it to any task until the baseline is fixed; it can only ever produce a false failure. See the note in the planner section.
+2. **The `GOOGLE_PLACES_API_KEY` grep check said "exactly one hit."** The verbatim route file I supplied necessarily produces **three** — a comment, the `process.env` read, and the warning string — all inside the one file. The check's intent was that the key never appears outside the server route. Corrected below to test that instead of a line count. The executor flagged both rather than quietly working around them, which is the right behaviour.
+
+**Visual review:** 2026-08-14 — performed on the branch against a **production** build (`npm run build && npm start`), not dev, before merge.
+
+Live data end to end. The section renders **4.9** with five gold stars and **"Based on 367 Google reviews"** — no `300+`, and none of `R. Sami`, `L. Haddad`, `M. Odeh`, `D. Nassar`. Five dots, five real reviewers (`Ahmad Almudallal`, `Jaber Jaber`, `hedab albaz`, `Alpha Construction`, `Dana Asnan`). The `.toUpperCase()` on the avatar initial earns its place: `hedab albaz` renders as `H`. Truncated quotes end in an ellipsis and carry the "Read the full review on Google" link pointing at *that review's* own Maps URL; the two short reviews (91 and 141 characters) correctly have no link. **Measured the regression the truncation exists to prevent**: section height across all five reviews spans 231px, against the ~900px lurch the untruncated 1,452-character review would have produced.
+
+Arabic passes, and exercised `dir="auto"` in the mirror image of the case it was designed for: with `<html dir="rtl">`, the English review's computed direction is `ltr` *inside* the RTL section, while the Arabic chrome, the Arabic `readFull` string, and `استناداً إلى 367 تقييم على Google` all lay out RTL. Also simulated the `available: false` branch in the DOM: `.is-unavailable` zeroes the `margin-inline-start` and the lone CTA centres to within 0px.
+
+**One scare, investigated rather than assumed.** Mid-review `.hero-title` read `opacity: 0` for eight consecutive seconds on a production build — precisely the dead-element failure mode `Claude_Instructions.md` warns about. It was an artifact of the automation environment, not a defect: the tab was backgrounded, `requestAnimationFrame` was throttled to zero frames, and every GSAP `.from()` element sat frozen at its start state. With the tab genuinely visible, rAF ran at ~60fps (119 frames in 2s) and the hero settled at `opacity: 1`. This also closes the open TJ-002 observation about the hero taking half a minute to arrive — same cause. Recorded because a single screenshot cannot tell this apart from a real dead element, and the protocol's instruction to query computed opacity *and* distinguish mid-flight from never-appears is what caught it.
 - **Why:** `src/app/components/Reviews.tsx` hardcodes a `4.9` rating and a `300+` review count (lines 30 and 33) alongside four invented reviewer quotes with names (lines 9–12), presented to visitors as real Google reviews of a real medical clinic. The design handoff states explicitly: *"Do not hardcode 4.9 / 300+ in production."* This is the most serious open item in the repo and should be resolved before launch.
 
 **Decisions — user, 2026-08-14. Both blockers below are now resolved in principle; only the credential values are outstanding.**
@@ -517,7 +532,7 @@ Four files, one concern, no dependency change.
 **Verification:**
 
 - `npm run build` passes
-- `npm run lint` passes
+- ~~`npm run lint` passes~~ — **struck 2026-08-14.** Unpassable for reasons predating this task; `master` fails it with 76 problems. Verify instead that the touched files are individually clean: `npx eslint src/app/api/public/reviews/route.ts src/app/components/Reviews.tsx src/app/i18n/translations.ts` returns no output.
 - `git diff --stat` shows exactly **four** files: the three edited plus the new route. Anything else means Scope was exceeded.
 - No fabricated content survives — all three must return **zero** hits:
   ```
@@ -525,9 +540,9 @@ Four files, one concern, no dependency change.
   grep -n "300+" src/app/components/Reviews.tsx
   grep -n "4\.9" src/app/components/Reviews.tsx
   ```
-- The key stays server-side. The first must return **exactly one** hit (in the new route file), the second **zero**:
+- The key stays server-side. The first must name **only** `src/app/api/public/reviews/route.ts` — count the *files*, not the lines; the route legitimately mentions the variable three times. The second must return **zero**:
   ```
-  grep -rn "GOOGLE_PLACES_API_KEY" src/
+  grep -rln "GOOGLE_PLACES_API_KEY" src/
   grep -rn "NEXT_PUBLIC_GOOGLE" src/
   ```
 - The upstream contract still holds. This is a one-shot API call, **not** a dev server — run it verbatim and confirm it prints `200`:
@@ -546,14 +561,14 @@ Four files, one concern, no dependency change.
 **Visual review is mandatory.** A wrong field name, a bad field mask, or a failed upstream call all produce a clean build and a section that silently falls back to the CTA-only state — which is exactly what the failure mode is designed to look like, and therefore exactly what a green build cannot distinguish from success. At VISUAL REVIEW the planner must load `/`, scroll to `#reviews`, and confirm: the rating reads **4.9** with **367** beside it and not `300+`; the spotlight shows a **real** reviewer name from the live set (`Ahmad Almudallal`, `Jaber Jaber`, `hedab albaz`, `Alpha Construction`, `Dana Asnan`) and none of the four invented ones; there are **five** dots; clicking through all five does not make the page height lurch; the truncated cards show the "read the full review" link and the short ones do not. Then repeat on the Arabic site and confirm the section reads RTL with the numerals still correct.
 
 **Done when:**
-- [ ] `R. Sami`, `L. Haddad`, `M. Odeh`, `D. Nassar`, `4.9`, and `300+` are all gone from `Reviews.tsx`
-- [ ] Rating, count, and all five quotes come from the live API
-- [ ] The key appears only in the server route; nothing is `NEXT_PUBLIC_`
-- [ ] A failed or unconfigured upstream renders header + CTA only, never fabricated content, and never fails the build
-- [ ] Long reviews are truncated on a word boundary and linked to the full text on Google
-- [ ] `dir="auto"` is present on both the quote and the author name
-- [ ] Build and lint pass; diff is four files
-- [ ] Visual review passed on both EN and AR
+- [x] `R. Sami`, `L. Haddad`, `M. Odeh`, `D. Nassar`, `4.9`, and `300+` are all gone from `Reviews.tsx`
+- [x] Rating, count, and all five quotes come from the live API
+- [x] The key appears only in the server route; nothing is `NEXT_PUBLIC_`
+- [x] A failed or unconfigured upstream renders header + CTA only, never fabricated content, and never fails the build
+- [x] Long reviews are truncated on a word boundary and linked to the full text on Google
+- [x] `dir="auto"` is present on both the quote and the author name
+- [x] Build passes; touched files are lint-clean; diff is four files
+- [x] Visual review passed on both EN and AR
 
 ---
 
@@ -642,8 +657,11 @@ Findings reported by the executor, or surfaced during a pass, that fall outside 
 - `src/app/login/page.tsx:69` carries the comment `{/* Background video — same as landing hero */}`. Stale: the landing hero has been a static WebP since the redesign. A one-line comment fix, too small to file alone — fold it into the next task that touches `login/page.tsx`. (Found during the TJ-002 pass.)
 - The Project Profile still carries the bare note `- Logo: logo.jpg`. TJ-001's instructions said to preserve it, correctly — but once TJ-002 deletes the root `logo.jpg`, that line reads ambiguously, since the surviving file is `public/logo.jpg`. Not worth reopening TJ-001; fold `public/logo.jpg` into the next task that edits the profile. (Found during TJ-001 planner verification.)
 - ~~**Branches are unmerged.**~~ Resolved 2026-08-14: both merged to `master` with `--no-ff` after visual review. Merge policy is now recorded in the protocol.
-- **Hero entrance animation is slow to settle — needs checking against a production build.** During the TJ-002 visual review, a cold load of `/` showed the hero badge, headline, subtitle, and CTAs arriving over roughly half a minute, well after the nav and background image had painted. Every element was computed-visible (`opacity: 1`) when queried, so this is not the dead-`opacity:0` failure mode. The likely cause is Turbopack compiling the route on demand in dev, which would not occur in production — so this is an observation, not a confirmed defect. Verify against `npm run build && npm start` before filing it as a task. Unrelated to TJ-002, which only deleted unreferenced files.
-- **`master` is 8 commits ahead of `origin/master`; the user has chosen to hold.** Decision 2026-08-14: do not push yet. Nothing unpushed changes application behaviour — two merges, two task commits, two status commits, the protocol, and the earlier deploy fix — so there is no urgency, and holding lets a deploy wired to `master` fire once after the Reviews and Maps work lands rather than on a docs-only change. **Do not push without asking again.** The two task branches (`docs/sync-project-profile`, `chore/prune-root-assets`) stay local; their commits are already contained in the `--no-ff` merges, so nothing is lost by never pushing them.
+- ~~**Hero entrance animation is slow to settle — needs checking against a production build.**~~ **Closed 2026-08-14, not a defect.** Checked against `npm run build && npm start` during the TJ-004 visual review. The cause is neither Turbopack nor the animation: when the browser tab is backgrounded, `requestAnimationFrame` is throttled to **zero frames**, GSAP's ticker never advances, and every element in a `gsap.from()` / `fromTo()` sits frozen at its start state — which for these tweens is `opacity: 0`. It looks exactly like the dead-`opacity:0` bug and is completely benign. Measured: 119 rAF frames in 2s with the tab visible, hero at `opacity: 1`; 0 frames and `opacity: 0` indefinitely with it backgrounded.
+
+  **This is a trap for every future visual review**, so it is worth stating as a rule: a headless or backgrounded tab cannot distinguish a broken entrance animation from a throttled one. Before concluding any GSAP-animated element is dead, confirm `document.visibilityState === "visible"`, `document.hasFocus()`, and that rAF is actually ticking. Only then does `opacity: 0` mean anything.
+- **`npm run lint` cannot pass and must not be used as a verification step.** `master` fails it with **76 problems (43 errors, 33 warnings)** — `react-hooks/set-state-in-effect` and `react/no-deprecated` across `src/app/admin/*`, plus unused-disable warnings in generated `src/generated/prisma/*` files and the `design_handoff_landing_and_blog_cms/support.js` bundle. None of it is task-generated; it predates the queue. Until it is fixed, a task that lists `npm run lint` as verification can only produce a false failure, and an executor that trusts the step will either stop for nothing or learn to ignore failing checks — both bad. Scope lint per-file instead: `npx eslint <the files the task touched>`. Filing the cleanup as its own task is worth considering, but note the generated Prisma files probably want an eslint ignore rather than edits. (Found during the TJ-004 verification; the step was mine and it was wrong.)
+- **`master` is 16 commits ahead of `origin/master`; the user has chosen to hold.** Decision 2026-08-14: do not push yet. **This changed materially when TJ-004 merged** — the original reasoning was that nothing unpushed altered application behaviour. That is no longer true: `643c558` replaces the Reviews section's content with a live API call. Pushing now would deploy real reviews *and* require `GOOGLE_PLACES_API_KEY` and `GOOGLE_PLACES_PLACE_ID` to exist in the host's environment. They are in local `.env`, which is gitignored and therefore **not** carried by a push — without them the section degrades to the CTA-only state rather than breaking, but it will not show reviews. Set both in the host's environment variables before or alongside the first push. **Do not push without asking again.** The two task branches (`docs/sync-project-profile`, `chore/prune-root-assets`) stay local; their commits are already contained in the `--no-ff` merges, so nothing is lost by never pushing them.
 - **The clinic's Google listing points its website field at `facebook.com`.** Observed 2026-08-14 while verifying the Place ID. Once this site launches, that field should point at the real domain — otherwise the listing keeps sending traffic to Facebook. Not a code task and not something the planner can action; it needs someone with access to the Google Business listing. Flagged to the user 2026-08-14.
 - **The Cloud project will be owned by the developer's personal Google account** (`ahamami02@gmail.com`) — user decision, 2026-08-14, chosen over the clinic's account for speed. Consequence worth writing down now rather than rediscovering at handover: the project, the Places API key, and the billing all sit under a personal account that the clinic does not control, while the Google Business listing sits under an account that *does*. If the clinic ever takes the site over, the key must be reissued under their project or the reviews section stops working. Not a problem today; a known debt.
 - **Google Cloud credentials: scope reduced to one key** (2026-08-14). The original plan needed three values. Two are now closed: the Place ID was obtained from the public finder, and TJ-003 switched to the keyless share embed, which **eliminates `NEXT_PUBLIC_GOOGLE_MAPS_EMBED_KEY` entirely** — do not create it, and do not enable the Maps Embed API. ~~Only `GOOGLE_PLACES_API_KEY` remains outstanding.~~ **Closed 2026-08-14** — the key is in `.env` and verified live (HTTP 200 against Place Details for the clinic's Place ID). All three original values are now accounted for and no Google credential blocks any task.
