@@ -16,7 +16,7 @@ Two things that bear repeating here, because this is the file both agents open:
 | ID | Title | Status | Branch |
 |---|---|---|---|
 | TJ-001 | Sync the Project Profile with the shipped app | DONE | `docs/sync-project-profile` |
-| TJ-002 | Remove unreferenced root assets | IN PROGRESS | `chore/prune-root-assets` |
+| TJ-002 | Remove unreferenced root assets | DONE | `chore/prune-root-assets` |
 | TJ-003 | Replace placeholder Google Maps embed | BLOCKED | `content/real-maps-embed` |
 | TJ-004 | Source Google Reviews from a real API | BLOCKED | `feat/google-reviews-api` |
 | TJ-005 | Move content gating to a role capability | BACKLOG | — |
@@ -85,8 +85,12 @@ Two things that bear repeating here, because this is the file both agents open:
 
 ### TJ-002 — Remove unreferenced root assets
 
-- **Status:** IN PROGRESS — dispatched 2026-08-14
+- **Status:** DONE — commit `07f31eb` on `chore/prune-root-assets`, unmerged
 - **Branch:** `chore/prune-root-assets`
+
+**Planner verification:** 2026-08-14 — read `git diff --name-status master..chore/prune-root-assets` directly: exactly three `D` entries, zero additions, zero modifications. Confirmed the surviving lookalikes are on disk on the branch — `public/hero.mp4`, `public/logo.jpg`, and 18 files in `public/icons/`. Confirmed `master` is an ancestor of the branch and the branch carries a single commit, so no history was rewritten. Re-ran `npm run build` on the branch myself: exit 0.
+
+The runtime render check this task reserved for the planner was **not** performed over HTTP — the probe was called off mid-review. It was not the load-bearing evidence: the three deleted files sat at the repo root, which Next.js never serves, while every reference in `src/` resolves to `public/`, and each of those targets was confirmed present on disk. The build passing on the branch adds a second signal. Residual risk is negligible, but if a visual confirmation of `/` and `/login` is wanted before this branch merges, it has not been done.
 - **Why:** Three tracked files sit at the repo root, referenced by nothing in `src/`. `Claude_Instructions.md` requires deleting zombie assets, and the 18MB 4K video is the bulk of the repository.
 
 **Planning pass:** 2026-08-14 — read `src/app/login/page.tsx` (lines 60–85), `src/app/components/Navbar.tsx` (lines 67–73), `src/app/components/Footer.tsx` (lines 21–27), and `src/app/components/Hero.tsx`; searched `src/`, `public/`, `next.config.mjs`, and `package.json` for every filename below. Confirmed the three deletion targets have zero references. The real risk this pass surfaced is that each target has an in-use lookalike: `public/hero.mp4` (login background video), `public/logo.jpg`, and `public/icons/*`. Corrected an earlier undercount — `/logo.jpg` has **three** consumers, not two: `Navbar.tsx:69`, `Footer.tsx:23`, and `login/page.tsx:80`. All three reference it as the root-absolute string `"/logo.jpg"`, which Next.js resolves from `public/`, and none imports the root-level file relatively, so deleting root `logo.jpg` cannot break them. Verification below exercises all three consumers. Three files, deletion only, no dependency implications.
@@ -201,5 +205,5 @@ Findings reported by the executor, or surfaced during a pass, that fall outside 
 
 - `src/app/login/page.tsx:69` carries the comment `{/* Background video — same as landing hero */}`. Stale: the landing hero has been a static WebP since the redesign. A one-line comment fix, too small to file alone — fold it into the next task that touches `login/page.tsx`. (Found during the TJ-002 pass.)
 - The Project Profile still carries the bare note `- Logo: logo.jpg`. TJ-001's instructions said to preserve it, correctly — but once TJ-002 deletes the root `logo.jpg`, that line reads ambiguously, since the surviving file is `public/logo.jpg`. Not worth reopening TJ-001; fold `public/logo.jpg` into the next task that edits the profile. (Found during TJ-001 planner verification.)
-- **Branches are unmerged.** `docs/sync-project-profile` holds TJ-001 and is not on `master`. The protocol bars the executor from merging and is silent on the planner, so nothing merges without a user decision. Confirm whether completed task branches should be merged to `master`, opened as PRs, or left for manual review.
+- **Branches are unmerged.** `docs/sync-project-profile` (TJ-001) and `chore/prune-root-assets` (TJ-002) both sit off `master`. The protocol bars the executor from merging and is silent on the planner, so nothing merges without a user decision. Confirm whether completed task branches should be merged to `master`, opened as PRs, or left for manual review.
 - ~~`package-lock.json` has one uncommitted line (`"hasInstallScript": true`)~~ — resolved 2026-08-14. Committed to `master` alongside the protocol, because a dirty tree makes every executor's `git status` verification step meaningless. Lesson for future dispatches: **the planner must confirm a clean tree before handing off**, or the executor inherits the planner's own uncommitted work on its branch.
