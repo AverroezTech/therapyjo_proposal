@@ -273,15 +273,22 @@ The executor commits to its branch. It does **not** push, merge, rebase, or open
 - **PRIMARY_COLOR:** Light Green (#4CAF93)
 - **SECONDARY_COLOR:** Blue (#2A7AB5)
 - **ACCENT_COLOR:** White (#FFFFFF)
-- **LANGUAGES:** English (EN)
-- **RTL:** No
+- **LANGUAGES:** English (EN) + Arabic (AR), runtime toggle via src/app/i18n/translations.ts
+- **RTL:** Yes — dir flips ltr↔rtl on language switch; use logical CSS properties (margin-inline-start, text-align: start)
 - **ANIMATION_LIB:** GSAP + ScrollTrigger
 - **SPECIAL_NOTES:**
-  - Video hero background (6111040-uhd_3840_2160_25fps.mp4)
+  - Hero background: static image public/joint-manipulation.webp via next/image
+  - Video background is used on the login page only (public/hero.mp4)
   - Logo: logo.jpg
   - Instagram: @therapyjocenter
   - WhatsApp/Phone: +962799819669
-  - Services: Manipulation, Cupping Therapy, Hawkgrips, Theragun, Consultations
+  - Services (9, in shipped order): Cold Laser Therapy, Radio Frequency Therapy, Pelvic Floor Rehabilitation, Electromagnetic Pelvic Floor, Traction Therapy, Sport Rehabilitation, Post-Op Rehabilitation, Pediatric Physical Therapy, Dry Needling & Acupuncture
   - Location: Therapy Jo Physiotherapy Center, Az-Zubayr Ben Al-Awwam St., Amman, Jordan
   - Floating WhatsApp CTA button
   - Google Maps embed for location
+  - Landing content sections (src/app/page.tsx, in order): Hero, Marquee, About, Services, Finder, Doctors, BlogPreview, Reviews, Location, ContactCTA
+  - Site chrome wraps them in src/app/components/SiteChrome.tsx: GSAPAnimations, AccentHairline, Navbar, Footer, WhatsAppFloat, BookingBar
+  - Blog is real routing: /blog and /blog/[slug] (not a state swap)
+  - Admin CMS at src/app/admin: blog, doctors, approvals queue
+  - Stack: Next.js 16 App Router, React 19, TypeScript, plain CSS in src/app/globals.css, Prisma 7 + Postgres (Supabase), NextAuth v5
+  - Design reference: design_handoff_landing_and_blog_cms/README.md and the two .dc.html prototypes
