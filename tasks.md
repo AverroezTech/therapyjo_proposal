@@ -18,7 +18,7 @@ Two things that bear repeating here, because this is the file both agents open:
 | TJ-001 | Sync the Project Profile with the shipped app | DONE — merged `84aaa1c` | `docs/sync-project-profile` |
 | TJ-002 | Remove unreferenced root assets | DONE — merged `26cd5b5` | `chore/prune-root-assets` |
 | TJ-003 | Replace placeholder Google Maps embed | READY | `content/real-maps-embed` |
-| TJ-004 | Source Google Reviews from a real API | BLOCKED — awaiting credentials | `feat/google-reviews-api` |
+| TJ-004 | Source Google Reviews from a real API | READY | `feat/google-reviews-api` |
 | TJ-005 | Move content gating to a role capability | BACKLOG — decision resolved, pass pending | — |
 | TJ-006 | Remove duplicate root icon files | READY | `chore/remove-icon-duplicates` |
 
@@ -193,7 +193,7 @@ One file, one line, no dependency implications.
 
 ### TJ-004 — Source Google Reviews from a real API
 
-- **Status:** BLOCKED — no planning pass run; blocked on two decisions
+- **Status:** READY
 - **Branch:** `feat/google-reviews-api`
 - **Why:** `src/app/components/Reviews.tsx` hardcodes a `4.9` rating and a `300+` review count (lines 30 and 33) alongside four invented reviewer quotes with names (lines 9–12), presented to visitors as real Google reviews of a real medical clinic. The design handoff states explicitly: *"Do not hardcode 4.9 / 300+ in production."* This is the most serious open item in the repo and should be resolved before launch.
 
@@ -210,15 +210,350 @@ One file, one line, no dependency implications.
 - Project **`therapyjo-web`** (ID `therapyjo-web`, no organization), on the personal account, billing attached via the $300 / 90-day free trial.
 - **Places API (New)** (`places.googleapis.com`) enabled. The Maps Embed API was deliberately **not** enabled — TJ-003 uses the keyless share embed and needs no key.
 - Key **`therapyjo-places-server`**, restricted to Places API (New) and nothing else. Google's onboarding auto-created it scoped to **35** APIs; that was cut to one. Application restrictions are deliberately **None** — "Websites" matches an HTTP referrer that server-to-server calls never send, and "IP addresses" needs stable egress IPs that the host does not guarantee. The controls that do the work here are (a) the key never reaching a browser and (b) the single-API restriction capping the blast radius. **If this key is ever needed client-side, that reasoning collapses — issue a second, referrer-restricted key instead of loosening this one.**
-- `.env` carries `GOOGLE_PLACES_API_KEY` (value pasted by the user; never in git — `.env*` is gitignored, re-confirmed) and `GOOGLE_PLACES_PLACE_ID`.
+- `.env` carries `GOOGLE_PLACES_API_KEY` and `GOOGLE_PLACES_PLACE_ID`; never in git — `.env*` is gitignored, re-confirmed 2026-08-14.
 
-**Still blocked on:** nothing external once the key value is in `.env`. The remaining work is a planning pass, which must probe the live API before it can be written — see the note below on field names.
+  **Corrected at the pass:** this entry previously read "value pasted by the user." It was not. The variable existed with an **empty value** (0 characters) and the task was carrying a blocker it recorded as cleared. The user pasted the real key on 2026-08-14 when the pass surfaced this; it is now 39 characters and verified working against the live endpoint. Recorded because the failure mode is worth remembering: a `KEY=` line with nothing after the `=` reads as "present" to every eye and every grep that only checks the name.
 
-**At the pass, confirm against the live response:** Places API (New) caps returned reviews at five and does not expose the full set. If the design needs more than five, that is a constraint to surface *before* writing the task, not after.
+**Interim option if launch comes first:** replace the fabricated rating, count, and four quotes with a single honest CTA linking to the clinic's Google listing, keeping the section's visual shell. Not selected — this task supersedes it, and the `available: false` branch specified below *is* that shell, now serving as the failure state rather than the shipped state.
 
-**Interim option if launch comes first:** replace the fabricated rating, count, and four quotes with a single honest CTA linking to the clinic's Google listing, keeping the section's visual shell. Not selected, but still available — say the word and the planner files it as its own task. Until then the fabricated content remains live, which is the standing risk this task exists to close.
+**Planning pass:** 2026-08-14 — read `src/app/components/Reviews.tsx` in full (72 lines), `src/app/components/Doctors.tsx` in full, `src/app/api/public/doctors/route.ts` in full, `src/app/globals.css` lines 1183–1336 (the whole `.reviews-*` block), `src/app/i18n/translations.ts` (the `en.reviews` block at 134–141, `ar.reviews` at 311–318, and the `reviews` interface member at 442–449), `src/app/page.tsx`, `package.json`, and the design handoff's "Google Reviews" section (README lines 271–283). **Probed the live Places API (New) endpoint** with the real key and Place ID — `GET https://places.googleapis.com/v1/places/ChIJp0P9L82hHBURgY5pmicC-s0`, HTTP 200 — and pinned every field name below against that response rather than against documentation.
 
-**Planner note:** fetch in a route handler under `src/app/api/public/`, following `src/app/api/public/doctors/route.ts`. At the pass, confirm what the Places API (New) response actually contains before pinning field names — the newer endpoint renamed several fields from the legacy `place_details` shape, and the task must supply exact literals. The four invented reviewers (`R. Sami`, `L. Haddad`, `M. Odeh`, `D. Nassar` — `Reviews.tsx:9–12`), the hardcoded `4.9` (line 30) and `300+` (line 33) must all be gone when this lands; a partial replacement that leaves the fake rating beside real quotes is worse than either. Verified still present 2026-08-14.
+Confirmed:
+
+- **Field names, from the live body.** Top level: `rating` (`4.9`), `userRatingCount` (`367`), `googleMapsUri`, `reviews[]`. Per review: `name` (an opaque stable ID, suitable as a React key), `rating` (integer), `text: { text, languageCode }`, `originalText: { text, languageCode }`, `authorAttribution: { displayName, uri, photoUri }`, `relativePublishTimeDescription` (`"3 weeks ago"`), `publishTime`, `flagContentUri`, `googleMapsUri`. These are **not** the legacy `place_details` names the design handoff assumed — `user_ratings_total` is now `userRatingCount`, and `author_name` is now `authorAttribution.displayName`.
+- **The five-review cap is real.** Exactly five came back against 367 total. The design's dot carousel already handles a variable count, so this constrains nothing — but the count is Google's, not ours, and the code must not assume five.
+- **Ground truth matches.** Live `rating` 4.9 and `userRatingCount` 367 confirm the recorded figures. The hardcoded values mislead nobody *today*; they are wrong as a mechanism, not as facts. That is the honest framing, and the *Why* above overstates it.
+- **`Reviews.tsx` is `"use client"` with `useState`**, so no server fetch can be added to it directly. `Doctors.tsx` already solves this exact shape — `useEffect` → `fetch("/api/public/...")` → `useState`, falling back to empty on both a non-ok response and a throw. This task follows that pattern rather than inventing one.
+- **No caching primitives exist anywhere in `src/`** — zero hits for `revalidate`, `force-dynamic`, or `next: {`. The hourly ISR is new ground here, so both literals are supplied below rather than left to judgement.
+- **No new dependency.** `server-only` is already in `package.json`; nothing else is needed.
+
+Corrected and discovered:
+
+- **The real reviews collide with the design, and this is the finding that shaped the task.** The prototype's four samples run 85–120 characters. The five live reviews run **90, 140, 440, 578, and 1,452** characters. `.reviews-quote-text` is a centered italic pull-quote at `clamp(1.25rem, 2.5vw, 1.6rem)` in a 680px column — the 1,452-character review renders as roughly 27 lines, about 1,050px tall. Worse than the height itself is the **layout jump**: clicking between the 90-character review and the 1,452-character one would shift the page by ~900px and throw the footer around under the user's cursor. Truncation at 320 characters on a word boundary, with a per-review "read the full review" link built from the review's own `googleMapsUri`, is specified below. It holds the design contract, stabilises the spotlight height, and never presents a cut review as complete. This decision was made at the pass, not by the executor, and it is the one place where the shipped markup extends beyond the handoff.
+- **All five live reviews are `languageCode: "en"`, and `text` is byte-identical to `originalText` in every one.** Decision 2 above — show the original, always — is therefore inert *today*. It is still implemented exactly as decided, because the returned set rotates and an Arabic review will eventually land: read `originalText.text` with a fallback to `text.text`, and carry `dir="auto"`. Google omits `originalText` when nothing was translated, so the fallback is load-bearing, not defensive padding.
+- **`authorAttribution.photoUri` is available and is deliberately unused.** The design specifies a 38px initial avatar, and consuming Google's photo URLs would need `lh3.googleusercontent.com` added to `next.config.mjs` `remotePatterns` — a config change outside this task's concern for a result the design does not ask for. Listed under *Do not touch*.
+- **One live author name is lowercase** (`hedab albaz`) and one is a business account (`Alpha Construction`). The avatar initial must be `.toUpperCase()`d or that card shows a lowercase `h`. The display name is rendered as Google returns it.
+- **Hourly caching is a cost control, not a perf nicety.** Place Details requests that include the `reviews` field bill in Google's most expensive Places tier. At `revalidate = 3600` this is ~720 upstream calls a month, comfortably inside the trial credit. Uncached — one upstream call per visitor — a few thousand pageviews would run into real money. Whoever touches the revalidate literal should know why it is what it is.
+- **The route must never throw.** `export const revalidate` makes Next attempt to prerender it at build time, so a throw on a missing key would fail `npm run build` on any host whose environment lacks the key. Every failure path returns `{ available: false }` with a 200 and a server-side warning. The section then renders its header and the Google CTA and nothing else — no rating, no quotes, and above all no fabricated content. Silent degradation is the correct failure mode here precisely because the alternative is inventing patient testimony.
+
+Four files, one concern, no dependency change.
+
+**Scope — touch only these four:**
+- `src/app/api/public/reviews/route.ts` — **new file**, in the existing `src/app/api/public/` directory
+- `src/app/components/Reviews.tsx`
+- `src/app/i18n/translations.ts` — three additions only: `en.reviews.readFull`, `ar.reviews.readFull`, and the `readFull: string;` interface member
+- `src/app/globals.css` — append only, inside the existing `/* ===== REVIEWS ===== */` block
+
+**Do not touch:**
+- `next.config.mjs` — and therefore **do not render `authorAttribution.photoUri`**. The design calls for an initial avatar; a remote image would need a `remotePatterns` entry and is out of scope.
+- Any existing rule in `globals.css`. The `.reviews-*` selectors at lines 1183–1336 are pinned by the design handoff — add new rules, change none.
+- `src/app/page.tsx` — `<Reviews />` is already wired at line 29.
+- The section's existing markup contract: the `.reviews-rating-card` / `.reviews-spotlight` structure, `"★".repeat(rating)` gold followed by `"★".repeat(5 - rating)` grey, the 38px initial avatar, and one dot per review. The redesign is not part of this task.
+- `.env` — both variables are already set and verified. Do not add, rename, or template them, and **never** prefix either with `NEXT_PUBLIC_`.
+
+**Instructions:**
+
+1. Create `src/app/api/public/reviews/route.ts` with exactly this content:
+
+   ```ts
+   import { NextResponse } from "next/server";
+
+   // GET /api/public/reviews — real Google reviews for the public site.
+   // Server-only: GOOGLE_PLACES_API_KEY must never reach the browser.
+   // Revalidated hourly. Place Details calls that include `reviews` bill in
+   // Google's most expensive Places tier, so this cache is a cost control.
+   export const revalidate = 3600;
+
+   const MAX_QUOTE_CHARS = 320;
+
+   interface LocalizedText {
+       text?: string;
+       languageCode?: string;
+   }
+
+   interface PlacesReview {
+       name?: string;
+       rating?: number;
+       text?: LocalizedText;
+       originalText?: LocalizedText;
+       relativePublishTimeDescription?: string;
+       googleMapsUri?: string;
+       authorAttribution?: { displayName?: string };
+   }
+
+   interface PlacesResponse {
+       rating?: number;
+       userRatingCount?: number;
+       googleMapsUri?: string;
+       reviews?: PlacesReview[];
+   }
+
+   function truncate(text: string): { text: string; truncated: boolean } {
+       if (text.length <= MAX_QUOTE_CHARS) return { text, truncated: false };
+       const cut = text.slice(0, MAX_QUOTE_CHARS);
+       const lastSpace = cut.lastIndexOf(" ");
+       const body = (lastSpace > 0 ? cut.slice(0, lastSpace) : cut).trimEnd();
+       return { text: `${body}…`, truncated: true };
+   }
+
+   export async function GET() {
+       const key = process.env.GOOGLE_PLACES_API_KEY;
+       const placeId = process.env.GOOGLE_PLACES_PLACE_ID;
+
+       if (!key || !placeId) {
+           console.warn("[reviews] GOOGLE_PLACES_API_KEY or GOOGLE_PLACES_PLACE_ID is not set");
+           return NextResponse.json({ available: false });
+       }
+
+       try {
+           const res = await fetch(`https://places.googleapis.com/v1/places/${placeId}`, {
+               headers: {
+                   "X-Goog-Api-Key": key,
+                   "X-Goog-FieldMask": "rating,userRatingCount,googleMapsUri,reviews",
+               },
+               next: { revalidate: 3600 },
+           });
+
+           if (!res.ok) {
+               console.warn(`[reviews] Places API returned ${res.status}`);
+               return NextResponse.json({ available: false });
+           }
+
+           const data: PlacesResponse = await res.json();
+
+           if (typeof data.rating !== "number" || typeof data.userRatingCount !== "number") {
+               console.warn("[reviews] Places API response missing rating or userRatingCount");
+               return NextResponse.json({ available: false });
+           }
+
+           const reviews = (data.reviews ?? []).flatMap((r) => {
+               // Show the review as its author wrote it. Google omits originalText
+               // when nothing was translated, so the fallback carries real weight.
+               const source = r.originalText?.text ?? r.text?.text ?? "";
+               const author = r.authorAttribution?.displayName?.trim() ?? "";
+               if (!source || !author) return [];
+               const { text, truncated } = truncate(source);
+               return [{
+                   id: r.name ?? `${author}-${r.relativePublishTimeDescription ?? ""}`,
+                   author,
+                   rating: typeof r.rating === "number" ? r.rating : 5,
+                   text,
+                   truncated,
+                   relativeTime: r.relativePublishTimeDescription ?? "",
+                   url: r.googleMapsUri ?? data.googleMapsUri ?? "",
+               }];
+           });
+
+           return NextResponse.json({
+               available: true,
+               rating: data.rating,
+               userRatingCount: data.userRatingCount,
+               googleMapsUri: data.googleMapsUri ?? "",
+               reviews,
+           });
+       } catch {
+           console.warn("[reviews] Places API request failed");
+           return NextResponse.json({ available: false });
+       }
+   }
+   ```
+
+2. Replace the entire contents of `src/app/components/Reviews.tsx` with exactly this:
+
+   ```tsx
+   "use client";
+
+   import { useEffect, useState } from "react";
+   import { useLanguage } from "../i18n/LanguageContext";
+
+   interface Review {
+       id: string;
+       author: string;
+       rating: number;
+       text: string;
+       truncated: boolean;
+       relativeTime: string;
+       url: string;
+   }
+
+   interface ReviewsPayload {
+       available: boolean;
+       rating?: number;
+       userRatingCount?: number;
+       googleMapsUri?: string;
+       reviews?: Review[];
+   }
+
+   const GOOGLE_SEARCH_FALLBACK =
+       "https://www.google.com/search?q=Therapy+Jo+Physiotherapy+Center+reviews";
+
+   export default function Reviews() {
+       const { t } = useLanguage();
+       const [data, setData] = useState<ReviewsPayload | null>(null);
+       const [activeIndex, setActiveIndex] = useState(0);
+
+       useEffect(() => {
+           fetch("/api/public/reviews")
+               .then((res) => (res.ok ? res.json() : { available: false }))
+               .then(setData)
+               .catch(() => setData({ available: false }));
+       }, []);
+
+       const reviews = data?.reviews ?? [];
+       const active = reviews[activeIndex];
+       const hasRating = data?.available === true && typeof data.rating === "number";
+       const filledStars = hasRating ? Math.round(data!.rating!) : 0;
+       const ctaUrl = data?.googleMapsUri || GOOGLE_SEARCH_FALLBACK;
+
+       return (
+           <section id="reviews" className="reviews section-padding">
+               <div className="container reviews-inner">
+                   <div className="reviews-header reveal">
+                       <div className="section-label" style={{ justifyContent: "center" }}>{t.reviews.label}</div>
+                       <h2 className="section-title">{t.reviews.title}</h2>
+                       <p className="section-subtitle" style={{ margin: "0 auto" }}>{t.reviews.subtitle}</p>
+                   </div>
+
+                   {data && (
+                       <div className={`reviews-rating-card${hasRating ? "" : " is-unavailable"}`}>
+                           {hasRating && (
+                               <>
+                                   <div className="reviews-rating-number">{data!.rating!.toFixed(1)}</div>
+                                   <div>
+                                       <div className="reviews-rating-stars">
+                                           {"★".repeat(filledStars)}
+                                           <span className="reviews-stars-empty">{"★".repeat(5 - filledStars)}</span>
+                                       </div>
+                                       <div className="reviews-rating-count">
+                                           {t.reviews.basedOn} {data!.userRatingCount} {t.reviews.reviewsWord}
+                                       </div>
+                                   </div>
+                               </>
+                           )}
+                           <a
+                               href={ctaUrl}
+                               target="_blank"
+                               rel="noopener noreferrer"
+                               className="reviews-rating-cta"
+                           >
+                               {t.reviews.cta}
+                           </a>
+                       </div>
+                   )}
+
+                   {active && (
+                       <div className="reviews-spotlight">
+                           <div className="reviews-quote-mark">&ldquo;</div>
+                           <p className="reviews-quote-text" dir="auto">{active.text}</p>
+                           {active.truncated && active.url && (
+                               <p className="reviews-quote-more">
+                                   <a href={active.url} target="_blank" rel="noopener noreferrer">
+                                       {t.reviews.readFull}
+                                   </a>
+                               </p>
+                           )}
+                           <div className="reviews-attribution">
+                               <div className="reviews-avatar">{active.author.charAt(0).toUpperCase()}</div>
+                               <div className="reviews-attribution-text">
+                                   <div className="reviews-name" dir="auto">{active.author}</div>
+                                   <div className="reviews-stars-small">
+                                       <span className="reviews-stars-filled">{"★".repeat(active.rating)}</span>
+                                       <span className="reviews-stars-empty">{"★".repeat(5 - active.rating)}</span>
+                                   </div>
+                               </div>
+                           </div>
+                           <div className="reviews-dots">
+                               {reviews.map((r, i) => (
+                                   <button
+                                       key={r.id}
+                                       className={`reviews-dot ${i === activeIndex ? "active" : ""}`}
+                                       onClick={() => setActiveIndex(i)}
+                                       aria-label={`Show review from ${r.author}`}
+                                   />
+                               ))}
+                           </div>
+                       </div>
+                   )}
+               </div>
+           </section>
+       );
+   }
+   ```
+
+3. In `src/app/i18n/translations.ts`, add one key to the **English** `reviews` block. Match against the anchor `cta: "See All Reviews on Google",` and add the new line immediately after it, keeping the existing indentation:
+   ```
+               readFull: "Read the full review on Google",
+   ```
+
+4. In the same file, add the matching key to the **Arabic** `reviews` block. Match against the anchor `cta: "عرض جميع التقييمات على Google",` and add immediately after it:
+   ```
+               readFull: "اقرأ التقييم كاملاً على Google",
+   ```
+
+5. In the same file, extend the exported interface. Match against the `reviews` member — the block that reads `basedOn: string;` / `reviewsWord: string;` / `cta: string;` — and add after `cta: string;`:
+   ```
+           readFull: string;
+   ```
+
+6. In `src/app/globals.css`, append these three rules immediately after the existing `.reviews-rating-cta:hover { … }` rule and before `.reviews-spotlight {`. Add nothing else and modify no existing rule:
+   ```css
+   .reviews-rating-card.is-unavailable .reviews-rating-cta {
+     margin-inline-start: 0;
+   }
+
+   .reviews-quote-more {
+     margin: -1rem 0 1.75rem;
+     font-size: 0.8rem;
+   }
+
+   .reviews-quote-more a {
+     color: var(--secondary);
+     font-weight: 600;
+     text-decoration: underline;
+     text-underline-offset: 3px;
+   }
+   ```
+
+**Verification:**
+
+- `npm run build` passes
+- `npm run lint` passes
+- `git diff --stat` shows exactly **four** files: the three edited plus the new route. Anything else means Scope was exceeded.
+- No fabricated content survives — all three must return **zero** hits:
+  ```
+  grep -n "R\. Sami\|L\. Haddad\|M\. Odeh\|D\. Nassar" src/app/components/Reviews.tsx
+  grep -n "300+" src/app/components/Reviews.tsx
+  grep -n "4\.9" src/app/components/Reviews.tsx
+  ```
+- The key stays server-side. The first must return **exactly one** hit (in the new route file), the second **zero**:
+  ```
+  grep -rn "GOOGLE_PLACES_API_KEY" src/
+  grep -rn "NEXT_PUBLIC_GOOGLE" src/
+  ```
+- The upstream contract still holds. This is a one-shot API call, **not** a dev server — run it verbatim and confirm it prints `200`:
+  ```
+  KEY=$(grep -E "^GOOGLE_PLACES_API_KEY=" .env | cut -d= -f2- | tr -d '\r"')
+  PID=$(grep -E "^GOOGLE_PLACES_PLACE_ID=" .env | cut -d= -f2- | tr -d '\r"')
+  curl -s -o /dev/null -w "%{http_code}\n" "https://places.googleapis.com/v1/places/$PID" \
+    -H "X-Goog-Api-Key: $KEY" \
+    -H "X-Goog-FieldMask: rating,userRatingCount,googleMapsUri,reviews"
+  ```
+  Anything other than `200` means the field mask or the Place ID was altered — stop and report. **Never echo `$KEY`.**
+- Both language trees stay symmetrical: `grep -c "readFull" src/app/i18n/translations.ts` returns `3` (en, ar, interface)
+
+**Do not start a dev server.** The rendered check is the planner's at VISUAL REVIEW.
+
+**Visual review is mandatory.** A wrong field name, a bad field mask, or a failed upstream call all produce a clean build and a section that silently falls back to the CTA-only state — which is exactly what the failure mode is designed to look like, and therefore exactly what a green build cannot distinguish from success. At VISUAL REVIEW the planner must load `/`, scroll to `#reviews`, and confirm: the rating reads **4.9** with **367** beside it and not `300+`; the spotlight shows a **real** reviewer name from the live set (`Ahmad Almudallal`, `Jaber Jaber`, `hedab albaz`, `Alpha Construction`, `Dana Asnan`) and none of the four invented ones; there are **five** dots; clicking through all five does not make the page height lurch; the truncated cards show the "read the full review" link and the short ones do not. Then repeat on the Arabic site and confirm the section reads RTL with the numerals still correct.
+
+**Done when:**
+- [ ] `R. Sami`, `L. Haddad`, `M. Odeh`, `D. Nassar`, `4.9`, and `300+` are all gone from `Reviews.tsx`
+- [ ] Rating, count, and all five quotes come from the live API
+- [ ] The key appears only in the server route; nothing is `NEXT_PUBLIC_`
+- [ ] A failed or unconfigured upstream renders header + CTA only, never fabricated content, and never fails the build
+- [ ] Long reviews are truncated on a word boundary and linked to the full text on Google
+- [ ] `dir="auto"` is present on both the quote and the author name
+- [ ] Build and lint pass; diff is four files
+- [ ] Visual review passed on both EN and AR
 
 ---
 
@@ -311,6 +646,12 @@ Findings reported by the executor, or surfaced during a pass, that fall outside 
 - **`master` is 8 commits ahead of `origin/master`; the user has chosen to hold.** Decision 2026-08-14: do not push yet. Nothing unpushed changes application behaviour — two merges, two task commits, two status commits, the protocol, and the earlier deploy fix — so there is no urgency, and holding lets a deploy wired to `master` fire once after the Reviews and Maps work lands rather than on a docs-only change. **Do not push without asking again.** The two task branches (`docs/sync-project-profile`, `chore/prune-root-assets`) stay local; their commits are already contained in the `--no-ff` merges, so nothing is lost by never pushing them.
 - **The clinic's Google listing points its website field at `facebook.com`.** Observed 2026-08-14 while verifying the Place ID. Once this site launches, that field should point at the real domain — otherwise the listing keeps sending traffic to Facebook. Not a code task and not something the planner can action; it needs someone with access to the Google Business listing. Flagged to the user 2026-08-14.
 - **The Cloud project will be owned by the developer's personal Google account** (`ahamami02@gmail.com`) — user decision, 2026-08-14, chosen over the clinic's account for speed. Consequence worth writing down now rather than rediscovering at handover: the project, the Places API key, and the billing all sit under a personal account that the clinic does not control, while the Google Business listing sits under an account that *does*. If the clinic ever takes the site over, the key must be reissued under their project or the reviews section stops working. Not a problem today; a known debt.
-- **Google Cloud credentials: scope reduced to one key** (2026-08-14). The original plan needed three values. Two are now closed: the Place ID was obtained from the public finder, and TJ-003 switched to the keyless share embed, which **eliminates `NEXT_PUBLIC_GOOGLE_MAPS_EMBED_KEY` entirely** — do not create it, and do not enable the Maps Embed API. Only `GOOGLE_PLACES_API_KEY` (server-only, Places API (New), billing enabled) remains outstanding, and it blocks TJ-004 alone. When it arrives, add it to `.env` — confirmed gitignored and untracked 2026-08-14 — and run the TJ-004 pass.
+- **Google Cloud credentials: scope reduced to one key** (2026-08-14). The original plan needed three values. Two are now closed: the Place ID was obtained from the public finder, and TJ-003 switched to the keyless share embed, which **eliminates `NEXT_PUBLIC_GOOGLE_MAPS_EMBED_KEY` entirely** — do not create it, and do not enable the Maps Embed API. ~~Only `GOOGLE_PLACES_API_KEY` remains outstanding.~~ **Closed 2026-08-14** — the key is in `.env` and verified live (HTTP 200 against Place Details for the clinic's Place ID). All three original values are now accounted for and no Google credential blocks any task.
+
+  Worth keeping: the key line existed in `.env` with an **empty value** while TJ-004 recorded it as pasted, so the task sat in `BLOCKED` for a reason that had supposedly been cleared. `grep` for a variable *name* proves nothing. Check the value's length.
+- **The Places API bills by field mask, and `reviews` is in the top tier.** Requesting `reviews` moves a Place Details call into Google's most expensive Places SKU. TJ-004 ships at `revalidate = 3600` — roughly 720 upstream calls a month, well inside the trial credit — but the same code with caching removed would make one billed call **per visitor**. If anyone ever reaches for the revalidate literal to "make reviews fresher," that is the trade being made. Reviews change a handful of times a year; hourly is already far more current than the data warrants. (Found during the TJ-004 pass.)
+- **The reviews section will need re-tuning as the live set rotates.** Google returns five reviews chosen by its own relevance ranking, and today's five run from 90 to 1,452 characters — a spread the prototype's 85–120 character samples never anticipated. TJ-004 handles this with a 320-character truncation and a link to the full text, which is the right call for a fixed-height spotlight, but it means **three of the five currently shipping are cut**. If the returned set later skews long, consider whether the spotlight is still the right form, or whether the section should show fewer, shorter reviews well rather than all five awkwardly. Not a defect; a thing to look at with real eyes every few months. (Found during the TJ-004 pass.)
+- **Every live review is currently in English, which makes the mixed-language decision untested in production.** TJ-004 implements it as decided — original text always, `dir="auto"` on the quote and the name — but nothing on the site exercises the RTL-review-on-the-English-page path today, because Google returned `languageCode: "en"` for all five. The first Arabic review to enter the top five will be the first real test. Worth a deliberate look when it happens rather than discovering it from a screenshot. (Found during the TJ-004 pass.)
+- **The clinic's Google listing is the source of truth for the reviews section, and nobody on this project controls it.** The rating, the count, and which five reviews appear are all Google's to decide. This is the intended design — it is what makes the numbers honest — but it means the section's content can change without any deploy, and a bad review entering the top five will appear on the landing page automatically. The client should know that before launch. Pairs with the listing's website field still pointing at Facebook, above. (Found during the TJ-004 pass.)
 - **The map embed is hardcoded to English (`!1sen!2sjo`) and will not follow the EN/AR toggle.** Google fixes the embed's language in the URL, so the Arabic site gets an English-labelled map. In practice this matters less than it sounds — the rendered map already shows bilingual labels and the business card carries both the English and Arabic clinic names — which is why TJ-003 ships as a one-line change rather than growing a per-locale variant. If a fully Arabic map is wanted later, fetch the AR embed URL and swap on `useLanguage()`; `Location.tsx` is already a client component with `t` in scope, so the mechanism is there. File it as its own task if the client asks. (Found during the TJ-003 pass.)
 - ~~`package-lock.json` has one uncommitted line (`"hasInstallScript": true`)~~ — resolved 2026-08-14. Committed to `master` alongside the protocol, because a dirty tree makes every executor's `git status` verification step meaningless. Lesson for future dispatches: **the planner must confirm a clean tree before handing off**, or the executor inherits the planner's own uncommitted work on its branch.
