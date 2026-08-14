@@ -206,9 +206,13 @@ One file, one line, no dependency implications.
 
 **Ground truth captured 2026-08-14 from the live listing:** the clinic's real rating is **4.9 from 367 reviews**. The hardcoded `4.9` and `300+` are therefore *currently accurate* — the numbers mislead nobody today. This lowers the urgency of the rating and count, and it should be said plainly rather than left implied by the alarming *Why* above. It changes nothing about the four invented reviewers, which remain fabricated attributions to named people and are the real reason this task exists. It also does not make hardcoding safe: 367 was 300-something at some point and will be 400-something later, and nobody will remember to edit it.
 
-**Still blocked on — credentials (user is setting these up; walkthrough issued 2026-08-14):**
-- `GOOGLE_PLACES_API_KEY` — server-only, restricted to Places API (New). **Never `NEXT_PUBLIC_`**; that prefix would ship a billable key to every visitor.
-- Billing enabled on the Cloud project. Hourly ISR is ~24 calls/day, well inside the free credit, but Maps Platform will not serve without a billing account attached.
+**Cloud setup completed 2026-08-14** (driven in the browser with the user):
+- Project **`therapyjo-web`** (ID `therapyjo-web`, no organization), on the personal account, billing attached via the $300 / 90-day free trial.
+- **Places API (New)** (`places.googleapis.com`) enabled. The Maps Embed API was deliberately **not** enabled — TJ-003 uses the keyless share embed and needs no key.
+- Key **`therapyjo-places-server`**, restricted to Places API (New) and nothing else. Google's onboarding auto-created it scoped to **35** APIs; that was cut to one. Application restrictions are deliberately **None** — "Websites" matches an HTTP referrer that server-to-server calls never send, and "IP addresses" needs stable egress IPs that the host does not guarantee. The controls that do the work here are (a) the key never reaching a browser and (b) the single-API restriction capping the blast radius. **If this key is ever needed client-side, that reasoning collapses — issue a second, referrer-restricted key instead of loosening this one.**
+- `.env` carries `GOOGLE_PLACES_API_KEY` (value pasted by the user; never in git — `.env*` is gitignored, re-confirmed) and `GOOGLE_PLACES_PLACE_ID`.
+
+**Still blocked on:** nothing external once the key value is in `.env`. The remaining work is a planning pass, which must probe the live API before it can be written — see the note below on field names.
 
 **At the pass, confirm against the live response:** Places API (New) caps returned reviews at five and does not expose the full set. If the design needs more than five, that is a constraint to surface *before* writing the task, not after.
 
