@@ -17,7 +17,7 @@ Two things that bear repeating here, because this is the file both agents open:
 |---|---|---|---|
 | TJ-001 | Sync the Project Profile with the shipped app | DONE — merged `84aaa1c` | `docs/sync-project-profile` |
 | TJ-002 | Remove unreferenced root assets | DONE — merged `26cd5b5` | `chore/prune-root-assets` |
-| TJ-003 | Replace placeholder Google Maps embed | BLOCKED — awaiting credentials | `content/real-maps-embed` |
+| TJ-003 | Replace placeholder Google Maps embed | READY | `content/real-maps-embed` |
 | TJ-004 | Source Google Reviews from a real API | BLOCKED — awaiting credentials | `feat/google-reviews-api` |
 | TJ-005 | Move content gating to a role capability | BACKLOG — decision resolved, pass pending | — |
 | TJ-006 | Remove duplicate root icon files | READY | `chore/remove-icon-duplicates` |
@@ -148,32 +148,46 @@ Two things that bear repeating here, because this is the file both agents open:
 
 ### TJ-003 — Replace placeholder Google Maps embed
 
-- **Status:** BLOCKED — no planning pass run; blocked on client input
+- **Status:** READY
 - **Branch:** `content/real-maps-embed`
-- **Why:** `src/app/components/Location.tsx:14` uses a synthesized embed URL built from approximate coordinates (`!2d35.87!3d31.95`) with a null place ID (`0x0%3A0x0`). It drops a pin near the clinic rather than on it and shows no business card. The design handoff flags this as needing the real embed.
+- **Why:** `src/app/components/Location.tsx:14` uses a synthesized embed URL built from approximate coordinates (`!2d35.87!3d31.95`) with a null place ID (`0x0%3A0x0`). It shows no business card, and the pin does not land near the clinic — it lands in **Swiefieh, ~4 km away** (see the visual comparison in the planning pass). The design handoff flags this as needing the real embed.
 
-**Approach decided 2026-08-14 — supersedes the share-link route below.** TJ-004 requires a Google Cloud project anyway, so this task now uses the **Maps Embed API** with the clinic's Place ID rather than a copied share-link URL. One Place ID serves both tasks. The embed URL becomes:
+**Approach — final, 2026-08-14: the keyless share embed.** An earlier revision of this task proposed the Maps Embed API with a `NEXT_PUBLIC_GOOGLE_MAPS_EMBED_KEY`. **That is withdrawn.** The clinic's listing is published, so Google's own Share → Embed a map yields a working URL needing no API key, no Cloud project, and no billing. Strictly less machinery for the same result, and it keeps a browser-visible key out of the project altogether. The Cloud project is still needed for TJ-004, but **only** for the Places key — the Maps Embed API does not need enabling.
 
-```
-https://www.google.com/maps/embed/v1/place?key=${NEXT_PUBLIC_GOOGLE_MAPS_EMBED_KEY}&q=place_id:<PLACE_ID>
-```
+**Planning pass:** 2026-08-14 — read `src/app/components/Location.tsx` in full (54 lines). Confirmed the `<iframe>` at line 13–18 carries exactly four attributes (`src`, `loading`, `referrerPolicy`, `title`) and no width/height/style — sizing comes from the `.location-map` wrapper in `globals.css`, so the `width`/`height`/`style`/`allowfullscreen` attributes in Google's copied HTML must be **discarded**, not pasted in. Obtained the Place ID `ChIJp0P9L82hHBURgY5pmicC-s0` from the public Place ID Finder and verified it by resolving `https://www.google.com/maps/place/?q=place_id:<ID>`, which returned *Therapy Jo Physiotherapy Center, Az-Zubayr Ben Al-Awwam St., Amman*; the listed phone `07 9981 9669` matches the profile's `+962799819669`. The user then supplied the share-embed HTML from that listing. **Cross-validated it rather than trusting it:** the feature ID inside the supplied URL (`0x151ca1cd2ffd43a7:0xcdfa02279a698e81`) is byte-identical to the one in the Maps place URL reached independently via the Place ID, so the pasted string points at the same entity the Place ID does.
 
-**Place ID obtained 2026-08-14 — no longer blocked on this:**
+**Corrected the *Why*.** The task claimed the placeholder "drops a pin near the clinic." It does not. Rendered both URLs side by side in iframes on a local page and compared: the placeholder lands in **Swiefieh** — beside Swiefieh Village and Salon Lara — while the real one lands on the clinic among Al-Ahli, Islamic, and Al Kindi hospitals. Roughly 4 km apart, in different districts. The real embed also renders a business card (name in EN and AR, address, 4.9 ★ 367) that the placeholder lacks entirely, because its place ID is the null `0x0:0x0`. Both URLs render, so this is a substitution of a working embed for a working-but-wrong one — not a fix for a broken frame.
 
-```
-ChIJp0P9L82hHBURgY5pmicC-s0
-```
+One file, one line, no dependency implications.
 
-Retrieved via the public Place ID Finder (no key, no billing) and **verified independently** by resolving `https://www.google.com/maps/place/?q=place_id:<ID>`, which returned *Therapy Jo Physiotherapy Center, Az-Zubayr Ben Al-Awwam St., Amman* — confirming the transcription is character-exact, not an OCR guess. The listed phone `07 9981 9669` matches the profile's `+962799819669`. The listing is published and complete.
+**Scope — touch only this:**
+- `src/app/components/Location.tsx`, the `src` attribute on the `<iframe>` only
 
-**The placeholder is worse than this task originally stated.** *Why* above says the embed "drops a pin near the clinic." It does not. Real coordinates are `31.9683238, 35.9076188`; the hardcoded embed uses `!2d35.87!3d31.95`. That is **~4 km** away — a different part of Amman, not an imprecise pin. Treat this as a visibly wrong map, not a cosmetic nicety.
+**Do not touch:** the `loading`, `referrerPolicy`, and `title` attributes; the `.location-map` wrapper; every other section of the file. No `globals.css` changes. Do **not** add `width`, `height`, `style`, or `allowfullscreen` from Google's copied HTML — the wrapper handles sizing and adding them will break the responsive layout.
 
-**Still blocked on one value** (user is obtaining it; walkthrough issued 2026-08-14):
-- `NEXT_PUBLIC_GOOGLE_MAPS_EMBED_KEY` — key restricted to the Maps Embed API, restricted by HTTP referrer. This key **is** browser-visible by design; the referrer restriction is the control. It is the only Google key in this project that may carry `NEXT_PUBLIC_`.
+**Instructions:**
 
-**Original blocker, kept for the record:** the clinic's Google Maps share-embed URL. Still a valid fallback if the Cloud project stalls — Google Business listing → Share → Embed a map → Copy HTML → take the `src`. That route needs no key or billing, so fall back to it if credentials do not arrive.
+1. In `src/app/components/Location.tsx`, replace the entire `src="…"` attribute value on the `<iframe>` — the string beginning `https://www.google.com/maps/embed?pb=!1m18!1m12!1m3!1d3384.5!2d35.87!3d31.95` and ending `!4v1700000000000` — with exactly:
+   ```
+   https://www.google.com/maps/embed?pb=!1m18!1m12!1m3!1d3384.7262024301945!2d35.9076188!3d31.968323799999997!2m3!1f0!2f0!3f0!3m2!1i1024!2i768!4f13.1!3m3!1m2!1s0x151ca1cd2ffd43a7%3A0xcdfa02279a698e81!2sTherapy%20Jo%20Physiotherapy%20Center!5e0!3m2!1sen!2sjo!4v1786726473771!5m2!1sen!2sjo
+   ```
+   Copy it verbatim, including the `%3A` and `%20` escapes. Change nothing else on the element.
 
-**Planner note:** once the values arrive, run the pass. Expect a one-line replacement of the `src` on `src/app/components/Location.tsx:14`, keeping `loading="lazy"`, `referrerPolicy="no-referrer-when-downgrade"`, and the existing `title`. Verification is that the pin lands on Az-Zubayr Ben Al-Awwam St., Amman, and that the business card shows the clinic name — the current synthesized URL shows neither. Visual review is mandatory here: an embed with a bad key renders a grey box that fails no build.
+**Verification:**
+- `npm run build` passes
+- `git diff --stat` shows `src/app/components/Location.tsx` as the only changed file, **1 insertion and 1 deletion**. More than one line changed means an attribute was touched that should not have been.
+- `grep -n "0x0%3A0x0\|!2d35.87\|1d3384.5" src/app/components/Location.tsx` returns **zero** hits — no fragment of the placeholder survives
+- `grep -c "loading=\"lazy\"" src/app/components/Location.tsx` returns `1`, and `referrerPolicy="no-referrer-when-downgrade"` and `title="Therapy Jo Location"` are both still present
+
+**Do not start a dev server.** The rendered-map check is the planner's at VISUAL REVIEW.
+
+**Visual review is mandatory and is the whole point of this task.** A wrong embed URL renders a grey box or a map of the wrong place; neither fails a build, and `npm run build` will pass either way. At VISUAL REVIEW the planner must load `/`, scroll to `#location`, and confirm the pin sits on the clinic *and* the business card reads "Therapy Jo Physiotherapy Center" — not merely that a map appeared.
+
+**Done when:**
+- [ ] The `src` is replaced and the other three attributes are untouched
+- [ ] Build passes; diff is exactly one line
+- [ ] No placeholder fragment (`0x0:0x0`, `35.87`, `31.95`) remains in the file
+- [ ] Visual review: pin on the clinic, business card showing the clinic name
 
 ---
 
@@ -292,5 +306,6 @@ Findings reported by the executor, or surfaced during a pass, that fall outside 
 - **Hero entrance animation is slow to settle — needs checking against a production build.** During the TJ-002 visual review, a cold load of `/` showed the hero badge, headline, subtitle, and CTAs arriving over roughly half a minute, well after the nav and background image had painted. Every element was computed-visible (`opacity: 1`) when queried, so this is not the dead-`opacity:0` failure mode. The likely cause is Turbopack compiling the route on demand in dev, which would not occur in production — so this is an observation, not a confirmed defect. Verify against `npm run build && npm start` before filing it as a task. Unrelated to TJ-002, which only deleted unreferenced files.
 - **`master` is 8 commits ahead of `origin/master`; the user has chosen to hold.** Decision 2026-08-14: do not push yet. Nothing unpushed changes application behaviour — two merges, two task commits, two status commits, the protocol, and the earlier deploy fix — so there is no urgency, and holding lets a deploy wired to `master` fire once after the Reviews and Maps work lands rather than on a docs-only change. **Do not push without asking again.** The two task branches (`docs/sync-project-profile`, `chore/prune-root-assets`) stay local; their commits are already contained in the `--no-ff` merges, so nothing is lost by never pushing them.
 - **The clinic's Google listing points its website field at `facebook.com`.** Observed 2026-08-14 while verifying the Place ID. Once this site launches, that field should point at the real domain — otherwise the listing keeps sending traffic to Facebook. Not a code task and not something the planner can action; it needs someone with access to the Google Business listing. Flagged to the user 2026-08-14.
-- **Google Cloud credentials are pending with the user** (as of 2026-08-14). Three values unblock TJ-003 and TJ-004 together: `GOOGLE_PLACES_API_KEY` (server-only), `NEXT_PUBLIC_GOOGLE_MAPS_EMBED_KEY` (browser-visible by design, referrer-restricted), and the clinic's Place ID. Two separate keys is deliberate — the embed key travels inside the iframe `src` and is public no matter what, so it must not be the key that bills Places API calls. When they arrive, add both to `.env`, confirm `.env` is still gitignored before committing anything, and run both passes.
+- **Google Cloud credentials: scope reduced to one key** (2026-08-14). The original plan needed three values. Two are now closed: the Place ID was obtained from the public finder, and TJ-003 switched to the keyless share embed, which **eliminates `NEXT_PUBLIC_GOOGLE_MAPS_EMBED_KEY` entirely** — do not create it, and do not enable the Maps Embed API. Only `GOOGLE_PLACES_API_KEY` (server-only, Places API (New), billing enabled) remains outstanding, and it blocks TJ-004 alone. When it arrives, add it to `.env` — confirmed gitignored and untracked 2026-08-14 — and run the TJ-004 pass.
+- **The map embed is hardcoded to English (`!1sen!2sjo`) and will not follow the EN/AR toggle.** Google fixes the embed's language in the URL, so the Arabic site gets an English-labelled map. In practice this matters less than it sounds — the rendered map already shows bilingual labels and the business card carries both the English and Arabic clinic names — which is why TJ-003 ships as a one-line change rather than growing a per-locale variant. If a fully Arabic map is wanted later, fetch the AR embed URL and swap on `useLanguage()`; `Location.tsx` is already a client component with `t` in scope, so the mechanism is there. File it as its own task if the client asks. (Found during the TJ-003 pass.)
 - ~~`package-lock.json` has one uncommitted line (`"hasInstallScript": true`)~~ — resolved 2026-08-14. Committed to `master` alongside the protocol, because a dirty tree makes every executor's `git status` verification step meaningless. Lesson for future dispatches: **the planner must confirm a clean tree before handing off**, or the executor inherits the planner's own uncommitted work on its branch.
