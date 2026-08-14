@@ -7,6 +7,37 @@ import { authConfig } from "@/lib/auth.config";
 
 export const { handlers, signIn, signOut, auth } = NextAuth({
     ...authConfig,
+    callbacks: {
+        ...authConfig.callbacks,
+        // Re-check the account on every server-side session read. authorize()
+        // only runs at sign-in, so without this a user marked RESIGNED keeps a
+        // valid session until the token expires — up to 8 hours of access after
+        // being removed. Returning null revokes the session and clears the
+        // cookie (see @auth/core session action), so they are signed out rather
+        // than merely denied.
+        //
+        // This lives here and not in auth.config.ts on purpose: that file is
+        // imported by Edge middleware and must stay free of Prisma.
+        async jwt({ token, user }) {
+            if (user) {
+                // Sign-in. authorize() has already proved the account is ACTIVE.
+                token.role = (user as { role: string }).role;
+                token.id = user.id;
+                return token;
+            }
+
+            const userId = (token.id as string | undefined) ?? token.sub;
+            if (!userId) return null;
+
+            const current = await prisma.user.findUnique({
+                where: { id: userId },
+                select: { status: true },
+            });
+            if (!current || current.status !== "ACTIVE") return null;
+
+            return token;
+        },
+    },
     providers: [
         Credentials({
             name: "credentials",
