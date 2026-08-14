@@ -17,10 +17,10 @@ Two things that bear repeating here, because this is the file both agents open:
 |---|---|---|---|
 | TJ-001 | Sync the Project Profile with the shipped app | DONE — merged `84aaa1c` | `docs/sync-project-profile` |
 | TJ-002 | Remove unreferenced root assets | DONE — merged `26cd5b5` | `chore/prune-root-assets` |
-| TJ-003 | Replace placeholder Google Maps embed | BLOCKED | `content/real-maps-embed` |
-| TJ-004 | Source Google Reviews from a real API | BLOCKED | `feat/google-reviews-api` |
-| TJ-005 | Move content gating to a role capability | BACKLOG | — |
-| TJ-006 | Decide the fate of the root icon source files | BACKLOG | — |
+| TJ-003 | Replace placeholder Google Maps embed | BLOCKED — awaiting credentials | `content/real-maps-embed` |
+| TJ-004 | Source Google Reviews from a real API | BLOCKED — awaiting credentials | `feat/google-reviews-api` |
+| TJ-005 | Move content gating to a role capability | BACKLOG — decision resolved, pass pending | — |
+| TJ-006 | Remove duplicate root icon files | READY | `chore/remove-icon-duplicates` |
 
 ---
 
@@ -152,9 +152,19 @@ Two things that bear repeating here, because this is the file both agents open:
 - **Branch:** `content/real-maps-embed`
 - **Why:** `src/app/components/Location.tsx:14` uses a synthesized embed URL built from approximate coordinates (`!2d35.87!3d31.95`) with a null place ID (`0x0%3A0x0`). It drops a pin near the clinic rather than on it and shows no business card. The design handoff flags this as needing the real embed.
 
-**Blocked on:** the clinic's real Google Maps place embed URL. Open the clinic's Google Business listing → Share → Embed a map → Copy HTML, and supply the `src` value. It cannot be derived — the place ID is issued by Google.
+**Approach decided 2026-08-14 — supersedes the share-link route below.** TJ-004 requires a Google Cloud project anyway, so this task now uses the **Maps Embed API** with the clinic's Place ID rather than a copied share-link URL. One Place ID serves both tasks. The embed URL becomes:
 
-**Planner note:** once the URL arrives, run the pass. Expect a one-line replacement in `Location.tsx` that keeps `loading="lazy"` and the existing `title` attribute; verification is that the pin lands on Az-Zubayr Ben Al-Awwam St., Amman.
+```
+https://www.google.com/maps/embed/v1/place?key=${NEXT_PUBLIC_GOOGLE_MAPS_EMBED_KEY}&q=place_id:<PLACE_ID>
+```
+
+**Blocked on:** two values the user is currently obtaining (walkthrough issued 2026-08-14):
+- `NEXT_PUBLIC_GOOGLE_MAPS_EMBED_KEY` — key restricted to the Maps Embed API, restricted by HTTP referrer. This key **is** browser-visible by design; the referrer restriction is the control. It is the only Google key in this project that may carry `NEXT_PUBLIC_`.
+- The clinic's Place ID (`ChIJ…`), from the Place ID Finder.
+
+**Original blocker, kept for the record:** the clinic's Google Maps share-embed URL. Still a valid fallback if the Cloud project stalls — Google Business listing → Share → Embed a map → Copy HTML → take the `src`. That route needs no key or billing, so fall back to it if credentials do not arrive.
+
+**Planner note:** once the values arrive, run the pass. Expect a one-line replacement of the `src` on `src/app/components/Location.tsx:14`, keeping `loading="lazy"`, `referrerPolicy="no-referrer-when-downgrade"`, and the existing `title`. Verification is that the pin lands on Az-Zubayr Ben Al-Awwam St., Amman, and that the business card shows the clinic name — the current synthesized URL shows neither. Visual review is mandatory here: an embed with a bad key renders a grey box that fails no build.
 
 ---
 
@@ -164,14 +174,19 @@ Two things that bear repeating here, because this is the file both agents open:
 - **Branch:** `feat/google-reviews-api`
 - **Why:** `src/app/components/Reviews.tsx` hardcodes a `4.9` rating and a `300+` review count (lines 30 and 33) alongside four invented reviewer quotes with names (lines 9–12), presented to visitors as real Google reviews of a real medical clinic. The design handoff states explicitly: *"Do not hardcode 4.9 / 300+ in production."* This is the most serious open item in the repo and should be resolved before launch.
 
-**Blocked on:**
+**Decisions — user, 2026-08-14. Both blockers below are now resolved in principle; only the credential values are outstanding.**
 
-1. **Integration path.** The handoff recommends the Google Places API (`place_details` with the `reviews` field), fetched server-side and cached with hourly ISR — at most five reviews, plus a reliable rating and total count, and the designed layout survives. The alternative is a third-party widget (Elfsight, Trustindex): more reviews, but vendor markup replaces the design and adds a script dependency. Path 1 recommended.
-2. **Credentials.** Path 1 needs a Google Cloud project with the Places API enabled, a server-side API key, and the clinic's Place ID. Calls are billed per request; ISR keeps volume negligible, but billing must be enabled on the account.
+1. **Integration path: Google Places API (New).** `place_details` with the `reviews` field, fetched server-side and cached with hourly ISR — at most five reviews plus a reliable rating and total count, and the designed layout survives untouched. The third-party widget alternative (Elfsight, Trustindex) was **rejected**: vendor markup would replace the design and add a script dependency.
+2. **Mixed-language reviews: show the original, always.** Every review renders as the reviewer wrote it, in both site languages. Each card carries `dir="auto"` so an Arabic review lays out RTL even on the English site. Google's machine translations were **rejected** — attributing a translated sentence to a named real patient misrepresents them. Language filtering was **rejected** because it would decouple the visible cards from the headline rating.
 
-**Interim option if launch comes first:** replace the fabricated rating, count, and four quotes with a single honest CTA linking to the clinic's Google listing, keeping the section's visual shell. Ask and the planner will file it as its own task and run the pass.
+**Still blocked on — credentials (user is setting these up; walkthrough issued 2026-08-14):**
+- `GOOGLE_PLACES_API_KEY` — server-only, restricted to Places API (New). **Never `NEXT_PUBLIC_`**; that prefix would ship a billable key to every visitor.
+- The clinic's Place ID (`ChIJ…`) — shared with TJ-003.
+- Billing enabled on the Cloud project. Hourly ISR is ~24 calls/day, well inside the free credit, but Maps Platform will not serve without a billing account attached.
 
-**Planner note:** the API key must be server-only — never `NEXT_PUBLIC_`. Fetch in a route handler under `src/app/api/public/`, following `src/app/api/public/doctors/route.ts`. Google returns reviews in the reviewer's original language; decide how that interacts with the EN/AR toggle before the pass.
+**Interim option if launch comes first:** replace the fabricated rating, count, and four quotes with a single honest CTA linking to the clinic's Google listing, keeping the section's visual shell. Not selected, but still available — say the word and the planner files it as its own task. Until then the fabricated content remains live, which is the standing risk this task exists to close.
+
+**Planner note:** fetch in a route handler under `src/app/api/public/`, following `src/app/api/public/doctors/route.ts`. At the pass, confirm what the Places API (New) response actually contains before pinning field names — the newer endpoint renamed several fields from the legacy `place_details` shape, and the task must supply exact literals. The four invented reviewers (`R. Sami`, `L. Haddad`, `M. Odeh`, `D. Nassar` — `Reviews.tsx:9–12`), the hardcoded `4.9` (line 30) and `300+` (line 33) must all be gone when this lands; a partial replacement that leaves the fake rating beside real quotes is worse than either. Verified still present 2026-08-14.
 
 ---
 
@@ -181,21 +196,75 @@ Two things that bear repeating here, because this is the file both agents open:
 - **Branch:** assigned at planning pass
 - **Why:** The design handoff specifies that Blog, Doctors, and Approvals are gated by a permission (`canManageContent`) attached to a role, *"so the client can grant a manager access without a code change"* — and explicitly not by a check against one named user. The schema has a flat `Role` enum (`ADMIN` / `DOCTOR` / `SECRETARY`) with no capability layer. Behaviour today is probably correct; the coupling is the problem.
 
-**Before the pass can run, resolve:**
-- How content routes gate today. Read `src/middleware.ts`, `src/lib/auth.config.ts`, `src/app/admin/layout.tsx`, and the route handlers under `src/app/api/blog/`, `src/app/api/doctor-profiles/`, and `src/app/api/pending-changes/`. Record what each actually checks — role equality, user ID, or nothing.
-- **User decision:** whether the handoff's roles (Head Doctor / Clinic Manager / Staff) replace or map onto the shipped ones (`ADMIN` / `DOCTOR` / `SECRETARY`). Two vocabularies for overlapping concepts; not the executor's call, and not the planner's either.
-- Mechanism: a `canManageContent` boolean on `User`, a capability set derived from `Role` in one shared helper, or a permissions table. The derived helper is the smallest change that satisfies the requirement and needs no migration.
-- If a schema change wins, this exceeds one task — split it: migration first, then call sites.
+**Partial survey 2026-08-14** (not a full planning pass — see what remains, below). Read `src/middleware.ts`, `src/app/admin/layout.tsx`, `prisma/schema.prisma`, and grepped every handler under `src/app/api/blog/`, `src/app/api/doctor-profiles/`, and `src/app/api/pending-changes/`. Findings:
+
+- **The handoff's actual prohibition is not violated.** It bars gating on *"one named user"*; every site checks `session.user.role`, never a user ID. This is a refactor, not a security hole — downgrade the urgency recorded in *Why* above.
+- **Ten inline call sites**, each spelling the capability as a bare string comparison: `role !== "ADMIN"` in `api/blog/route.ts:8`, `api/blog/[id]/route.ts:7`, `api/blog/[id]/translate/route.ts:9`, `api/doctor-profiles/route.ts:7`, `api/doctor-profiles/[id]/route.ts:7`, `api/doctor-profiles/reorder/route.ts:8`, `api/pending-changes/route.ts:19`, `api/pending-changes/[id]/route.ts:17`; and `role !== "DOCTOR"` in `api/doctor-profiles/me/route.ts:8` and `api/pending-changes/route.ts:35`.
+- **`middleware.ts` does no role gating at all** — it is a bare `NextAuth(authConfig).auth` with a static-asset matcher. All enforcement is per-handler. That is fine, but it means there is no chokepoint to add the capability to; all ten sites must change.
+- **`DOCTOR` is load-bearing.** The two `role !== "DOCTOR"` sites are the flow by which a doctor edits their own profile and submits changes for approval. Any model that collapses `DOCTOR` into a generic staff role breaks it.
+
+**User decision — 2026-08-14: keep the shipped enum, add a capability layer.** `ADMIN` / `DOCTOR` / `SECRETARY` stay as they are. Renaming the enum to the handoff's `Head Doctor` / `Clinic Manager` / `Staff` was **rejected**: it costs an enum migration, a reseed, every call site, and has no slot for `DOCTOR` without inventing a fourth role. UI-only relabelling was **rejected** too — two names for one concept is a maintenance trap.
+
+Mechanism, as decided:
+- One shared `canManageContent(user)` helper replaces all eight `ADMIN` checks. The two `DOCTOR` checks stay as they are — they express a different concept (profile ownership, not content management) and must not be folded in.
+- Plus a **per-user override column** on `User`. A derived-from-role helper alone does *not* satisfy the handoff, because granting a clinic manager access would still mean editing the helper and redeploying — exactly the code change the spec set out to avoid. The override, exposed in the admin UI, is what makes the requirement true.
+
+**Remaining before this is READY** — the survey above is not a full pass:
+- Read `src/lib/auth.config.ts` and the session callback: confirm what the session actually carries, and whether a new field propagates without re-login.
+- Confirm how `src/app/admin/layout.tsx` decides nav visibility. The handoff requires Staff see *no trace* of Blog/Doctors/Approvals — hidden, not disabled.
+- **Split this into two tasks.** A schema change plus ten call sites plus UI gating exceeds one task under the four-file rule: migration and helper first, then the call sites and nav.
 
 ---
 
-### TJ-006 — Decide the fate of the root icon source files
+### TJ-006 — Remove duplicate root icon files
 
-- **Status:** BACKLOG — no planning pass run; needs a user decision
-- **Branch:** assigned at planning pass
-- **Why:** `therapyjo_icons_no_bg/` (nine PNGs) and `therapyjo_icons_no_bg.zip` are tracked at the repo root and referenced by nothing in `src/`. They appear to be the source icons that the shipped `public/icons/*` were derived from. Split out of TJ-002, which deletes only assets with no plausible ongoing value.
+- **Status:** READY
+- **Branch:** `chore/remove-icon-duplicates`
+- **Why:** `therapyjo_icons_no_bg/` (nine PNGs) and `therapyjo_icons_no_bg.zip` are tracked at the repo root and referenced by nothing. They are **not** source art: all nine PNGs are byte-identical to the shipped `public/icons/*.png`, so deleting them loses nothing that is not already in the repo under the shipped names. Split out of TJ-002, which deliberately excluded them pending this check.
 
-**Needs a decision:** keep them at the root as source material, move them somewhere non-shipped, or delete them. Deleting source art is not a call the planner should make unilaterally, and the zip plus the folder are redundant with each other regardless.
+**Planning pass:** 2026-08-14 — corrected the premise this task was filed on. The original note assumed these were originals that `public/icons/*` were *derived* from, which would have made deletion a judgement call about source art. Hashed both sets: `md5sum` over the nine root PNGs and the nine `public/icons/*.png` produces **identical sorted digest sets**, so the shipped PNGs are these files renamed, not re-exported from them. The only assets with no root counterpart are the nine `public/icons/*.svg`, which this task does not touch. Confirmed `git ls-files | grep -i therapyjo_icons` returns exactly **10** tracked paths (nine PNGs plus the zip), and that `grep -rn "therapyjo_icons"` across `src/`, `public/`, `next.config.mjs`, `package.json`, `README.md`, and `Claude_Instructions.md` returns **zero** hits — nothing references the folder or the archive by name. Read `src/app/components/Services.tsx` and `src/app/components/Finder.tsx`: both consume the nine icons as root-absolute `/icons/*.png` strings resolved from `public/`, so neither can reach the root folder. **User decision, 2026-08-14: delete both.** Deletion only, no dependency implications.
+
+**Scope — delete only these:**
+- `therapyjo_icons_no_bg/` — all nine PNGs
+- `therapyjo_icons_no_bg.zip`
+
+**Do not touch:**
+- `public/icons/*` — **in use**, 18 files (nine PNG, nine SVG), consumed by `Services.tsx` and `Finder.tsx`
+- Anything else in the tree. This task deletes two root entries and changes no code.
+
+**Do not** rewrite git history — no `git filter-branch`, `git filter-repo`, or BFG. A normal deletion commit is the whole task, exactly as in TJ-002.
+
+**Instructions:**
+
+1. Re-confirm nothing references them before deleting:
+   ```
+   grep -rn "therapyjo_icons" src/ public/ next.config.mjs package.json README.md Claude_Instructions.md
+   ```
+   Expect zero results. If anything matches, stop and report — do not delete.
+2. Re-confirm the shipped PNGs are byte-identical, so the delete is provably lossless. Both digest lists must match:
+   ```
+   md5sum therapyjo_icons_no_bg/*.png | cut -d' ' -f1 | sort
+   md5sum public/icons/*.png | cut -d' ' -f1 | sort
+   ```
+   If any digest differs, **stop and report** — a root file that is not a duplicate is source art and falls outside this decision.
+3. Delete both:
+   ```
+   git rm -r therapyjo_icons_no_bg therapyjo_icons_no_bg.zip
+   ```
+
+**Verification:**
+- `npm run build` passes
+- `ls public/icons/ | wc -l` prints `18` — the shipped icons are untouched
+- `git status --short` shows exactly **10** `D` entries and nothing else. The tree is clean at handoff, so an eleventh entry means something outside Scope was touched — stop and report.
+- `grep -rn "/icons/" src/` still returns the same 18 hits as before the change (nine in `Services.tsx`, nine in `Finder.tsx`). No reference may be rewritten to compensate for a deletion.
+
+**Do not start a dev server.** The runtime render check on `/` is the planner's at VISUAL REVIEW, not the executor's.
+
+**Done when:**
+- [ ] The folder and the zip are deleted and staged — 10 files
+- [ ] `public/icons/*` is untouched; all 18 files present
+- [ ] Build passes; Services and Finder still render all nine icons on `/`
+- [ ] Git history was not rewritten
 
 ---
 
@@ -207,4 +276,6 @@ Findings reported by the executor, or surfaced during a pass, that fall outside 
 - The Project Profile still carries the bare note `- Logo: logo.jpg`. TJ-001's instructions said to preserve it, correctly — but once TJ-002 deletes the root `logo.jpg`, that line reads ambiguously, since the surviving file is `public/logo.jpg`. Not worth reopening TJ-001; fold `public/logo.jpg` into the next task that edits the profile. (Found during TJ-001 planner verification.)
 - ~~**Branches are unmerged.**~~ Resolved 2026-08-14: both merged to `master` with `--no-ff` after visual review. Merge policy is now recorded in the protocol.
 - **Hero entrance animation is slow to settle — needs checking against a production build.** During the TJ-002 visual review, a cold load of `/` showed the hero badge, headline, subtitle, and CTAs arriving over roughly half a minute, well after the nav and background image had painted. Every element was computed-visible (`opacity: 1`) when queried, so this is not the dead-`opacity:0` failure mode. The likely cause is Turbopack compiling the route on demand in dev, which would not occur in production — so this is an observation, not a confirmed defect. Verify against `npm run build && npm start` before filing it as a task. Unrelated to TJ-002, which only deleted unreferenced files.
+- **`master` is 8 commits ahead of `origin/master`; the user has chosen to hold.** Decision 2026-08-14: do not push yet. Nothing unpushed changes application behaviour — two merges, two task commits, two status commits, the protocol, and the earlier deploy fix — so there is no urgency, and holding lets a deploy wired to `master` fire once after the Reviews and Maps work lands rather than on a docs-only change. **Do not push without asking again.** The two task branches (`docs/sync-project-profile`, `chore/prune-root-assets`) stay local; their commits are already contained in the `--no-ff` merges, so nothing is lost by never pushing them.
+- **Google Cloud credentials are pending with the user** (as of 2026-08-14). Three values unblock TJ-003 and TJ-004 together: `GOOGLE_PLACES_API_KEY` (server-only), `NEXT_PUBLIC_GOOGLE_MAPS_EMBED_KEY` (browser-visible by design, referrer-restricted), and the clinic's Place ID. Two separate keys is deliberate — the embed key travels inside the iframe `src` and is public no matter what, so it must not be the key that bills Places API calls. When they arrive, add both to `.env`, confirm `.env` is still gitignored before committing anything, and run both passes.
 - ~~`package-lock.json` has one uncommitted line (`"hasInstallScript": true`)~~ — resolved 2026-08-14. Committed to `master` alongside the protocol, because a dirty tree makes every executor's `git status` verification step meaningless. Lesson for future dispatches: **the planner must confirm a clean tree before handing off**, or the executor inherits the planner's own uncommitted work on its branch.
