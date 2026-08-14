@@ -15,7 +15,7 @@ Two things that bear repeating here, because this is the file both agents open:
 
 | ID | Title | Status | Branch |
 |---|---|---|---|
-| TJ-001 | Sync the Project Profile with the shipped app | IN PROGRESS | `docs/sync-project-profile` |
+| TJ-001 | Sync the Project Profile with the shipped app | DONE | `docs/sync-project-profile` |
 | TJ-002 | Remove unreferenced root assets | IN PROGRESS | `chore/prune-root-assets` |
 | TJ-003 | Replace placeholder Google Maps embed | BLOCKED | `content/real-maps-embed` |
 | TJ-004 | Source Google Reviews from a real API | BLOCKED | `feat/google-reviews-api` |
@@ -26,8 +26,10 @@ Two things that bear repeating here, because this is the file both agents open:
 
 ### TJ-001 — Sync the Project Profile with the shipped app
 
-- **Status:** IN PROGRESS — dispatched 2026-08-14
+- **Status:** DONE — commit `3156a9a` on `docs/sync-project-profile`, unmerged
 - **Branch:** `docs/sync-project-profile`
+
+**Planner verification:** 2026-08-14 — read the full `git diff master..docs/sync-project-profile` rather than relying on the executor's report. Confirmed only `Claude_Instructions.md` changed (11 insertions, 4 deletions), and that the diff hunk opens at line 273 while the `## Project Profile` heading sits at line 267 — so every changed line falls inside Scope and nothing above the heading, including the new protocol section, was touched. Re-ran `npm run build` independently: exit 0. Working tree clean. All five instruction steps applied verbatim; the fields step 6 said to preserve are intact. One false alarm checked and cleared: the executor's report rendered the services line as `Dry Needling &amp; Acupuncture`, but `cat -A` confirms the file holds a literal `&` — the entity was an artifact of the report, not the commit.
 - **Why:** The `## Project Profile` block at the bottom of `Claude_Instructions.md` is the declared source of truth for all future work, but it describes an earlier version of the site. It says the app is English-only with no RTL (it is bilingual EN/AR with RTL), lists five services (there are nine), and names a 4K video as the hero background (the hero is a static WebP served through `next/image`). Any agent that trusts it will make wrong decisions about language handling and asset strategy.
 
 **Planning pass:** 2026-08-14 — read `src/app/page.tsx`, `src/app/components/SiteChrome.tsx`, `src/app/components/Hero.tsx`, the head and tail of `src/app/i18n/translations.ts`, and the `## Project Profile` block in `Claude_Instructions.md`. Confirmed: `translations.ts` carries both an `en` (line 2) and `ar` (line 181) tree, so the profile's "English (EN)" and "RTL: No" are both wrong. Confirmed `Hero.tsx:12` renders `/joint-manipulation.webp` via `next/image` and contains no `<video>`; the only video in the app is `/hero.mp4` in `src/app/login/page.tsx:72`. Corrected a claim carried over from the design handoff: the landing section order is split across two files — `page.tsx` renders the content sections, while `SiteChrome.tsx` supplies `GSAPAnimations`, `AccentHairline`, `Navbar`, `Footer`, `WhatsAppFloat`, and `BookingBar` around them. The profile text below reflects that split rather than presenting one flat list. Also confirmed `translations.ts` ends in an exported interface, so any future copy task must extend the type as well — captured in the Definition of Done, not here. No dependency implications. One file.
@@ -198,4 +200,6 @@ Two things that bear repeating here, because this is the file both agents open:
 Findings reported by the executor, or surfaced during a pass, that fall outside the scope of the task that turned them up. The planner triages these into tasks. **The executor does not write here** — it reports in conversation and the planner records.
 
 - `src/app/login/page.tsx:69` carries the comment `{/* Background video — same as landing hero */}`. Stale: the landing hero has been a static WebP since the redesign. A one-line comment fix, too small to file alone — fold it into the next task that touches `login/page.tsx`. (Found during the TJ-002 pass.)
+- The Project Profile still carries the bare note `- Logo: logo.jpg`. TJ-001's instructions said to preserve it, correctly — but once TJ-002 deletes the root `logo.jpg`, that line reads ambiguously, since the surviving file is `public/logo.jpg`. Not worth reopening TJ-001; fold `public/logo.jpg` into the next task that edits the profile. (Found during TJ-001 planner verification.)
+- **Branches are unmerged.** `docs/sync-project-profile` holds TJ-001 and is not on `master`. The protocol bars the executor from merging and is silent on the planner, so nothing merges without a user decision. Confirm whether completed task branches should be merged to `master`, opened as PRs, or left for manual review.
 - ~~`package-lock.json` has one uncommitted line (`"hasInstallScript": true`)~~ — resolved 2026-08-14. Committed to `master` alongside the protocol, because a dirty tree makes every executor's `git status` verification step meaningless. Lesson for future dispatches: **the planner must confirm a clean tree before handing off**, or the executor inherits the planner's own uncommitted work on its branch.
