@@ -17,7 +17,7 @@ Two things that bear repeating here, because this is the file both agents open:
 |---|---|---|---|
 | TJ-001 | Sync the Project Profile with the shipped app | DONE — merged `84aaa1c` | `docs/sync-project-profile` |
 | TJ-002 | Remove unreferenced root assets | DONE — merged `26cd5b5` | `chore/prune-root-assets` |
-| TJ-003 | Replace placeholder Google Maps embed | READY | `content/real-maps-embed` |
+| TJ-003 | Replace placeholder Google Maps embed | DONE — merged `cd6ee17` | `content/real-maps-embed` |
 | TJ-004 | Source Google Reviews from a real API | DONE — merged `643c558` | `feat/google-reviews-api` |
 | TJ-005 | Move content gating to a role capability | BACKLOG — decision resolved, pass pending | — |
 | TJ-006 | Remove duplicate root icon files | READY | `chore/remove-icon-duplicates` |
@@ -148,8 +148,18 @@ Two things that bear repeating here, because this is the file both agents open:
 
 ### TJ-003 — Replace placeholder Google Maps embed
 
-- **Status:** READY
+- **Status:** DONE — commit `25d08a8` on `content/real-maps-embed`, merged to `master` as `cd6ee17`
 - **Branch:** `content/real-maps-embed`
+
+**Planner verification:** 2026-08-14 — read the full diff rather than trusting the executor's report. One commit, one file, `M` only, exactly **1 insertion / 1 deletion**; `master` an ancestor, no history rewrite. Rather than eyeballing a 300-character URL, **byte-compared** the shipped `src` against the task's specified string programmatically — identical. Placeholder-fragment grep: zero hits. The other three attributes each present exactly once. Grepped for `allowfullscreen|width=|height=|style=`: zero hits, so none of Google's copied attributes were pasted in. Re-ran `npm run build` myself: exit **0**.
+
+**Visual review:** 2026-08-14 — performed on the branch against a **production** build, on both EN and AR.
+
+**The near-miss worth recording: port 3000 was already occupied by a server I did not start, and it was serving the *old* placeholder embed.** `npm start` failed with `EADDRINUSE` while `curl localhost:3000` still returned 200 — the exact shape of a trap, because the obvious move is to shrug and review against whatever answers on :3000. Doing so would have rendered the Swiefieh pin and **failed a task that was correct**. Confirmed the divergence directly: :3000 served `1d3384.5!2d35.87!3d31.95` with `0x0%3A0x0`, while the branch build on :3100 served `0x151ca1cd2ffd43a7`. Reviewed on :3100 and left the stranger process alone — it is the user's machine, not mine to kill. **Rule for future visual reviews: never assume the server answering on the default port is the one you just built. Assert the change is present in the served bytes before reviewing anything.**
+
+Result: the pin sits on the clinic, and the business card reads **Therapy Jo Physiotherapy Center**, *Az Zubayr Ben Al Awwam, Amman*, **4.9 (367)** — the count independently agreeing with the live Places data TJ-004 ships. Neighbours render as the Islamic hospital and Amman Rotana, not Swiefieh Village. Scripted the assertions rather than trusting the eye: real place ID present, null place ID absent, `getAttributeNames()` returns exactly `src, loading, referrerpolicy, title`, and the box measures 544×408 — ratio **1.333**, so the wrapper's `aspect-ratio: 4/3` still governs sizing and the decision to discard Google's `width`/`height` is confirmed correct in the rendered result, not just in theory.
+
+Applied the GSAP lesson from TJ-004 before concluding anything: the tab first reported `visibilityState: "hidden"`, so I re-checked with it genuinely visible — **61 rAF frames in 1s** and the entire ancestor chain up from the iframe at `opacity: 1`, including `.gsap-reveal-left`. Only then was the screenshot trustworthy. AR: `dir` flips to `rtl`, the grid mirrors, the map still resolves to the clinic, ratio holds at 1.333, and `scrollWidth > clientWidth` is **false** — no horizontal overflow. The card stays English-labelled, which is the documented `!1sen!2sjo` limitation in the planner notes, not a regression.
 - **Why:** `src/app/components/Location.tsx:14` uses a synthesized embed URL built from approximate coordinates (`!2d35.87!3d31.95`) with a null place ID (`0x0%3A0x0`). It shows no business card, and the pin does not land near the clinic — it lands in **Swiefieh, ~4 km away** (see the visual comparison in the planning pass). The design handoff flags this as needing the real embed.
 
 **Approach — final, 2026-08-14: the keyless share embed.** An earlier revision of this task proposed the Maps Embed API with a `NEXT_PUBLIC_GOOGLE_MAPS_EMBED_KEY`. **That is withdrawn.** The clinic's listing is published, so Google's own Share → Embed a map yields a working URL needing no API key, no Cloud project, and no billing. Strictly less machinery for the same result, and it keeps a browser-visible key out of the project altogether. The Cloud project is still needed for TJ-004, but **only** for the Places key — the Maps Embed API does not need enabling.
@@ -188,10 +198,10 @@ One file, one line, no dependency implications.
 **Visual review is mandatory and is the whole point of this task.** A wrong embed URL renders a grey box or a map of the wrong place; neither fails a build, and `npm run build` will pass either way. At VISUAL REVIEW the planner must load `/`, scroll to `#location`, and confirm the pin sits on the clinic *and* the business card reads "Therapy Jo Physiotherapy Center" — not merely that a map appeared.
 
 **Done when:**
-- [ ] The `src` is replaced and the other three attributes are untouched
-- [ ] Build passes; diff is exactly one line
-- [ ] No placeholder fragment (`0x0:0x0`, `35.87`, `31.95`) remains in the file
-- [ ] Visual review: pin on the clinic, business card showing the clinic name
+- [x] The `src` is replaced and the other three attributes are untouched
+- [x] Build passes; diff is exactly one line
+- [x] No placeholder fragment (`0x0:0x0`, `35.87`, `31.95`) remains in the file
+- [x] Visual review: pin on the clinic, business card showing the clinic name
 
 ---
 
@@ -678,4 +688,5 @@ Findings reported by the executor, or surfaced during a pass, that fall outside 
 - **Every live review is currently in English, which makes the mixed-language decision untested in production.** TJ-004 implements it as decided — original text always, `dir="auto"` on the quote and the name — but nothing on the site exercises the RTL-review-on-the-English-page path today, because Google returned `languageCode: "en"` for all five. The first Arabic review to enter the top five will be the first real test. Worth a deliberate look when it happens rather than discovering it from a screenshot. (Found during the TJ-004 pass.)
 - **The clinic's Google listing is the source of truth for the reviews section, and nobody on this project controls it.** The rating, the count, and which five reviews appear are all Google's to decide. This is the intended design — it is what makes the numbers honest — but it means the section's content can change without any deploy, and a bad review entering the top five will appear on the landing page automatically. The client should know that before launch. Pairs with the listing's website field still pointing at Facebook, above. (Found during the TJ-004 pass.)
 - **The map embed is hardcoded to English (`!1sen!2sjo`) and will not follow the EN/AR toggle.** Google fixes the embed's language in the URL, so the Arabic site gets an English-labelled map. In practice this matters less than it sounds — the rendered map already shows bilingual labels and the business card carries both the English and Arabic clinic names — which is why TJ-003 ships as a one-line change rather than growing a per-locale variant. If a fully Arabic map is wanted later, fetch the AR embed URL and swap on `useLanguage()`; `Location.tsx` is already a client component with `t` in scope, so the mechanism is there. File it as its own task if the client asks. (Found during the TJ-003 pass.)
+- **A stale server on port 3000 nearly caused a correct task to be failed.** During the TJ-003 visual review, `npm start` died with `EADDRINUSE` while `curl localhost:3000` cheerfully returned **200** — from a process this session did not start, serving a build old enough to still contain the placeholder embed. Reviewing there would have shown the Swiefieh pin and sent a correct task back to `READY`. **Standing rule: before any visual review, assert the change is present in the bytes the server is actually serving** — a one-line `curl … | grep` against the thing the task changed — rather than trusting that the process on the default port is the one you just built. Starting on a free port (`npx next start -p 3100`) sidesteps it entirely and avoids killing a process that belongs to the user. Related: the process on :3000 was left running deliberately; it is the user's machine and may be their own dev server. (Found during the TJ-003 visual review.)
 - ~~`package-lock.json` has one uncommitted line (`"hasInstallScript": true`)~~ — resolved 2026-08-14. Committed to `master` alongside the protocol, because a dirty tree makes every executor's `git status` verification step meaningless. Lesson for future dispatches: **the planner must confirm a clean tree before handing off**, or the executor inherits the planner's own uncommitted work on its branch.
