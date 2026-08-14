@@ -1,12 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
+import { canManageContent } from "@/lib/permissions";
 import { slugify } from "@/lib/slugify";
 
 // POST /api/blog/[id]/translate — spawn a linked draft in the other language
 export async function POST(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
     const session = await auth();
-    if (!session || (session.user as { role?: string })?.role !== "ADMIN") {
+    if (!session || !canManageContent(session.user)) {
         return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 

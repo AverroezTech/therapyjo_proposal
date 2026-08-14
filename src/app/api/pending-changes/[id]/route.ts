@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
+import { canManageContent } from "@/lib/permissions";
 
 const FIELD_MAP = {
     NAME: "name",
@@ -14,7 +15,7 @@ const FIELD_MAP = {
 // PATCH /api/pending-changes/[id] — approve (applies to the live profile) or reject
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
     const session = await auth();
-    if (!session || (session.user as { role?: string })?.role !== "ADMIN") {
+    if (!session || !canManageContent(session.user)) {
         return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 

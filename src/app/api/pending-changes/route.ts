@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
+import { canManageContent } from "@/lib/permissions";
 
 const FIELD_MAP = {
     NAME: "name",
@@ -16,7 +17,7 @@ type ChangeFieldKey = keyof typeof FIELD_MAP;
 // GET /api/pending-changes — pending approvals queue (admin)
 export async function GET() {
     const session = await auth();
-    if (!session || (session.user as { role?: string })?.role !== "ADMIN") {
+    if (!session || !canManageContent(session.user)) {
         return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 

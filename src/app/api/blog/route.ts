@@ -1,11 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
+import { canManageContent } from "@/lib/permissions";
 import { slugify } from "@/lib/slugify";
 
-async function requireAdmin() {
+async function requireContentManager() {
     const session = await auth();
-    if (!session || (session.user as { role?: string })?.role !== "ADMIN") {
+    if (!session || !canManageContent(session.user)) {
         return null;
     }
     return session;
@@ -23,7 +24,7 @@ async function uniqueSlug(base: string) {
 
 // GET /api/blog — list all posts (admin)
 export async function GET() {
-    const session = await requireAdmin();
+    const session = await requireContentManager();
     if (!session) {
         return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
@@ -38,7 +39,7 @@ export async function GET() {
 
 // POST /api/blog — create a new post
 export async function POST(req: NextRequest) {
-    const session = await requireAdmin();
+    const session = await requireContentManager();
     if (!session) {
         return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
