@@ -19,7 +19,8 @@ Two things that bear repeating here, because this is the file both agents open:
 | TJ-002 | Remove unreferenced root assets | DONE — merged `26cd5b5` | `chore/prune-root-assets` |
 | TJ-003 | Replace placeholder Google Maps embed | DONE — merged `cd6ee17` | `content/real-maps-embed` |
 | TJ-004 | Source Google Reviews from a real API | DONE — merged `643c558` | `feat/google-reviews-api` |
-| TJ-005 | Move content gating to a role capability | BACKLOG — decision resolved, pass pending | — |
+| TJ-005a | Name the content-management capability | READY | `refactor/content-capability-helper` |
+| TJ-005b | Grant content management per user | BLOCKED — needs a decision on the admin-area access boundary | — |
 | TJ-006 | Remove duplicate root icon files | DONE — merged `15b6942` | `chore/remove-icon-duplicates` |
 
 ---
@@ -588,8 +589,8 @@ Four files, one concern, no dependency change.
 
 ### TJ-005 — Move content gating to a role capability
 
-- **Status:** BACKLOG — no planning pass run
-- **Branch:** assigned at planning pass
+- **Status:** SPLIT — superseded by **TJ-005a** (READY) and **TJ-005b** (BLOCKED), both below. Kept for the survey, the user decision, and the pass that produced the split. Nothing executes against this ID.
+- **Branch:** none — see the two successors
 - **Why:** The design handoff specifies that Blog, Doctors, and Approvals are gated by a permission (`canManageContent`) attached to a role, *"so the client can grant a manager access without a code change"* — and explicitly not by a check against one named user. The schema has a flat `Role` enum (`ADMIN` / `DOCTOR` / `SECRETARY`) with no capability layer. Behaviour today is probably correct; the coupling is the problem.
 
 **Partial survey 2026-08-14** (not a full planning pass — see what remains, below). Read `src/middleware.ts`, `src/app/admin/layout.tsx`, `prisma/schema.prisma`, and grepped every handler under `src/app/api/blog/`, `src/app/api/doctor-profiles/`, and `src/app/api/pending-changes/`. Findings:
@@ -605,10 +606,125 @@ Mechanism, as decided:
 - One shared `canManageContent(user)` helper replaces all eight `ADMIN` checks. The two `DOCTOR` checks stay as they are — they express a different concept (profile ownership, not content management) and must not be folded in.
 - Plus a **per-user override column** on `User`. A derived-from-role helper alone does *not* satisfy the handoff, because granting a clinic manager access would still mean editing the helper and redeploying — exactly the code change the spec set out to avoid. The override, exposed in the admin UI, is what makes the requirement true.
 
-**Remaining before this is READY** — the survey above is not a full pass:
-- Read `src/lib/auth.config.ts` and the session callback: confirm what the session actually carries, and whether a new field propagates without re-login.
-- Confirm how `src/app/admin/layout.tsx` decides nav visibility. The handoff requires Staff see *no trace* of Blog/Doctors/Approvals — hidden, not disabled.
-- **Split this into two tasks.** A schema change plus ten call sites plus UI gating exceeds one task under the four-file rule: migration and helper first, then the call sites and nav.
+**Planning pass: 2026-08-14 — completed, and it split the task.** Read in full: `src/lib/auth.config.ts`, `src/lib/auth.ts`, `src/types/next-auth.d.ts`, `src/middleware.ts`, `src/app/admin/layout.tsx`, `prisma/schema.prisma`, `package.json`, `.gitignore`, and all eight ADMIN-gated handlers. Four things the partial survey got wrong or never reached:
+
+1. **The survey's claim that "`middleware.ts` does no role gating at all" is wrong, and it is the single most important fact about this task.** `middleware.ts` is indeed a bare `NextAuth(authConfig).auth` — but the gating lives in the `authorized()` callback inside `auth.config.ts`, which that middleware invokes. `auth.config.ts:57` reads `if (pathname.startsWith("/admin") && role !== "ADMIN") → redirect("/unauthorized")`. So there *is* a chokepoint, it fires before any page or handler, and it is keyed on `ADMIN` alone. A per-user override that only teaches the eight API handlers to say yes would still be bounced at the middleware: the grantee could never load `/admin/blog` to use it. **Any capability layer must be readable inside `authorized()`.**
+2. **`authorized()` runs on the Edge and cannot read the database.** `auth.config.ts` carries the comment "does NOT import Prisma — safe for Edge runtime / middleware", and that is load-bearing, not decorative. So a `canManageContent` column cannot be consulted at the middleware; the flag has to travel *in the JWT*. Which means `authorize()` in `auth.ts:36-41` must return it and the `jwt` callback must copy it.
+3. **A new session field does not propagate without re-login.** `auth.config.ts:7-13` enriches the token only under `if (user)` — true at sign-in and never again. `updateAge: 60 * 60` refreshes the token's expiry, not its claims. With `maxAge: 8 * 60 * 60`, granting a capability leaves the grantee's live session stale for up to eight hours. Not a blocker, but it is behaviour the admin UI has to state ("takes effect at next sign-in") rather than something to discover in support.
+4. **`src/app/admin/layout.tsx` does no role-based nav visibility whatsoever.** Every item — Dashboard, Employees, Patients, Notes, Blog, Doctors, Approvals — renders unconditionally for anyone who gets past the middleware. Today that is invisible because the middleware admits only `ADMIN`, so "hide from Staff" has no work to do. The moment a non-`ADMIN` can enter `/admin`, this file becomes the thing standing between a content manager and the patient records nav.
+
+Also confirmed: there is **no `prisma/migrations/` directory** — the project uses `prisma db push` (`package.json:11`), so a schema change means pushing against the live Supabase database, not a reviewable migration file. `src/generated/prisma` is gitignored, so regeneration produces no diff. And `src/types/next-auth.d.ts` already types `session.user.role` properly, which makes the `(session.user as { role?: string })?.role` cast at all ten sites redundant noise the helper removes for free.
+
+**Split, per the four-file and one-concern rules:** the naming of the capability is a pure refactor with no behaviour change and no decision attached — that is **TJ-005a**, below, and it is `READY`. Everything that changes who can do what — the column, the JWT claim, the middleware path split, the nav, the admin toggle — is **TJ-005b**, and it is `BLOCKED` on a decision only the user can make.
+
+---
+
+### TJ-005a — Name the content-management capability
+
+- **Status:** READY
+- **Branch:** `refactor/content-capability-helper`
+- **Why:** The rule "who may manage Blog, public Doctor profiles, and the Approvals queue" is spelled out eight times as the string comparison `role !== "ADMIN"`, in eight different files. There is nowhere to change it. This task gives the rule a name and one home — `canManageContent()` — **without changing who passes it**. It is the prerequisite that makes TJ-005b a two-line change to one function instead of an eight-file edit under a security-relevant decision. Split out of TJ-005.
+
+**Planning pass:** 2026-08-14 — see the TJ-005 pass above for the files read; this task is carved from it. Specific to this piece: confirmed all eight sites are byte-identical in shape, and that the predicate they encode is *exactly* `role === "ADMIN"` with no site-local variation — so a helper returning `user?.role === "ADMIN"` is provably behaviour-preserving today. Confirmed `src/lib/permissions.ts` does not exist. Confirmed `requireAdmin` appears exactly **12 times** across four files (one definition plus two call sites each) and **nowhere else** in `src/`. Confirmed the two `role !== "DOCTOR"` sites are a different concept (profile ownership) and stay untouched. Baseline on `master`: tree clean, `npm run build` exit **0**, and `npx eslint` over all eight handlers exit **0** — so any lint failure the executor sees is its own, not inherited.
+
+**Deliberate exception to the four-file rule, recorded rather than ignored:** this touches nine files. Splitting it further is worse, not better — a half-migrated codebase where some content handlers use the helper and others still inline the string is a genuine review hazard, and the concept being moved is singular. The diff is one new 12-line file plus the same two-line substitution repeated eight times.
+
+**Scope — touch only these:**
+- `src/lib/permissions.ts` — **new file**
+- `src/app/api/blog/route.ts`
+- `src/app/api/blog/[id]/route.ts`
+- `src/app/api/blog/[id]/translate/route.ts`
+- `src/app/api/doctor-profiles/route.ts`
+- `src/app/api/doctor-profiles/[id]/route.ts`
+- `src/app/api/doctor-profiles/reorder/route.ts`
+- `src/app/api/pending-changes/route.ts`
+- `src/app/api/pending-changes/[id]/route.ts`
+
+**Do not touch:**
+- `prisma/schema.prisma` — no column in this task. The override is TJ-005b.
+- `src/lib/auth.config.ts`, `src/lib/auth.ts`, `src/middleware.ts`, `src/types/next-auth.d.ts` — no session or middleware change in this task.
+- `src/app/admin/**` — no UI change in this task.
+- `src/app/api/doctor-profiles/me/route.ts:8` and `src/app/api/pending-changes/route.ts:35` — both are `role !== "DOCTOR"`. **In-use lookalikes.** They gate a doctor editing their own profile and submitting it for approval. They express profile *ownership*, not content management, and folding either into `canManageContent` breaks the doctor self-service flow. Leave both exactly as they are.
+- The `role === "ADMIN"` checks under `src/app/api/employees/**` and `src/app/api/reservations/**` — staff administration and clinical data, not content. Out of scope.
+
+**Instructions:**
+
+1. Create `src/lib/permissions.ts` with exactly this content:
+   ```ts
+   import type { Session } from "next-auth";
+
+   /**
+    * May this user manage public content — Blog posts, public Doctor profiles,
+    * and the Approvals queue?
+    *
+    * The rule lives here rather than inline at each handler so it can be granted
+    * without a code change at every call site. Today it derives from the role;
+    * a per-user override is TJ-005b.
+    */
+   export function canManageContent(
+       user: Session["user"] | undefined | null
+   ): boolean {
+       return user?.role === "ADMIN";
+   }
+   ```
+   No Prisma import, no runtime import at all — the type import is erased at compile time. This keeps the file usable from Edge middleware, which TJ-005b needs.
+
+2. In **each** of the eight handler files, add the import immediately below the existing `import { auth } from "@/lib/auth";` line:
+   ```ts
+   import { canManageContent } from "@/lib/permissions";
+   ```
+
+3. In **each** of the eight handler files, replace this exact line:
+   ```ts
+       if (!session || (session.user as { role?: string })?.role !== "ADMIN") {
+   ```
+   with:
+   ```ts
+       if (!session || !canManageContent(session.user)) {
+   ```
+   It occurs **once per file**. In `src/app/api/pending-changes/route.ts` there is a second, similar line ending `!== "DOCTOR"` at line 35 — match on the `"ADMIN"` literal so you edit the right one, and leave the `"DOCTOR"` line untouched.
+
+4. Rename the now-misleading local helper. In the four files that define it — `api/blog/route.ts`, `api/blog/[id]/route.ts`, `api/doctor-profiles/route.ts`, `api/doctor-profiles/[id]/route.ts` — rename `requireAdmin` to `requireContentManager`, at its definition and at both call sites in each file. That is 3 occurrences per file, 12 in total, and `requireAdmin` appears nowhere else in `src/`. A function still called `requireAdmin` that no longer checks for admin is the exact coupling this task exists to remove.
+
+5. Do **not** change any response body, status code, or control flow. Every one of these sites returns `401` with `{ error: "Unauthorized" }` (or `null` from the local helper, which its callers turn into that same 401). All of that stays byte-identical.
+
+**Verification:**
+- `npm run build` passes.
+- `npx eslint src/lib/permissions.ts src/app/api/blog/route.ts "src/app/api/blog/[id]/route.ts" "src/app/api/blog/[id]/translate/route.ts" src/app/api/doctor-profiles/route.ts "src/app/api/doctor-profiles/[id]/route.ts" src/app/api/doctor-profiles/reorder/route.ts src/app/api/pending-changes/route.ts "src/app/api/pending-changes/[id]/route.ts"` exits **0**. All nine were clean on `master`, so any finding is task-generated. **Do not run `npm run lint`** — `master` fails it with 76 pre-existing problems and it can only produce a false failure.
+- `grep -rn 'role !== "ADMIN"' src/app/api/blog src/app/api/doctor-profiles src/app/api/pending-changes` returns **zero** hits.
+- `grep -rn "requireAdmin" src/` returns **zero** hits; `grep -rc "requireContentManager"` over the four defining files returns **3** each.
+- **The regression that matters:** `grep -rn 'role !== "DOCTOR"' src/` still returns exactly **two** hits — `src/app/api/doctor-profiles/me/route.ts` and `src/app/api/pending-changes/route.ts`. If either is gone, a doctor can no longer read or submit their own profile, and the build will not tell you.
+- `git status --short` shows exactly **9** entries: one `A` (`src/lib/permissions.ts`) and eight `M`. The tree is clean at handoff, so a tenth entry means something outside Scope was touched — stop and report.
+- Sanity-read your own diff for `canManageContent(session.user)` and confirm you never wrote `canManageContent(session)`. Both compile under the optional-chaining signature; only one is correct, and the wrong one silently denies **everyone**, turning the whole CMS into a 401. The build cannot catch this.
+
+**Do not start a dev server.** The runtime check on the admin CMS is the planner's at VISUAL REVIEW.
+
+**Done when:**
+- [ ] `src/lib/permissions.ts` exists and exports `canManageContent`, deriving from the role and importing nothing at runtime
+- [ ] All eight content handlers gate on the helper; no `"ADMIN"` string literal survives in them
+- [ ] `requireAdmin` is gone; the two `DOCTOR` ownership checks are untouched
+- [ ] Build and scoped lint pass; the diff is exactly nine files
+- [ ] Visual review: admin CMS Blog list, Doctors list, and Approvals badge all still load for an ADMIN
+
+---
+
+### TJ-005b — Grant content management per user
+
+- **Status:** BLOCKED — needs a decision on the admin-area access boundary
+- **Branch:** assigned once unblocked
+- **Why:** TJ-005a names the capability but leaves it derived from the role, so granting a clinic manager access still means editing the helper and redeploying — the exact code change the handoff set out to avoid. This task makes the grant real: a per-user override, honoured at the middleware, exposed in the admin UI. Split out of TJ-005.
+
+**The blocker — a product decision with a security edge, for the user:**
+
+`/admin` is one path prefix guarding two very different things. Blog, Doctors, and Approvals are public marketing content. `/admin/patients`, `/admin/employees`, and `/admin/notes` are patient records, clinical intake, SOAP notes, and staff accounts. Right now one rule covers both: `role === "ADMIN"`.
+
+The moment a secretary can hold `canManageContent`, that rule has to split, or granting someone the right to write a blog post also hands them every patient file in the clinic. So, before this can be planned:
+
+1. **Should a content grant admit its holder to `/admin` at all?** If yes, `authorized()` must gate `/admin/blog`, `/admin/doctors`, and `/admin/approvals` on `ADMIN || canManageContent` while every other `/admin` path stays `ADMIN`-only — and `admin/layout.tsx` must hide the Dashboard, Employees, Patients, and Notes nav from a content-only holder, per the handoff's "no trace" requirement. The alternative is a separate `/content` route tree, which is cleaner to reason about but a much larger move.
+2. **Who may grant it?** Presumably `ADMIN` only, from the employee edit screens. Confirm.
+3. **Is the eight-hour lag acceptable?** A grant lands in the JWT at sign-in, so it does not reach a user already logged in until they sign out and back in (session `maxAge` is 8h). The workable alternative — bumping a session version, or forcing re-auth on change — is real work and should be decided, not defaulted into.
+
+Also to settle before this is `READY`, both consequences of facts the pass established rather than open questions: applying the column means running `prisma db push` against the **live Supabase database** (there is no migrations directory), which is a production write and needs the user's go-ahead in its own right; and `src/types/next-auth.d.ts` must be extended for both `Session["user"]` and `JWT`, or the flag will not typecheck anywhere it is read.
 
 ---
 
@@ -696,6 +812,10 @@ Findings reported by the executor, or surfaced during a pass, that fall outside 
   **The outstanding item survives the push and is now live-facing:** `GOOGLE_PLACES_API_KEY` and `GOOGLE_PLACES_PLACE_ID` exist only in gitignored `.env`, so the push did **not** carry them. Any host deploying from this remote will render the Reviews section in its `available: false` state — header plus the Google CTA, no rating and no quotes — until both are set in that host's environment. It degrades rather than breaking, and it never fabricates content, which is exactly what TJ-004's failure path was designed for. Also note `tasks.md` is now on the remote and contains the developer's personal Google account address in the ownership note below; fine for a private repo, worth knowing before the repo is ever made public or handed to the clinic.
 
   The three task branches (`docs/sync-project-profile`, `chore/prune-root-assets`, `feat/google-reviews-api`, plus `content/real-maps-embed` and `chore/remove-icon-duplicates`) were deliberately **not** pushed — their commits are already contained in the `--no-ff` merges, so nothing is lost by leaving them local. **This changed materially when TJ-004 merged** — the original reasoning was that nothing unpushed altered application behaviour. That is no longer true: `643c558` replaces the Reviews section's content with a live API call. Pushing now would deploy real reviews *and* require `GOOGLE_PLACES_API_KEY` and `GOOGLE_PLACES_PLACE_ID` to exist in the host's environment. They are in local `.env`, which is gitignored and therefore **not** carried by a push — without them the section degrades to the CTA-only state rather than breaking, but it will not show reviews. Set both in the host's environment variables before or alongside the first push. **Do not push without asking again.** The two task branches (`docs/sync-project-profile`, `chore/prune-root-assets`) stay local; their commits are already contained in the `--no-ff` merges, so nothing is lost by never pushing them.
+- **A survey is not a planning pass, and the TJ-005 partial survey proves why.** It recorded "`middleware.ts` does no role gating at all — all enforcement is per-handler," and concluded from that "there is no chokepoint; all ten sites must change." Both halves were wrong. `middleware.ts` really is a bare `NextAuth(authConfig).auth`, but the gating lives in `authorized()` inside `auth.config.ts`, one import away, and it redirects every non-`ADMIN` off `/admin` before a handler is ever reached. The survey read the file the concern is *named* after and stopped. Had the task shipped on that reading, the override would have been added to eight handlers and the grantee still could not have loaded the page. **Follow the import when a file turns out to be a one-line re-export.** (Found during the TJ-005 pass.)
+- **`/admin` guards patient records and marketing content behind the same rule, and TJ-005b has to break that open.** `authorized()` gates the whole prefix on `role === "ADMIN"`, so today Blog/Doctors/Approvals and `/admin/patients` (clinical intake, SOAP notes, patient files) are equally protected by accident of sharing a path. Any per-user content grant must split that gate, or "let the manager write blog posts" silently grants the clinic's patient files. Named as the blocker on TJ-005b; flagging it here too because it outlives that task — the route tree is the real problem and it will resurface with the next role. (Found during the TJ-005 pass.)
+- **There is no `prisma/migrations/` directory.** Schema changes go through `prisma db push` (`package.json:11`) straight into the live Supabase database. So "add a column" is a production write with no reviewable migration artifact and no down path, not a file in a diff. Worth the user's explicit go-ahead each time, and worth considering whether the project should adopt real migrations before the schema changes again. (Found during the TJ-005 pass.)
+- **Session claims are set at sign-in and never refreshed.** `auth.config.ts:7-13` enriches the JWT only under `if (user)`, which is true exactly once per login; `updateAge` extends the token's life without re-reading anything. With `maxAge: 8h`, any future permission, role, or status change is invisible to an already-logged-in user for up to a workday. This also means **deactivating a user does not end their session** — `authorize()` checks `status !== "ACTIVE"` at login only, so a resigned employee keeps working access until their token expires. Not part of any queued task; probably should be. (Found during the TJ-005 pass.)
 - **The clinic's Google listing points its website field at `facebook.com`.** Observed 2026-08-14 while verifying the Place ID. Once this site launches, that field should point at the real domain — otherwise the listing keeps sending traffic to Facebook. Not a code task and not something the planner can action; it needs someone with access to the Google Business listing. Flagged to the user 2026-08-14.
 - **The Cloud project will be owned by the developer's personal Google account** (`ahamami02@gmail.com`) — user decision, 2026-08-14, chosen over the clinic's account for speed. Consequence worth writing down now rather than rediscovering at handover: the project, the Places API key, and the billing all sit under a personal account that the clinic does not control, while the Google Business listing sits under an account that *does*. If the clinic ever takes the site over, the key must be reissued under their project or the reviews section stops working. Not a problem today; a known debt.
 - **Google Cloud credentials: scope reduced to one key** (2026-08-14). The original plan needed three values. Two are now closed: the Place ID was obtained from the public finder, and TJ-003 switched to the keyless share embed, which **eliminates `NEXT_PUBLIC_GOOGLE_MAPS_EMBED_KEY` entirely** — do not create it, and do not enable the Maps Embed API. ~~Only `GOOGLE_PLACES_API_KEY` remains outstanding.~~ **Closed 2026-08-14** — the key is in `.env` and verified live (HTTP 200 against Place Details for the clinic's Place ID). All three original values are now accounted for and no Google credential blocks any task.
