@@ -22,6 +22,7 @@ Two things that bear repeating here, because this is the file both agents open:
 | TJ-005a | Name the content-management capability | DONE — merged `bc5dd2b` | `refactor/content-capability-helper` |
 | TJ-005b | Grant content management per user | BLOCKED — needs a decision on the admin-area access boundary | — |
 | TJ-006 | Remove duplicate root icon files | DONE — merged `15b6942` | `chore/remove-icon-duplicates` |
+| TJ-007 | End a resigned employee's session immediately | READY | `bugfix/revoke-session-on-resign` |
 
 ---
 
@@ -830,6 +831,92 @@ All nine icon URLs return **200**. In the rendered page: **0 broken images out o
 
 ---
 
+### TJ-007 — End a resigned employee's session immediately
+
+- **Status:** READY
+- **Branch:** `bugfix/revoke-session-on-resign`
+- **Why:** Marking an employee as gone does not log them out. `authorize()` (`src/lib/auth.ts:27`) checks `status !== "ACTIVE"` **at sign-in only**, and the `jwt` callback enriches the token only under `if (user)` — true once per login and never again. So a user marked `RESIGNED` keeps a fully valid session, and with `maxAge: 8 * 60 * 60` they retain working access to patient records, clinical notes, and the CMS for up to eight hours after being removed. "Resigned" is the app's own delete: `DELETE /api/employees/doctors/[id]` and `.../secretaries/[id]` are soft deletes that set `status: "RESIGNED"`, and the `PUT` handlers accept `status` directly. There is no hard delete. Requested by the user 2026-08-14.
+
+**Planning pass:** 2026-08-14 — read `src/lib/auth.ts`, `src/lib/auth.config.ts`, `src/middleware.ts`, `src/app/api/auth/[...nextauth]/route.ts`, `src/app/providers.tsx`, `src/app/admin/layout.tsx`, `src/types/next-auth.d.ts`, `tsconfig.json`, both `api/employees/*/[id]/route.ts` handlers, and — because the mechanism depends on library internals rather than on our own code — `@auth/core`'s `src/index.ts`, `src/lib/actions/session.ts`, `jwt.d.ts`, and `next-auth/lib/index.js`. Five things established:
+
+1. **Returning `null` from the `jwt` callback is a real revocation, not just a rejection.** In `@auth/core/src/lib/actions/session.ts`, when `callbacks.jwt(...)` returns non-null the session cookie is re-signed and re-set; when it returns `null` the `else` branch runs `response.cookies?.push(...sessionStore.clean())` — **the cookie is actively cleared**. So a revoked user is not merely denied, they are signed out. The type permits it: `jwt?: (params) => Awaitable<JWT | null>`, and `NextAuthConfig` widens `callbacks` without narrowing `jwt`, so `return null` typechecks.
+2. **Both the middleware and `auth()` invoke the `jwt` callback** — `next-auth/lib/index.js` has `auth()` and `handleAuth()` (the middleware path) both call `getSession(headers, config)`, which spreads `...config.callbacks`. This is the fact that decides the design: **the check cannot go in `auth.config.ts`**, because that file is imported by Edge middleware and importing Prisma there breaks it. It must go in `auth.ts`, which is `server-only` and Node.
+3. **`/api/auth/session` is served by the Node instance** — `src/app/api/auth/[...nextauth]/route.ts` re-exports `handlers` from `@/lib/auth`. So the client's own session endpoint runs the overridden callback, revokes, and clears the cookie. `src/app/providers.tsx` mounts `SessionProvider`, which refetches on window focus, and `admin/layout.tsx:130-134` already redirects to `/login` on `status === "unauthenticated"` plus re-checks `/api/auth/session` on `visibilitychange`. **The client-side logout path already exists** — this task only has to make the server say no.
+4. **The JWT type augmentation in `src/types/next-auth.d.ts` is inert, and the executor will trip on it.** It declares `module "next-auth/jwt"`, but `next-auth/jwt.d.ts` is a bare `export * from "@auth/core/jwt"` — a re-export, so the merge never reaches the interface that actually types the `token` parameter. `JWT extends Record<string, unknown>`, which is why *writing* `token.id = …` compiles anywhere while *reading* `token.id` yields `unknown`. Reading it therefore needs an explicit cast, supplied verbatim below. (This also explains the `(session.user as { role?: string })` casts littered across the codebase.)
+5. **`tsconfig.json` has `"strict": false`**, so nullability will not fight you here — but `unknown` is still not assignable to `string` under any setting, which is exactly why step 4 matters.
+
+**What "immediately" honestly means here, because the middleware is Edge and cannot be part of it.** After this lands, a resigned user's *next request* gets: every API route 401 (all of them call `auth()`), `/api/auth/session` returns null and clears their cookie, and the admin shell redirects them to `/login`. Data access stops on the very next request. The one gap is that Edge middleware, running the un-overridden callback, would still wave a stale cookie through to a page *shell* until any Node-side session read clears it — which the mounted `SessionProvider` triggers on focus anyway. Closing that last gap needs Node-runtime middleware, a much larger architectural change; noted for the planner, deliberately out of scope here.
+
+**Scope — touch only this:**
+- `src/lib/auth.ts`
+
+**Do not touch:**
+- `src/lib/auth.config.ts` — **the critical one.** It is Edge-safe by design and the comment on line 3 says so. Putting the lookup here imports Prisma into the middleware bundle and breaks every route in the app. If it seems like the natural home for this, that instinct is the trap.
+- `src/middleware.ts`, `src/types/next-auth.d.ts`, `prisma/schema.prisma` — no middleware, type, or schema change. Do **not** try to fix the inert augmentation from finding 4; cast at the read site as instructed and report the augmentation separately.
+- `src/app/admin/layout.tsx` and `src/app/providers.tsx` — the client-side logout path already works. Nothing to add.
+- The `api/employees/**` handlers — they already set `RESIGNED` correctly. This task changes what a session does about it, not how it is set.
+
+**Instructions:**
+
+1. In `src/lib/auth.ts`, find this exact line:
+   ```ts
+       ...authConfig,
+   ```
+   and insert the following block immediately after it, before the `providers: [` line:
+   ```ts
+       callbacks: {
+           ...authConfig.callbacks,
+           // Re-check the account on every server-side session read. authorize()
+           // only runs at sign-in, so without this a user marked RESIGNED keeps a
+           // valid session until the token expires — up to 8 hours of access after
+           // being removed. Returning null revokes the session and clears the
+           // cookie (see @auth/core session action), so they are signed out rather
+           // than merely denied.
+           //
+           // This lives here and not in auth.config.ts on purpose: that file is
+           // imported by Edge middleware and must stay free of Prisma.
+           async jwt({ token, user }) {
+               if (user) {
+                   // Sign-in. authorize() has already proved the account is ACTIVE.
+                   token.role = (user as { role: string }).role;
+                   token.id = user.id;
+                   return token;
+               }
+
+               const userId = (token.id as string | undefined) ?? token.sub;
+               if (!userId) return null;
+
+               const current = await prisma.user.findUnique({
+                   where: { id: userId },
+                   select: { status: true },
+               });
+               if (!current || current.status !== "ACTIVE") return null;
+
+               return token;
+           },
+       },
+   ```
+2. The two lines in the `if (user)` branch are copied verbatim from `auth.config.ts:10-11` and are known to compile — do not "improve" the casts. The `as string | undefined` on `token.id` is **required**, not defensive: reading it yields `unknown` (see the planning pass, finding 4) and Prisma will not accept that.
+3. Add nothing else. `prisma` is already imported at `src/lib/auth.ts:5` and `authConfig` at line 6 — no new imports, no new packages.
+
+**Verification:**
+- `npm run build` passes, and the output still lists `ƒ Proxy (Middleware)`. If the middleware vanishes or the build errors mentioning Prisma, `bcrypt`, or Node built-ins, the check landed in the Edge path — revert and report.
+- `npx eslint src/lib/auth.ts` exits **0**. It was clean on `master`, so any finding is task-generated. **Do not run `npm run lint`** — `master` fails it with 76 pre-existing problems.
+- **The regression that matters:** `grep -c "prisma" src/lib/auth.config.ts` returns **0**, and `git diff --name-only master` does **not** list `src/lib/auth.config.ts`. Edge purity is the one thing this task can break catastrophically, and the build may well pass while it is broken.
+- `grep -n "status !== \"ACTIVE\"" src/lib/auth.ts` returns **two** hits — the original in `authorize()` at the sign-in gate, and the new one in the `jwt` callback. The first must survive: it is what stops a resigned user from logging back *in*, which this task does not replace.
+- `git status --short` shows exactly **one** `M` entry, `src/lib/auth.ts`. The tree is clean at handoff.
+
+**Do not start a dev server, and do not change any employee's status in the database.** The runtime proof requires marking a real account `RESIGNED` against live Supabase; that is the planner's at VISUAL REVIEW, with the user's agreement on which account to use.
+
+**Done when:**
+- [ ] `src/lib/auth.ts` re-validates the account on every non-sign-in `jwt` invocation and returns `null` when it is missing or not `ACTIVE`
+- [ ] `auth.config.ts` is untouched and still Prisma-free; middleware still builds as Edge
+- [ ] The sign-in gate in `authorize()` is unchanged
+- [ ] Build and scoped lint pass; the diff is exactly one file
+- [ ] Visual review: an ACTIVE user's session survives normal use, and an account flipped to `RESIGNED` is signed out on its next request
+
+---
+
 ## Notes for the planner
 
 Findings reported by the executor, or surfaced during a pass, that fall outside the scope of the task that turned them up. The planner triages these into tasks. **The executor does not write here** — it reports in conversation and the planner records.
@@ -846,6 +933,8 @@ Findings reported by the executor, or surfaced during a pass, that fall outside 
   **The outstanding item survives the push and is now live-facing:** `GOOGLE_PLACES_API_KEY` and `GOOGLE_PLACES_PLACE_ID` exist only in gitignored `.env`, so the push did **not** carry them. Any host deploying from this remote will render the Reviews section in its `available: false` state — header plus the Google CTA, no rating and no quotes — until both are set in that host's environment. It degrades rather than breaking, and it never fabricates content, which is exactly what TJ-004's failure path was designed for. Also note `tasks.md` is now on the remote and contains the developer's personal Google account address in the ownership note below; fine for a private repo, worth knowing before the repo is ever made public or handed to the clinic.
 
   The three task branches (`docs/sync-project-profile`, `chore/prune-root-assets`, `feat/google-reviews-api`, plus `content/real-maps-embed` and `chore/remove-icon-duplicates`) were deliberately **not** pushed — their commits are already contained in the `--no-ff` merges, so nothing is lost by leaving them local. **This changed materially when TJ-004 merged** — the original reasoning was that nothing unpushed altered application behaviour. That is no longer true: `643c558` replaces the Reviews section's content with a live API call. Pushing now would deploy real reviews *and* require `GOOGLE_PLACES_API_KEY` and `GOOGLE_PLACES_PLACE_ID` to exist in the host's environment. They are in local `.env`, which is gitignored and therefore **not** carried by a push — without them the section degrades to the CTA-only state rather than breaking, but it will not show reviews. Set both in the host's environment variables before or alongside the first push. **Do not push without asking again.** The two task branches (`docs/sync-project-profile`, `chore/prune-root-assets`) stay local; their commits are already contained in the `--no-ff` merges, so nothing is lost by never pushing them.
+- **The `next-auth/jwt` module augmentation in `src/types/next-auth.d.ts` does nothing.** It augments `next-auth/jwt`, but that module is a bare `export * from "@auth/core/jwt"`, so the declaration merge never reaches the interface that types the `token` parameter. `JWT extends Record<string, unknown>`, which is why writing `token.id = …` compiles while reading it yields `unknown`. The `Session` half of the same file *does* work. This is the real reason for the `(session.user as { role?: string })` casts everywhere — they were never redundant defensiveness, the types genuinely are not there for the JWT. Fixing it means augmenting `@auth/core/jwt` instead; worth its own task, and it would let a future capability flag be read off the token without casting. (Found during the TJ-007 pass.)
+- **Edge middleware cannot enforce anything that needs the database, and that shapes every auth task in this project.** `auth.config.ts` is imported by `middleware.ts` and must stay Prisma-free, yet `next-auth`'s middleware path calls the same `jwt` callback the Node instance does. So any DB-backed rule — session revocation (TJ-007), a per-user capability (TJ-005b) — can only be enforced Node-side, with the middleware running a weaker check on whatever the cookie already carries. The general shape of the fix is always the same: put the authoritative check in `auth.ts`, and rely on the cookie being cleared to bring the middleware back into line on the next request. Node-runtime middleware would collapse the two into one chokepoint and is probably the right long-term move. (Found during the TJ-007 pass.)
 - **When a refactor risks collapsing two concepts, assert the *other* concept still fails.** TJ-005a's danger was `canManageContent` quietly absorbing the two `DOCTOR` ownership checks. Every planned check — build, lint, greps, the three content endpoints returning 200 — passes identically whether or not that happened. The check that actually settled it was `GET /api/doctor-profiles/me` returning **401 to an ADMIN**, i.e. proving the doctor-only gate still *rejects* the role that content management admits. Grepping that a line still exists proves it was not deleted; it does not prove it still means something. **Build the negative case into the Verification block, not just the positive one.** (Found during the TJ-005a visual review.)
 - **An empty API response conflates "no data" with "data filtered out," and I read it wrong.** `/api/public/doctors` returned `[]`, and I recorded in this file that the database held zero `DoctorProfile` rows. It holds **three** — all `hidden: true`, and the public endpoint filters on `hidden: false`. The admin endpoint, filtering only on `archived`, showed all three at once. The corrected state of the live database, worth knowing independently: **3 doctor profiles, all named "test", all hidden, with placeholder screenshots as photos**, and **1 blog post titled "Test", status ARCHIVED**. None of it reaches the public site, which is why the landing page shows "Team profiles coming soon" — but it is test data sitting in the production database and should be cleaned out before launch. **Never infer the shape of the data from an endpoint that filters it.** (Found during the TJ-005a visual review.)
 - **A logged-out visual review cannot review an authenticated surface, and it will look like it passed.** Every check available without a session — public page renders, no broken images, admin routes redirect, no 500s — comes back green whether the CMS works or is a uniform 401, because none of them ever reach the code under test. TJ-005a's whole risk lives behind the login. **When a task's blast radius is authenticated, credentials are part of the review setup, not an optional extra**; establish them before dispatching, not after the executor has finished. Related: the seeded `admin`/`admin123` in `prisma/seed.ts:28` no longer works against the live database, so nothing in the repo can log itself in. (Found during the TJ-005a visual review.)
