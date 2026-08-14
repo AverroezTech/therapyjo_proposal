@@ -23,6 +23,14 @@ Two things that bear repeating here, because this is the file both agents open:
 | TJ-005b | Grant content management per user | BLOCKED — needs a decision on the admin-area access boundary | — |
 | TJ-006 | Remove duplicate root icon files | DONE — merged `15b6942` | `chore/remove-icon-duplicates` |
 | TJ-007 | End a resigned employee's session immediately | DONE — merged `a1af675` | `bugfix/revoke-session-on-resign` |
+| TJ-008 | Dashboard / reservations — reported issues | SPLIT — see TJ-008a, TJ-008b | — |
+| TJ-008a | Create a patient without leaving the reservation form | READY | `feat/inline-patient-create` |
+| TJ-008b | Allow a session's state to be reverted | READY | `feat/revert-session-status` |
+| TJ-009 | Employees / doctors — reported issues | BACKLOG — needs a pass, splits further | — |
+| TJ-010 | Employees / secretaries — reported issues | BACKLOG — needs a pass, splits further | — |
+| TJ-011 | Patients — reported issues | BACKLOG — needs a pass, splits further | — |
+| TJ-012 | Blog — hard delete a post | BACKLOG — needs a pass | — |
+| TJ-013 | Doctor profiles (public site) — hard delete | BACKLOG — needs a pass | — |
 
 ---
 
@@ -933,6 +941,395 @@ All nine icon URLs return **200**. In the rendered page: **0 broken images out o
 - [x] The sign-in gate in `authorize()` is unchanged
 - [x] Build and scoped lint pass; the diff is exactly one file
 - [x] Visual review: an ACTIVE user's session survives normal use, and an account flipped to `RESIGNED` is signed out on its next request
+
+---
+
+## User-reported issues — triage, 2026-08-15
+
+The user reported 17 issues across five admin surfaces. Every one was checked against the code and against the live database before being filed. **Fifteen are real, one was already half-built, and one is misdiagnosed but still worth fixing.** The verification that matters is recorded per task; the findings that shape more than one task are here.
+
+**Foreign-key delete rules, read from the live database.** Every hard-delete request in this batch runs into one of these, and none of them are visible in `schema.prisma` at a glance:
+
+| Constraint | On delete | What it means |
+|---|---|---|
+| `Reservation_patientId_fkey` | **RESTRICT** | Deleting a patient with any reservation **fails at the database**. Reservations must go first. |
+| `Reservation_doctorId_fkey` | **RESTRICT** | Same for a doctor. A doctor who has ever been booked cannot be deleted without deciding what happens to the sessions. |
+| `Note_doctorId_fkey` | **RESTRICT** | Same again, for general notes. |
+| `ClinicalIntake_patientId_fkey` | CASCADE | Goes automatically with the patient. |
+| `PatientFile_patientId_fkey` | CASCADE | Goes automatically with the patient. |
+| `SOAPNote_reservationId_fkey` | CASCADE | Goes automatically with the reservation. |
+| `PendingChange_doctorId_fkey` | CASCADE | Goes automatically with the doctor profile. |
+| `DoctorProfile_userId_fkey` | SET NULL | Deleting a login account orphans the public profile rather than removing it. |
+| `BlogPost_linkedId_fkey` | SET NULL | Deleting one language of a post **unlinks** its translation instead of deleting it. |
+
+So "add a hard delete" is never a one-line `prisma.x.delete()`. Each of TJ-011, TJ-012, TJ-013 and the doctor half of TJ-009 has to state what happens to the RESTRICT-ed children, and that is a product decision, not an implementation detail.
+
+**Storage is never reclaimed.** No code path deletes from Supabase Storage, and `src/lib/supabase.ts` holds only the anon key, so the app could not do it even if asked. Every hard delete added in this batch therefore leaves its uploaded files behind. Already recorded as a standing leak in the notes below; it now has a second cause.
+
+**The live database is entirely test data** — user decision, 2026-08-15, in answer to a direct question. 3 users (`DeleteTest`, `testdelete`, `testsec`), 1 patient (`TestDelete`, id 2), 2 reservations, 7 blog posts, 8 doctor profiles. Nothing in it needs preserving, which means the hard-delete tasks can be tested against real rows rather than mocked. It also means **a second cleanup is wanted before launch** — the first one was 2026-08-15 and the database refilled the same day.
+
+---
+
+### TJ-008 — Dashboard / reservations — reported issues
+
+- **Status:** SPLIT — superseded by **TJ-008a** and **TJ-008b**, both `READY`. Nothing executes against this ID.
+- **Why:** Two issues were reported against the reservation flow. They share a surface but not a concern, and the protocol caps a task at one concern, so they were passed separately.
+
+**Reported and verified:**
+
+1. *"When creating a reservation it requires that a patient is already registered."* — **Real.** `src/app/admin/reservations/new/page.tsx:54` blocks submission on `if (!selectedPatient)`, and the only way to get a `selectedPatient` is to pick one out of the search dropdown, which reads existing rows. There is no create path on the page. → **TJ-008a.**
+2. *"When selecting patient state, you should have the ability to revert the state."* — **Real.** `src/app/api/reservations/[id]/route.ts:6-14` defines `VALID_TRANSITIONS` with `CHECKED_OUT: []`, `CANCELLED: []` and `NO_SHOW: []` — three terminal states, no way back. → **TJ-008b.**
+
+---
+
+### TJ-008a — Create a patient without leaving the reservation form
+
+- **Status:** READY
+- **Branch:** `feat/inline-patient-create`
+- **Why:** Booking a first-time patient today means abandoning a half-filled reservation form, navigating to `/admin/patients/new`, creating the patient, navigating back, and re-entering the date, time, doctor and notes. The form keeps nothing. A modal on the reservation page that creates the patient and selects it in place removes the round trip entirely — which is what the user asked for: *"no need to leave the reservation page to make a patient."*
+
+**Planning pass:** 2026-08-15 — read `src/app/admin/reservations/new/page.tsx` (all 283 lines), `src/app/secretary/reservations/new/page.tsx`, `src/app/api/patients/route.ts`, `src/app/admin/patients/page.tsx` (for the modal styling precedent).
+
+Confirmed:
+- The blocking check is `if (!selectedPatient) { setError("Please select a patient"); return; }` at `admin/.../new/page.tsx:54`. Identical logic exists in the secretary form. **Both surfaces need the fix** — the user reported it against the dashboard, but the secretary books reservations too and would otherwise keep the broken flow.
+- `POST /api/patients` already does everything needed. **No API change is required.** It returns `201 { id, name, message }` on success and `409 { error, duplicate: { id, name } }` when `phone1` already exists.
+- The 201 response omits `phone1`, which `PatientResult` needs. The client already holds the typed phone in its own state, so it can build the object without an API change. Same trick covers the 409: the duplicate check is an **exact match on `phone1`**, so the phone the user just typed *is* the duplicate's phone, and the existing patient can be offered for selection with no extra fetch.
+- The `{selectedPatient && (…)}` JSX block is **byte-identical** in both files, same indentation. Verified with `cat -A`. The anchors below are therefore safe to apply to both.
+- Neither file has any modal CSS — `.modal-overlay` and `.modal-card` appear in neither. They must be added. `src/app/admin/patients/page.tsx:262-270` is the styling precedent to match; it uses the project's CSS variables with literal fallbacks.
+- `.clear-btn:hover { color: #fff; }` occurs **exactly once** in each file and is the CSS insertion anchor.
+- `const [error, setError] = useState("");` occurs **exactly once** in each file.
+
+Corrected during the pass: the first draft of this task added a picture upload to the modal, mirroring the dead `showAdd` modal in `admin/patients/page.tsx`. Dropped — a photo is not needed to book a session, and the patient profile page already handles it. The inline modal stays at name + two phones.
+
+**Scope — touch only these:**
+- `src/app/admin/reservations/new/page.tsx`
+- `src/app/secretary/reservations/new/page.tsx`
+
+**Do not touch:** `src/app/api/patients/route.ts` — it already does what is needed, and changing its response shape would ripple into `admin/patients/page.tsx`. Do not touch the dead `showAdd` modal in `admin/patients/page.tsx`; it is unrelated dead code and is being handled under TJ-011. Do not touch the `Suspense` wrapper or the default export in either file.
+
+**Instructions:**
+
+Apply all six steps to **both** files in Scope. The JSX and CSS anchors are identical in the two files; only the router destination after submit differs, and no step below changes it.
+
+1. Add state. Find the line, unique in each file:
+   ```
+       const [error, setError] = useState("");
+   ```
+   Insert immediately **after** it:
+   ```tsx
+       const [showNewPatient, setShowNewPatient] = useState(false);
+       const [newPatient, setNewPatient] = useState({ name: "", phone1: "", phone2: "" });
+       const [creatingPatient, setCreatingPatient] = useState(false);
+       const [newPatientError, setNewPatientError] = useState("");
+       const [duplicateMatch, setDuplicateMatch] = useState<PatientResult | null>(null);
+   ```
+
+2. Add the handlers. Find the line, unique in each file:
+   ```
+       const handleSubmit = async () => {
+   ```
+   Insert immediately **before** it:
+   ```tsx
+       const selectPatient = (p: PatientResult) => {
+           setSelectedPatient(p);
+           setPatientSearch("");
+           setPatientResults([]);
+           setShowNewPatient(false);
+       };
+
+       const openNewPatient = () => {
+           const typed = patientSearch.trim();
+           const looksLikePhone = /^[0-9+][0-9\s+-]*$/.test(typed);
+           setNewPatient({
+               name: looksLikePhone ? "" : typed,
+               phone1: looksLikePhone ? typed : "",
+               phone2: "",
+           });
+           setNewPatientError("");
+           setDuplicateMatch(null);
+           setShowNewPatient(true);
+       };
+
+       const handleCreatePatient = async () => {
+           setNewPatientError("");
+           setDuplicateMatch(null);
+           if (!newPatient.name.trim() || !newPatient.phone1.trim()) {
+               setNewPatientError("Name and phone are required");
+               return;
+           }
+           setCreatingPatient(true);
+           const res = await fetch("/api/patients", {
+               method: "POST",
+               headers: { "Content-Type": "application/json" },
+               body: JSON.stringify({
+                   name: newPatient.name.trim(),
+                   phone1: newPatient.phone1.trim(),
+                   phone2: newPatient.phone2.trim() || null,
+               }),
+           });
+           const data = await res.json();
+           setCreatingPatient(false);
+           if (!res.ok) {
+               setNewPatientError(data.error || "Failed to create patient");
+               if (data.duplicate) {
+                   setDuplicateMatch({
+                       id: data.duplicate.id,
+                       name: data.duplicate.name,
+                       phone1: newPatient.phone1.trim(),
+                   });
+               }
+               return;
+           }
+           selectPatient({ id: data.id, name: data.name, phone1: newPatient.phone1.trim() });
+       };
+   ```
+
+3. Route the search dropdown through the new helper. Find, in each file:
+   ```
+                                           <button key={p.id} className="search-item" onClick={() => { setSelectedPatient(p); setPatientSearch(""); setPatientResults([]); }}>
+   ```
+   Replace with:
+   ```
+                                           <button key={p.id} className="search-item" onClick={() => selectPatient(p)}>
+   ```
+
+4. Add the trigger button. Find, in each file:
+   ```
+                               {selectedPatient && (
+                                   <div className="selected-patient">
+                                       <span>✓ {selectedPatient.name} — {selectedPatient.phone1}</span>
+                                       <button className="clear-btn" onClick={() => setSelectedPatient(null)}>Change</button>
+                                   </div>
+                               )}
+   ```
+   Insert immediately **after** that closing `)}`:
+   ```tsx
+                               {!selectedPatient && (
+                                   <button className="new-patient-btn" onClick={openNewPatient}>
+                                       + Create a new patient
+                                   </button>
+                               )}
+   ```
+
+5. Add the modal. Find the styled-jsx opening, unique in each file:
+   ```
+               <style jsx>{`
+   ```
+   Insert immediately **before** it:
+   ```tsx
+               {showNewPatient && (
+                   <div className="modal-overlay" onClick={() => setShowNewPatient(false)}>
+                       <div className="modal-card" onClick={(e) => e.stopPropagation()}>
+                           <h2>New Patient</h2>
+                           {newPatientError && (
+                               <div className="modal-error">
+                                   {newPatientError}
+                                   {duplicateMatch && (
+                                       <button className="use-existing" onClick={() => selectPatient(duplicateMatch)}>
+                                           Use {duplicateMatch.name} instead
+                                       </button>
+                                   )}
+                               </div>
+                           )}
+                           <div className="modal-stack">
+                               <div className="field">
+                                   <label>Patient Name <span className="req">*</span></label>
+                                   <input
+                                       value={newPatient.name}
+                                       onChange={(e) => setNewPatient({ ...newPatient, name: e.target.value })}
+                                       autoFocus
+                                   />
+                               </div>
+                               <div className="field">
+                                   <label>Phone 1 <span className="req">*</span></label>
+                                   <input
+                                       value={newPatient.phone1}
+                                       onChange={(e) => setNewPatient({ ...newPatient, phone1: e.target.value })}
+                                       placeholder="e.g. 0791234567"
+                                   />
+                               </div>
+                               <div className="field">
+                                   <label>Phone 2</label>
+                                   <input
+                                       value={newPatient.phone2}
+                                       onChange={(e) => setNewPatient({ ...newPatient, phone2: e.target.value })}
+                                       placeholder="Optional"
+                                   />
+                               </div>
+                           </div>
+                           <div className="modal-actions">
+                               <button className="btn-cancel" onClick={() => setShowNewPatient(false)}>Cancel</button>
+                               <button className="btn-save" onClick={handleCreatePatient} disabled={creatingPatient}>
+                                   {creatingPatient ? "Creating…" : "Create & Select"}
+                               </button>
+                           </div>
+                       </div>
+                   </div>
+               )}
+   ```
+
+6. Add the CSS. Find the line, unique in each file:
+   ```
+                   .clear-btn:hover { color: #fff; }
+   ```
+   Insert immediately **after** it:
+   ```css
+                   .new-patient-btn {
+                       margin-top: 0.5rem; align-self: flex-start;
+                       background: none; border: 1px dashed rgba(76,175,147,0.35);
+                       color: var(--primary, #4CAF93); border-radius: var(--radius-sm, 2px);
+                       padding: 0.4rem 0.75rem; font-size: 0.8rem; cursor: pointer;
+                       font-family: inherit; transition: all 0.15s;
+                   }
+                   .new-patient-btn:hover { background: rgba(76,175,147,0.08); border-color: var(--primary, #4CAF93); }
+                   .modal-overlay {
+                       position: fixed; inset: 0; background: rgba(0,0,0,0.6);
+                       display: flex; align-items: center; justify-content: center;
+                       z-index: 1000; backdrop-filter: blur(4px);
+                   }
+                   .modal-card {
+                       background: var(--bg-dark-secondary, #243b44); border: 1px solid rgba(255,255,255,0.08);
+                       border-radius: var(--radius-md, 4px); padding: 2rem; width: 100%; max-width: 440px;
+                   }
+                   .modal-card h2 { font-size: 1.2rem; margin-bottom: 1.25rem; font-weight: 600; }
+                   .modal-error {
+                       background: rgba(220,38,38,0.1); border: 1px solid rgba(220,38,38,0.2);
+                       color: #fca5a5; padding: 0.55rem 0.85rem; border-radius: var(--radius-sm, 2px);
+                       font-size: 0.82rem; margin-bottom: 1rem;
+                       display: flex; flex-direction: column; align-items: flex-start; gap: 0.4rem;
+                   }
+                   .use-existing {
+                       background: rgba(76,175,147,0.12); border: none; color: var(--primary, #4CAF93);
+                       padding: 0.3rem 0.65rem; border-radius: var(--radius-sm, 2px);
+                       font-size: 0.78rem; font-weight: 600; cursor: pointer; font-family: inherit;
+                   }
+                   .use-existing:hover { background: rgba(76,175,147,0.22); }
+                   .modal-stack { display: flex; flex-direction: column; gap: 0.9rem; }
+                   .modal-actions { display: flex; justify-content: flex-end; gap: 0.6rem; margin-top: 1.5rem; }
+   ```
+
+**Verification:**
+- `npm run build` passes.
+- `npx eslint src/app/admin/reservations/new/page.tsx src/app/secretary/reservations/new/page.tsx` reports no **new** errors. Do **not** run `npm run lint` — `master` already fails it with 76 problems and the result is meaningless (see the notes below).
+- `git status --porcelain` lists exactly the two files in Scope and nothing else.
+- **Named regression risk — the existing search path.** Step 3 rewrites the dropdown's click handler, which is the *only* way a patient could be selected before this task. If `selectPatient` is wrong, booking an existing patient breaks, and the build will not catch it. Confirm by hand, on both `/admin/reservations/new` and `/secretary/reservations/new`: type at least two characters of an existing patient's name, click the result, and confirm the green `✓ name — phone` row appears and **Create Reservation** succeeds.
+- **Second regression risk — the reservation payload.** The POST body must still carry `patientId: selectedPatient.id`. A patient created through the modal must produce a working reservation, not a 500. Create one end-to-end and confirm it lands on the dashboard for the chosen date.
+- Duplicate path: open the modal, enter a phone that already exists, submit. The red banner must appear with **Use <name> instead**, and clicking it must close the modal with that patient selected.
+
+**Done when:**
+- [ ] A patient can be created from both reservation forms without navigating away, and is selected in place on success
+- [ ] The date, time, doctor and notes already entered survive the patient creation
+- [ ] The duplicate-phone path offers the existing patient and selecting it works
+- [ ] Selecting an existing patient through the search dropdown still works on both forms
+- [ ] Build passes; scoped lint clean; the diff is exactly the two files in Scope
+- [ ] Visual review: both routes, at 320px and at desktop width — the modal is reachable and readable at both
+
+---
+
+### TJ-008b — Allow a session's state to be reverted
+
+- **Status:** READY
+- **Branch:** `feat/revert-session-status`
+- **Why:** `CANCELLED`, `NO_SHOW` and `CHECKED_OUT` are terminal in the API's state machine, so any misclick is permanent — a session cancelled by accident can never be rescheduled, and the row stays wrong forever. The user asked for this directly, and chose the widest of the three options offered: **all three states become revertible, including checked-out.** Checkout is the likeliest misclick because it is the last step of the normal flow.
+
+**Planning pass:** 2026-08-15 — read `src/app/api/reservations/[id]/route.ts` (all 169 lines), `src/app/components/ReservationSlot.tsx` (all 192 lines), `src/app/admin/page.tsx:109-116`, `src/app/secretary/page.tsx:175-190`.
+
+Confirmed:
+- `VALID_TRANSITIONS` at `route.ts:6-14` is the single authority. `CHECKED_OUT: []`, `CANCELLED: []`, `NO_SHOW: []`.
+- `ReservationSlot.tsx` is **shared by both dashboards** — admin renders it at `admin/page.tsx:256`, secretary at `secretary/page.tsx:188`. One change covers both surfaces. Its action list is built from `status` and today offers nothing at all for the three terminal states except *Duplicate*.
+- **`lastVisitDate` is the complication, and it is real.** `route.ts:131-137` writes `patient.lastVisitDate = new Date()` on every `CHECKED_OUT` transition. Reverting a checkout without touching it leaves the patient's record claiming a visit that was undone. The revert must **recompute** it from the remaining checked-out sessions rather than blindly clearing it — a patient may have earlier legitimate visits.
+- **`handleStatusChange` swallows every error.** `admin/page.tsx:109-116` fires the PATCH and calls `fetchReservations()` unconditionally — it never reads `res.ok`. A rejected transition today produces a 400 that the user never sees; the slot simply re-renders unchanged. The secretary dashboard has the same shape. This is why the terminal states feel like nothing happens rather than like a refusal, and it must be fixed in the same task or the new transitions will fail just as silently.
+
+**Open decision — resolved:** revert targets are `CANCELLED → SCHEDULED`, `NO_SHOW → SCHEDULED`, `CHECKED_OUT → WITH_DOCTOR`. Checked-out reverts one step rather than to scheduled, so the session lands back where the mistake was made.
+
+**Scope — touch only these:**
+- `src/app/api/reservations/[id]/route.ts`
+- `src/app/components/ReservationSlot.tsx`
+- `src/app/admin/page.tsx` — `handleStatusChange` only
+- `src/app/secretary/page.tsx` — `handleStatusChange` only
+
+**Do not touch:** the `DELETE` handler, the `PUT` handler, the duplicate flow, or the `checkedInAt` / `withDoctorAt` / `checkedOutAt` columns other than where a revert must clear them.
+
+**Instructions:** *(mechanical steps to be written before dispatch — the pass above is complete and the decision is settled; this task is dispatched after TJ-008a merges, since both touch the reservation surface and reviewing them separately keeps the visual review honest.)*
+
+**Verification:**
+- `npm run build` passes.
+- `npx eslint` scoped to the four files in Scope.
+- **Named regression risk — the forward path.** Widening a state machine can accidentally admit transitions that should stay illegal. Build the **negative** case into the check, not just the positive one: confirm `CHECKED_OUT → SCHEDULED` is still **rejected with 400**, and that `SCHEDULED → CHECKED_OUT` (skipping check-in) is still rejected. Proving a revert works does not prove the machine still refuses anything.
+- **Second regression risk — `lastVisitDate`.** After reverting a checkout, the patient's `lastVisitDate` must equal the most recent *remaining* checked-out session, or be null if there is none. Verify against a patient with two checked-out sessions, not one.
+- A rejected transition must now surface a visible message on both dashboards.
+
+**Done when:**
+- [ ] All three reverts work from the slot menu on both dashboards
+- [ ] `lastVisitDate` is recomputed, not cleared, on a checkout revert
+- [ ] Illegal transitions are still rejected — proven with the two negative cases above
+- [ ] A rejected transition shows the user an error instead of silently doing nothing
+
+---
+
+### TJ-009 — Employees / doctors — reported issues
+
+- **Status:** BACKLOG — no planning pass. Splits into at least five tasks; do not execute against this ID.
+- **Why:** Seven issues were reported against `/admin/employees/doctors`. All seven are real; one is half-built already. They are captured together because the user grouped them, but they touch the schema, the API and two UI surfaces, so they cannot ship as one task.
+
+**Verified against `src/app/admin/employees/doctors/page.tsx`, `.../doctors/new/page.tsx`, `src/app/api/employees/doctors/route.ts`, `.../doctors/[id]/route.ts`, and the live database:**
+
+1. **Upload identification documents (PDF / DOCX / image).** **Real — needs a schema change.** There is no model for employee documents; `User` has only `pictureUrl`. `POST /api/upload` already handles non-images correctly — it passes them through untouched, keeps the extension, and `patient-files` is already in `ALLOWED_FOLDERS` — so the storage half exists and only a table and a UI are missing. **Blocked on the user's go-ahead:** there is no `prisma/migrations/`, so a schema change is `prisma db push` straight into the production database with no down path.
+2. **No duplicate colors between doctors.** **Real.** `User.color` is a plain `String?` with no unique constraint, and both the modal (`page.tsx:203-210`) and the create page (`new/page.tsx:108-115`) offer the full 12-swatch `COLORS` array with no exclusion. Live data has two doctors on distinct colors, so nothing is broken *yet*. **Needs a decision:** the `RESIGNED` doctor holds `#6ee7b7` — does a resigned doctor keep their colour reserved, or does it return to the pool? With 12 swatches and no reuse, the 13th doctor cannot be created at all, so the answer also has to say what happens when the palette runs out.
+3. **Working hours as a selector, not free text.** **Real.** `User.workingHours` is `String?` and both forms are bare `<input>`s. The live rows read literally `"9-7"` in all three — unparseable, so no shift logic can ever be built on it. **Needs a decision:** a from/to time pair covers the reported complaint, but per-weekday hours is what a clinic rota actually needs, and the two have different storage shapes. Ask before building.
+4. **Show-password toggle.** **Real.** `type="password"` with no reveal at `page.tsx:196` and `new/page.tsx:153`. Trivial, and the same fix serves TJ-010.
+5. **Repeat-password field.** **Real.** No confirm input anywhere. Note the API already enforces an 8-character minimum (`[id]/route.ts:66`) but the forms never mention it, so a short password fails silently — `handleSave` at `page.tsx:89` never reads the response.
+6. **Change a password from the admin dashboard, with the admin re-entering their own password.** **Half-built.** The edit modal already exposes *New Password (optional)* and `PUT` already hashes it. What is missing is only the re-authentication gate. Small task, worth doing on its own.
+7. **Hard delete / archive tab / re-enrol.** **All three real.** `DELETE` sets `status: "RESIGNED"` (`[id]/route.ts:88-98`) — the button says *Delete* and does not delete, which is the worst of both. There is no archived view, so resigned doctors sit mixed into the main list. Re-enrolment needs **no API work at all** — `PUT` already accepts `status` (`[id]/route.ts:63`) — it is a UI-only fix. Hard delete is the hard one: `Reservation_doctorId_fkey` and `Note_doctorId_fkey` are both **RESTRICT**, so a doctor who has ever been booked cannot be deleted until the user decides whether those sessions are reassigned or destroyed.
+
+---
+
+### TJ-010 — Employees / secretaries — reported issues
+
+- **Status:** BACKLOG — no planning pass. Do not execute against this ID.
+- **Why:** Six issues, five of them the same as TJ-009's. Filed separately because the user did, but most should ship as one change across both surfaces rather than twice.
+
+**Verified against `src/app/admin/employees/secretaries/page.tsx` and `src/app/api/employees/secretaries/[id]/route.ts`:**
+
+1. **Hard delete.** **Real** — `DELETE` sets `RESIGNED`, same as doctors. **Easier than the doctor case:** a secretary has *no* inbound foreign keys at all — no reservations, no notes, no profile — so the delete is genuinely unblocked. This is the one hard delete in the batch that can ship without a product decision first.
+2. **Working-hours selector.** **Real**, identical to TJ-009 §3.
+3. **Show password + repeat password.** **Real**, identical to TJ-009 §4–5.
+4. **Archive view for soft deletions.** **Real**, identical to TJ-009 §7.
+5. **Re-enrol.** **Real**, and again **UI-only** — `PUT` already accepts `status`.
+6. **Doctors say "Delete" while secretaries say "Resign".** **Real, and worse than a wording mismatch.** Both buttons call the same soft-delete, but the doctors' one is labelled *Delete* (`doctors/page.tsx:153`) and the secretaries' *Resign* (`secretaries/page.tsx:135`). Whichever verb wins, one of the two labels is currently lying about what it does. The user described the secretary label as "archive"; it actually reads *Resign*. Settle the vocabulary across both tabs in the same task.
+7. **Identification documents.** **Real**, identical to TJ-009 §1 — same table, same blocker.
+
+---
+
+### TJ-011 — Patients — reported issues
+
+- **Status:** BACKLOG — no planning pass. Do not execute against this ID.
+
+**Verified against `src/app/admin/patients/page.tsx`, `.../patients/[id]/page.tsx`, `src/app/api/patients/[id]/route.ts` and the live database:**
+
+1. **Upload documents.** **Real, and mostly built already.** The `PatientFile` model exists with every column needed, `GET /api/patients/[id]` already returns `files` ordered by date, the profile page already renders a **Files** tab with a working grid and icons — and `patient-files` is already allow-listed in `POST /api/upload`. The *only* missing piece is an endpoint that writes a `PatientFile` row after the upload, plus a button. There is no `POST /api/patients/[id]/files`. Smallest task in the batch relative to its value.
+2. **"I added the first patient after the cleanup and it still said Patient #2, meaning the cleanup didn't clean up properly."** — **Misdiagnosed. The cleanup was fine.** Read from the live database: exactly one `Patient` row, `id = 2`, and `Patient_id_seq` at `last_value = 2, is_called = true`. PostgreSQL never rolls a sequence back on `DELETE` — that is by design, so concurrent inserts can't collide. The rows really were deleted. What the user is seeing is `src/app/admin/patients/[id]/page.tsx:172` printing the raw primary key as `Patient #{patient.id}` (and `secretary/patients/[id]/page.tsx:106` doing the same). **Needs a decision:** reset the sequence once and keep showing the PK — simple, but the gap reappears after the next deletion, and it is *guaranteed* to reappear once TJ-011 §3 ships a hard delete — or stop showing the PK as a patient number. Recommend the latter; the first is a treatment, not a fix.
+3. **Hard delete.** **Real.** Only `PATCH { archived }` exists. `ClinicalIntake` and `PatientFile` cascade cleanly, but `Reservation_patientId_fkey` is **RESTRICT**, so any patient who has ever been booked cannot be deleted until the reservations are dealt with. Needs the same product decision as the doctor case.
+
+**Also found, unreported:** `admin/patients/page.tsx:170-201` contains a fully built *Add Patient* modal that can never open — `showAdd` is initialised `false` and the header button navigates to `/admin/patients/new` instead. ~130 lines of dead code including its own upload handling. The identical pattern exists in both employee list pages (`openAdd` defined, never called). Worth deleting, and worth deleting *before* anyone copies from it by mistake.
+
+---
+
+### TJ-012 — Blog — hard delete a post
+
+- **Status:** BACKLOG — no planning pass. Do not execute against this ID.
+- **Why:** **Confirmed real, and the starkest case in the batch:** `src/app/api/blog/[id]/route.ts` exports `GET` and `PUT` and **no `DELETE` at all**. The admin list's *Archive* button (`admin/blog/page.tsx:57-64`) is a `PUT` that sets `status: "ARCHIVED"`, and *Restore* sets it back to `DRAFT`. Nothing has ever removed a post. The live database holds 7.
+
+**The one thing a pass must settle:** `BlogPost_linkedId_fkey` is **SET NULL**, and the model carries a self-relation for EN↔AR translation pairs. Deleting one language therefore leaves its translation alive but silently unlinked — it would keep publishing with a dangling half. Decide whether deleting a post deletes its translation too, refuses while one is linked, or unlinks deliberately with a warning.
+
+---
+
+### TJ-013 — Doctor profiles (public site) — hard delete
+
+- **Status:** BACKLOG — no planning pass. Do not execute against this ID.
+- **Why:** **Confirmed real.** `DELETE /api/doctor-profiles/[id]` sets `archived: true` (`[id]/route.ts:56-74`); the archived view restores by `PUT`-ing `archived: false`. No path removes a row. The live database holds 8.
+
+**Easier than it looks, with one loose end.** `PendingChange` cascades and `DoctorProfile.userId` is nullable — so nothing blocks the delete at the database level, unlike every other hard delete in this batch. The loose end is the **photo**: profile photos live in Supabase Storage at `uploads/doctor-profiles/`, nothing ever removes them, and the app holds only the anon key. Three photos are *already* orphaned there from the 2026-08-15 cleanup. A hard delete that ignores this turns a one-off leak into a routine one.
 
 ---
 
