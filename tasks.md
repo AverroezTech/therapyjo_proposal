@@ -158,9 +158,18 @@ Two things that bear repeating here, because this is the file both agents open:
 https://www.google.com/maps/embed/v1/place?key=${NEXT_PUBLIC_GOOGLE_MAPS_EMBED_KEY}&q=place_id:<PLACE_ID>
 ```
 
-**Blocked on:** two values the user is currently obtaining (walkthrough issued 2026-08-14):
+**Place ID obtained 2026-08-14 — no longer blocked on this:**
+
+```
+ChIJp0P9L82hHBURgY5pmicC-s0
+```
+
+Retrieved via the public Place ID Finder (no key, no billing) and **verified independently** by resolving `https://www.google.com/maps/place/?q=place_id:<ID>`, which returned *Therapy Jo Physiotherapy Center, Az-Zubayr Ben Al-Awwam St., Amman* — confirming the transcription is character-exact, not an OCR guess. The listed phone `07 9981 9669` matches the profile's `+962799819669`. The listing is published and complete.
+
+**The placeholder is worse than this task originally stated.** *Why* above says the embed "drops a pin near the clinic." It does not. Real coordinates are `31.9683238, 35.9076188`; the hardcoded embed uses `!2d35.87!3d31.95`. That is **~4 km** away — a different part of Amman, not an imprecise pin. Treat this as a visibly wrong map, not a cosmetic nicety.
+
+**Still blocked on one value** (user is obtaining it; walkthrough issued 2026-08-14):
 - `NEXT_PUBLIC_GOOGLE_MAPS_EMBED_KEY` — key restricted to the Maps Embed API, restricted by HTTP referrer. This key **is** browser-visible by design; the referrer restriction is the control. It is the only Google key in this project that may carry `NEXT_PUBLIC_`.
-- The clinic's Place ID (`ChIJ…`), from the Place ID Finder.
 
 **Original blocker, kept for the record:** the clinic's Google Maps share-embed URL. Still a valid fallback if the Cloud project stalls — Google Business listing → Share → Embed a map → Copy HTML → take the `src`. That route needs no key or billing, so fall back to it if credentials do not arrive.
 
@@ -179,10 +188,15 @@ https://www.google.com/maps/embed/v1/place?key=${NEXT_PUBLIC_GOOGLE_MAPS_EMBED_K
 1. **Integration path: Google Places API (New).** `place_details` with the `reviews` field, fetched server-side and cached with hourly ISR — at most five reviews plus a reliable rating and total count, and the designed layout survives untouched. The third-party widget alternative (Elfsight, Trustindex) was **rejected**: vendor markup would replace the design and add a script dependency.
 2. **Mixed-language reviews: show the original, always.** Every review renders as the reviewer wrote it, in both site languages. Each card carries `dir="auto"` so an Arabic review lays out RTL even on the English site. Google's machine translations were **rejected** — attributing a translated sentence to a named real patient misrepresents them. Language filtering was **rejected** because it would decouple the visible cards from the headline rating.
 
+**Place ID obtained 2026-08-14 — see TJ-003 for provenance and the verification:** `ChIJp0P9L82hHBURgY5pmicC-s0`
+
+**Ground truth captured 2026-08-14 from the live listing:** the clinic's real rating is **4.9 from 367 reviews**. The hardcoded `4.9` and `300+` are therefore *currently accurate* — the numbers mislead nobody today. This lowers the urgency of the rating and count, and it should be said plainly rather than left implied by the alarming *Why* above. It changes nothing about the four invented reviewers, which remain fabricated attributions to named people and are the real reason this task exists. It also does not make hardcoding safe: 367 was 300-something at some point and will be 400-something later, and nobody will remember to edit it.
+
 **Still blocked on — credentials (user is setting these up; walkthrough issued 2026-08-14):**
 - `GOOGLE_PLACES_API_KEY` — server-only, restricted to Places API (New). **Never `NEXT_PUBLIC_`**; that prefix would ship a billable key to every visitor.
-- The clinic's Place ID (`ChIJ…`) — shared with TJ-003.
 - Billing enabled on the Cloud project. Hourly ISR is ~24 calls/day, well inside the free credit, but Maps Platform will not serve without a billing account attached.
+
+**At the pass, confirm against the live response:** Places API (New) caps returned reviews at five and does not expose the full set. If the design needs more than five, that is a constraint to surface *before* writing the task, not after.
 
 **Interim option if launch comes first:** replace the fabricated rating, count, and four quotes with a single honest CTA linking to the clinic's Google listing, keeping the section's visual shell. Not selected, but still available — say the word and the planner files it as its own task. Until then the fabricated content remains live, which is the standing risk this task exists to close.
 
@@ -277,5 +291,6 @@ Findings reported by the executor, or surfaced during a pass, that fall outside 
 - ~~**Branches are unmerged.**~~ Resolved 2026-08-14: both merged to `master` with `--no-ff` after visual review. Merge policy is now recorded in the protocol.
 - **Hero entrance animation is slow to settle — needs checking against a production build.** During the TJ-002 visual review, a cold load of `/` showed the hero badge, headline, subtitle, and CTAs arriving over roughly half a minute, well after the nav and background image had painted. Every element was computed-visible (`opacity: 1`) when queried, so this is not the dead-`opacity:0` failure mode. The likely cause is Turbopack compiling the route on demand in dev, which would not occur in production — so this is an observation, not a confirmed defect. Verify against `npm run build && npm start` before filing it as a task. Unrelated to TJ-002, which only deleted unreferenced files.
 - **`master` is 8 commits ahead of `origin/master`; the user has chosen to hold.** Decision 2026-08-14: do not push yet. Nothing unpushed changes application behaviour — two merges, two task commits, two status commits, the protocol, and the earlier deploy fix — so there is no urgency, and holding lets a deploy wired to `master` fire once after the Reviews and Maps work lands rather than on a docs-only change. **Do not push without asking again.** The two task branches (`docs/sync-project-profile`, `chore/prune-root-assets`) stay local; their commits are already contained in the `--no-ff` merges, so nothing is lost by never pushing them.
+- **The clinic's Google listing points its website field at `facebook.com`.** Observed 2026-08-14 while verifying the Place ID. Once this site launches, that field should point at the real domain — otherwise the listing keeps sending traffic to Facebook. Not a code task and not something the planner can action; it needs someone with access to the Google Business listing. Flagged to the user 2026-08-14.
 - **Google Cloud credentials are pending with the user** (as of 2026-08-14). Three values unblock TJ-003 and TJ-004 together: `GOOGLE_PLACES_API_KEY` (server-only), `NEXT_PUBLIC_GOOGLE_MAPS_EMBED_KEY` (browser-visible by design, referrer-restricted), and the clinic's Place ID. Two separate keys is deliberate — the embed key travels inside the iframe `src` and is public no matter what, so it must not be the key that bills Places API calls. When they arrive, add both to `.env`, confirm `.env` is still gitignored before committing anything, and run both passes.
 - ~~`package-lock.json` has one uncommitted line (`"hasInstallScript": true`)~~ — resolved 2026-08-14. Committed to `master` alongside the protocol, because a dirty tree makes every executor's `git status` verification step meaningless. Lesson for future dispatches: **the planner must confirm a clean tree before handing off**, or the executor inherits the planner's own uncommitted work on its branch.
