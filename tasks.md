@@ -25,7 +25,7 @@ Two things that bear repeating here, because this is the file both agents open:
 | TJ-007 | End a resigned employee's session immediately | DONE — merged `a1af675` | `bugfix/revoke-session-on-resign` |
 | TJ-008 | Dashboard / reservations — reported issues | SPLIT — see TJ-008a, TJ-008b | — |
 | TJ-008a | Create a patient without leaving the reservation form | DONE — merged `f80b589` | `feat/inline-patient-create` |
-| TJ-008b | Allow a session's state to be reverted | READY | `feat/revert-session-status` |
+| TJ-008b | Allow a session's state to be reverted | PASS INCOMPLETE — do not pull | `feat/revert-session-status` |
 | TJ-009 | Employees / doctors — reported issues | BACKLOG — needs a pass, splits further | — |
 | TJ-010 | Employees / secretaries — reported issues | BACKLOG — needs a pass, splits further | — |
 | TJ-011 | Patients — reported issues | BACKLOG — needs a pass, splits further | — |
@@ -1241,7 +1241,7 @@ Apply all six steps to **both** files in Scope. The JSX and CSS anchors are iden
 
 ### TJ-008b — Allow a session's state to be reverted
 
-- **Status:** READY
+- **Status:** PASS INCOMPLETE — **the executor must not pull this.** The investigative half of the pass is done and recorded below, and the open decision is settled, but the Instructions block is still a placeholder. The protocol's own rule applies to the planner too: *"Supply every literal. If the executor would have to choose a value, the pass is not finished."* Reverting a checkout has to recompute `lastVisitDate`, and handing that over as prose rather than as an exact query is precisely how a clinical field gets silently corrupted. Finish the Instructions, then move to `READY`.
 - **Branch:** `feat/revert-session-status`
 - **Why:** `CANCELLED`, `NO_SHOW` and `CHECKED_OUT` are terminal in the API's state machine, so any misclick is permanent — a session cancelled by accident can never be rescheduled, and the row stays wrong forever. The user asked for this directly, and chose the widest of the three options offered: **all three states become revertible, including checked-out.** Checkout is the likeliest misclick because it is the last step of the normal flow.
 
