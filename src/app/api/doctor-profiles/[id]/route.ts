@@ -1,10 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
+import { canManageContent } from "@/lib/permissions";
 
-async function requireAdmin() {
+async function requireContentManager() {
     const session = await auth();
-    if (!session || (session.user as { role?: string })?.role !== "ADMIN") {
+    if (!session || !canManageContent(session.user)) {
         return null;
     }
     return session;
@@ -12,7 +13,7 @@ async function requireAdmin() {
 
 // PUT /api/doctor-profiles/[id] — update name/title/specialty/bio/contact/photo/order/hidden
 export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-    const session = await requireAdmin();
+    const session = await requireContentManager();
     if (!session) {
         return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
@@ -54,7 +55,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
 
 // DELETE /api/doctor-profiles/[id] — archive (soft delete) or restore
 export async function DELETE(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-    const session = await requireAdmin();
+    const session = await requireContentManager();
     if (!session) {
         return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }

@@ -1,10 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
+import { canManageContent } from "@/lib/permissions";
 
-async function requireAdmin() {
+async function requireContentManager() {
     const session = await auth();
-    if (!session || (session.user as { role?: string })?.role !== "ADMIN") {
+    if (!session || !canManageContent(session.user)) {
         return null;
     }
     return session;
@@ -12,7 +13,7 @@ async function requireAdmin() {
 
 // GET /api/doctor-profiles — list doctor profiles (admin). ?archived=true lists archived ones.
 export async function GET(req: NextRequest) {
-    const session = await requireAdmin();
+    const session = await requireContentManager();
     if (!session) {
         return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
@@ -29,7 +30,7 @@ export async function GET(req: NextRequest) {
 
 // POST /api/doctor-profiles — create a new doctor profile
 export async function POST(req: NextRequest) {
-    const session = await requireAdmin();
+    const session = await requireContentManager();
     if (!session) {
         return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }

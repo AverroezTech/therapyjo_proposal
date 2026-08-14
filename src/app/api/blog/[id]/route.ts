@@ -1,10 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
+import { canManageContent } from "@/lib/permissions";
 
-async function requireAdmin() {
+async function requireContentManager() {
     const session = await auth();
-    if (!session || (session.user as { role?: string })?.role !== "ADMIN") {
+    if (!session || !canManageContent(session.user)) {
         return null;
     }
     return session;
@@ -12,7 +13,7 @@ async function requireAdmin() {
 
 // GET /api/blog/[id] — fetch a single post
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-    const session = await requireAdmin();
+    const session = await requireContentManager();
     if (!session) {
         return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
@@ -30,7 +31,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
 
 // PUT /api/blog/[id] — update a post (content, status transitions)
 export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-    const session = await requireAdmin();
+    const session = await requireContentManager();
     if (!session) {
         return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
