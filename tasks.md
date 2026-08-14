@@ -24,7 +24,7 @@ Two things that bear repeating here, because this is the file both agents open:
 | TJ-006 | Remove duplicate root icon files | DONE — merged `15b6942` | `chore/remove-icon-duplicates` |
 | TJ-007 | End a resigned employee's session immediately | DONE — merged `a1af675` | `bugfix/revoke-session-on-resign` |
 | TJ-008 | Dashboard / reservations — reported issues | SPLIT — see TJ-008a, TJ-008b | — |
-| TJ-008a | Create a patient without leaving the reservation form | READY | `feat/inline-patient-create` |
+| TJ-008a | Create a patient without leaving the reservation form | DONE — merged `f80b589` | `feat/inline-patient-create` |
 | TJ-008b | Allow a session's state to be reverted | READY | `feat/revert-session-status` |
 | TJ-009 | Employees / doctors — reported issues | BACKLOG — needs a pass, splits further | — |
 | TJ-010 | Employees / secretaries — reported issues | BACKLOG — needs a pass, splits further | — |
@@ -984,7 +984,7 @@ So "add a hard delete" is never a one-line `prisma.x.delete()`. Each of TJ-011, 
 
 ### TJ-008a — Create a patient without leaving the reservation form
 
-- **Status:** READY
+- **Status:** DONE — commit `2ecbb69` on `feat/inline-patient-create`, merged to `master` as `f80b589`
 - **Branch:** `feat/inline-patient-create`
 - **Why:** Booking a first-time patient today means abandoning a half-filled reservation form, navigating to `/admin/patients/new`, creating the patient, navigating back, and re-entering the date, time, doctor and notes. The form keeps nothing. A modal on the reservation page that creates the patient and selects it in place removes the round trip entirely — which is what the user asked for: *"no need to leave the reservation page to make a patient."*
 
@@ -1217,12 +1217,25 @@ Apply all six steps to **both** files in Scope. The JSX and CSS anchors are iden
 - Duplicate path: open the modal, enter a phone that already exists, submit. The red banner must appear with **Use <name> instead**, and clicking it must close the modal with that patient selected.
 
 **Done when:**
-- [ ] A patient can be created from both reservation forms without navigating away, and is selected in place on success
-- [ ] The date, time, doctor and notes already entered survive the patient creation
-- [ ] The duplicate-phone path offers the existing patient and selecting it works
-- [ ] Selecting an existing patient through the search dropdown still works on both forms
-- [ ] Build passes; scoped lint clean; the diff is exactly the two files in Scope
-- [ ] Visual review: both routes, at 320px and at desktop width — the modal is reachable and readable at both
+- [x] A patient can be created from both reservation forms without navigating away, and is selected in place on success
+- [x] The date, time, doctor and notes already entered survive the patient creation
+- [x] The duplicate-phone path offers the existing patient and selecting it works
+- [x] Selecting an existing patient through the search dropdown still works on both forms
+- [x] Build passes; scoped lint clean; the diff is exactly the two files in Scope
+- [x] Visual review: both routes, at 320px and at desktop width — the modal is reachable and readable at both
+
+**Planner verification:** 2026-08-15 — done independently of the executor's report, not on the strength of it.
+
+- **Diff read in full.** All six steps applied as specified. `diff` of the added lines between the two files: **byte-identical apart from the filename header**, which is what the task required.
+- **Scope respected.** `git diff --name-only master…branch` returns exactly the two files. `api/patients/route.ts` untouched, the dead `showAdd` modal untouched.
+- **Build** exit 0; both routes present in the route table.
+- **Lint re-run against a `master` baseline**, which is the only way the number means anything here: 8 problems (6 errors, 2 warnings) on the branch, **8 problems on `master` for the same two files** — identical rules, all in the pre-existing `fetchDoctors`/`useEffect` code above the insertion points. Zero introduced.
+- **Visual review performed** on `f80b589`'s content, served by `npx next start -p 3200` — a free port, not the stale build the notes warn about — with a live admin session. Confirmed on `/admin/reservations/new`: created *ZZ Review Patient / 0799000111* through the modal; the modal closed, the green `✓` row appeared, and **the session note, date, time and doctor entered beforehand were all still populated** — which is the entire point of the task. Submitting produced a real reservation visible on the dashboard, so the `patientId` payload path is intact, not merely a 200.
+- **Both named regression risks discharged.** Re-entering the same phone under a different name produced the red banner and **Use ZZ Review Patient instead**, which selected it correctly. The rewritten search dropdown still selects an existing patient (`selectPatient(p)` verified through the DOM, not by eye).
+- `/secretary/reservations/new` renders the button and modal identically — asserted programmatically, with `document.visibilityState === "visible"` and `document.hasFocus()` checked first, per the throttling trap below.
+- **320px was genuinely measured, not assumed.** `resize_window` silently failed to shrink the window — `window.innerWidth` stayed 1920 — which is the same wall the executor hit and honestly reported. Measured instead through a same-origin 320px `<iframe>`: the modal spans 0→301 inside a 316px viewport, every input and both action buttons fit, and the card's bottom is inside the viewport.
+
+**Discovered during review, outside Scope — not a defect in this task:** the page *does* overflow horizontally at 320px (`scrollWidth` 490 vs 316). Every overflowing element is in the **admin navbar** — `.nav-links`, `.nav-dropdown`, `.dropdown-panel` — and none are from this task. Filed in the notes below.
 
 ---
 
@@ -1337,6 +1350,9 @@ Confirmed:
 
 Findings reported by the executor, or surfaced during a pass, that fall outside the scope of the task that turned them up. The planner triages these into tasks. **The executor does not write here** — it reports in conversation and the planner records.
 
+- **The admin/secretary navbar overflows horizontally below ~490px.** Measured during the TJ-008a visual review at a 320px viewport: `document.documentElement.scrollWidth` is **490** against a 316px viewport, and every offending element belongs to the nav chrome — `.nav-links` (330px wide, right edge at 416), `.nav-dropdown`, `.dropdown-panel`, `.dropdown-item`. It predates TJ-008a and is unrelated to it, but it means **every admin page currently side-scrolls on a phone**, and the clinic's secretary is the most likely person to open this on one. The Responsive Rules in `Claude_Instructions.md` require 320px to work, so this is a standing violation rather than a nicety. Worth its own task. (Found during the TJ-008a visual review.)
+- **`resize_window` reports success without resizing, and a 320px check done through it is worthless.** Both the executor and I hit this on TJ-008a: the call returns "Successfully resized… to 320x700" and `window.innerWidth` stays at 1920. The executor noticed and honestly reported the check as *not performed* rather than claiming a pass — which is the behaviour to want. The workaround that does work: inject a same-origin `<iframe>` at the target width, let it load, and measure inside `contentDocument`. Real layout, real media queries, no dependency on the window manager. Reusable for every future responsive review. (Found during the TJ-008a visual review.)
+- **Test data added during the TJ-008a review, left in place deliberately.** Patient *ZZ Review Patient* (`0799000111`) plus one reservation, and the executor's *TJ008A TestPatient* (`0700000001`) plus one reservation. The user confirmed on 2026-08-15 that the entire live database is test data and disposable, so this harms nothing — but it is worth writing down that **the app still cannot delete any of it** (TJ-011 §3), so it will need the same out-of-band cleanup as last time. Do not run that cleanup without asking: the previous one was explicitly scoped and confirmed with the user first.
 - `src/app/login/page.tsx:69` carries the comment `{/* Background video — same as landing hero */}`. Stale: the landing hero has been a static WebP since the redesign. A one-line comment fix, too small to file alone — fold it into the next task that touches `login/page.tsx`. (Found during the TJ-002 pass.)
 - The Project Profile still carries the bare note `- Logo: logo.jpg`. TJ-001's instructions said to preserve it, correctly — but once TJ-002 deletes the root `logo.jpg`, that line reads ambiguously, since the surviving file is `public/logo.jpg`. Not worth reopening TJ-001; fold `public/logo.jpg` into the next task that edits the profile. (Found during TJ-001 planner verification.)
 - ~~**Branches are unmerged.**~~ Resolved 2026-08-14: both merged to `master` with `--no-ff` after visual review. Merge policy is now recorded in the protocol.
