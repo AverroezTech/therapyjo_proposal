@@ -160,10 +160,14 @@ Two things that bear repeating here, because this is the file both agents open:
 
 One file, one line, no dependency implications.
 
+**Re-verified before dispatch, 2026-08-14.** Re-read `Location.tsx` in full against the tree as it stands. The placeholder is still live at line 14 and still carries the null `0x0%3A0x0` place ID; the `<iframe>` still has exactly the four attributes the pass recorded, so the anchor string matches verbatim. Read `globals.css:1367–1378` and confirmed sizing does come from the wrapper (`aspect-ratio: 4/3` plus the `iframe` rule) — which is what produced the correction above. **Also probed the replacement URL rather than trusting the earlier cross-validation:** `GET` returned **HTTP 200**, 3,536 bytes, and the body names *Therapy Jo*. A dead or malformed embed would have failed here instead of at visual review. Baseline on `master`: `npm run build` exit **0**, tree clean.
+
 **Scope — touch only this:**
 - `src/app/components/Location.tsx`, the `src` attribute on the `<iframe>` only
 
-**Do not touch:** the `loading`, `referrerPolicy`, and `title` attributes; the `.location-map` wrapper; every other section of the file. No `globals.css` changes. Do **not** add `width`, `height`, `style`, or `allowfullscreen` from Google's copied HTML — the wrapper handles sizing and adding them will break the responsive layout.
+**Do not touch:** the `loading`, `referrerPolicy`, and `title` attributes; the `.location-map` wrapper; every other section of the file. No `globals.css` changes. Do **not** add `width`, `height`, `style`, or `allowfullscreen` from Google's copied HTML.
+
+  **Corrected 2026-08-14 at re-verification.** This line previously claimed those attributes "will break the responsive layout." That is wrong, and a wrong reason in a task is worth more than a wrong instruction. `globals.css:1374` sets `.location-map iframe { width: 100%; height: 100%; border: none; }`, and a CSS rule beats a presentational HTML attribute, so `width="600" height="450"` would be silently overridden rather than break anything. The instruction to discard them stands unchanged — they are dead weight that misrepresents how this element is sized — but it is a cleanliness rule, not a safety one. Do not let the corrected reason tempt you into pasting them in.
 
 **Instructions:**
 
@@ -605,6 +609,8 @@ Mechanism, as decided:
 - **Why:** `therapyjo_icons_no_bg/` (nine PNGs) and `therapyjo_icons_no_bg.zip` are tracked at the repo root and referenced by nothing. They are **not** source art: all nine PNGs are byte-identical to the shipped `public/icons/*.png`, so deleting them loses nothing that is not already in the repo under the shipped names. Split out of TJ-002, which deliberately excluded them pending this check.
 
 **Planning pass:** 2026-08-14 — corrected the premise this task was filed on. The original note assumed these were originals that `public/icons/*` were *derived* from, which would have made deletion a judgement call about source art. Hashed both sets: `md5sum` over the nine root PNGs and the nine `public/icons/*.png` produces **identical sorted digest sets**, so the shipped PNGs are these files renamed, not re-exported from them. The only assets with no root counterpart are the nine `public/icons/*.svg`, which this task does not touch. Confirmed `git ls-files | grep -i therapyjo_icons` returns exactly **10** tracked paths (nine PNGs plus the zip), and that `grep -rn "therapyjo_icons"` across `src/`, `public/`, `next.config.mjs`, `package.json`, `README.md`, and `Claude_Instructions.md` returns **zero** hits — nothing references the folder or the archive by name. Read `src/app/components/Services.tsx` and `src/app/components/Finder.tsx`: both consume the nine icons as root-absolute `/icons/*.png` strings resolved from `public/`, so neither can reach the root folder. **User decision, 2026-08-14: delete both.** Deletion only, no dependency implications.
+
+**Re-verified before dispatch, 2026-08-14.** Re-ran every claim rather than trusting the pass. `grep -rn "therapyjo_icons"` across the six named paths: **zero** hits. `md5sum` over both PNG sets: the nine sorted digests are **identical**, so the delete is provably lossless — re-checked because "byte-identical" is the entire justification for deleting what look like source files, and it is the one claim whose falsity would make this task destructive. `git ls-files | grep -i therapyjo_icons`: exactly **10** tracked paths (nine PNGs plus the zip). `ls public/icons/ | wc -l`: **18**. `grep -rn "/icons/" src/ | wc -l`: **18**. Baseline on `master`: `npm run build` exit **0**, tree clean.
 
 **Scope — delete only these:**
 - `therapyjo_icons_no_bg/` — all nine PNGs
