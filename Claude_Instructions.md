@@ -199,9 +199,33 @@ If the pass reveals the task needs a decision or an asset that does not exist ye
 | `READY` | Planning pass complete, evidence recorded. Executor may pull it. | Planner |
 | `IN PROGRESS` | Executor has created the branch and started. | Planner, on the executor's report |
 | `REVIEW` | Executor has reported completion. Awaiting planner verification. | Planner, on the executor's report |
-| `DONE` | Planner has independently verified the work and recorded the commit SHA. | Planner |
+| `VISUAL REVIEW` | Planner verification passed; the change has a runtime surface and is awaiting a look in a real browser. | Planner |
+| `DONE` | Planner has independently verified the work, visually reviewed it where applicable, merged it, and recorded both SHAs. | Planner |
 
 `REVIEW → DONE` requires the planner to check the work itself: read the diff, confirm the Scope was respected and nothing outside it changed, re-run the Verification commands, and tick the Definition of Done. The executor's own claim that it passed is not the evidence. If it does not hold up, the status goes back to `READY` with the gap written into the task.
+
+### Visual review and merge
+
+**Anything with a runtime surface gets looked at in a real browser before it merges.** Passing verification commands is not the same as seeing the page. A deleted or renamed asset, a broken image, a element stranded at `opacity: 0` — none of these fail a build, and all of them are obvious on screen.
+
+The planner performs it, on the task's branch, with the app actually running:
+
+1. Load every route the change could plausibly affect — not only the one it edited.
+2. Prefer a scripted assertion over the eye where one exists. Enumerating `<img>` elements for `naturalWidth === 0`, or reading a `<video>`'s `readyState` and `error`, catches a broken asset that a screenshot can easily flatter. Use both.
+3. Distinguish "not yet animated in" from "never appears." Query the element's computed `opacity`, `visibility`, and bounding box before concluding anything is broken — an entrance animation mid-flight looks identical to a dead element in a single screenshot.
+4. A change with no runtime surface — documentation, comments, task files — skips this step. Say so explicitly rather than silently omitting it.
+
+Purely documentation-only tasks may go straight from `REVIEW` to `DONE`.
+
+**The planner merges, once verification and visual review have both passed.** Use `--no-ff` so each task stays a legible unit in the history:
+
+```
+git checkout master && git merge --no-ff <branch> -m "Merge TJ-00N: <title>"
+```
+
+Record both the task commit and the merge commit in the task. **Do not push.** Pushing to the remote is a separate decision that belongs to the user.
+
+Never merge a task whose visual review was skipped, deferred, or inconclusive. If it could not be performed, say so and leave the branch unmerged rather than merging on the strength of a green build.
 
 ### Branching
 
