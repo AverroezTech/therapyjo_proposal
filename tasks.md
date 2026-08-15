@@ -34,14 +34,14 @@ Two things that bear repeating here, because this is the file both agents open:
 | TJ-009e | Working hours as a selector | DONE — merged `423935d` | `feat/working-hours-selector` |
 | TJ-009h | New-doctor form defaults to a colour it will not accept | DONE — merged `f76e2e0` | `bugfix/default-doctor-colour` |
 | TJ-009f | Upload identification documents | SCHEMA DONE — merged `ade1a06`; split into f1 + f2 | `feat/employee-documents` |
-| TJ-009f1 | Employee document endpoints | DONE — merged `9b339a8`; runtime checks owed | `feat/employee-file-api` |
+| TJ-009f1 | Employee document endpoints | DONE — merged `9b339a8`; fully verified | `feat/employee-file-api` |
 | TJ-009f2 | Employee documents UI | PLANNED — placement decided (modal section) | — |
 | TJ-009g | Hard delete a doctor | DONE — merged `fe05f69`; both paths proven | `feat/hard-delete-doctor` |
 | TJ-010 | Employees / secretaries — reported issues | BACKLOG — needs a pass, splits further; its §3 is closed by TJ-009a | — |
 | TJ-011 | Patients — reported issues | BACKLOG — needs a pass, splits further | — |
 | TJ-012 | Blog — hard delete a post | BACKLOG — needs a pass | — |
 | TJ-013 | Doctor profiles (public site) — hard delete | BACKLOG — needs a pass | — |
-| TJ-014 | Uploaded files are never removed from storage | BLOCKED — measured (6/6 objects orphaned); deleting needs a service-role key | `feat/purge-orphaned-uploads` |
+| TJ-014 | Uploaded files are never removed from storage | BLOCKED — measured (7/7 objects orphaned); deleting needs a service-role key | `feat/purge-orphaned-uploads` |
 
 ---
 
@@ -2836,7 +2836,24 @@ Currently: 9-7
 
 ### TJ-009f1 — Employee document endpoints
 
-- **Status:** REVIEW — statically verified on commit `aba9acb`, merged to `master` as `9b339a8`. **Runtime checks still owed** (401/400/404 cases and a real upload→attach→list→delete round trip); merged ahead of them because nothing calls these endpoints yet, so an unexercised route is inert rather than risky.
+- **Status:** DONE — task commit `aba9acb`, merged to `master` as `9b339a8`. Static and runtime checks both complete.
+
+**Runtime verification, 2026-08-15 — all six status-code cases and the full round trip pass.**
+
+| case | got | wanted |
+|---|---|---|
+| `GET` with no `userId` | 400 | 400 |
+| `POST` referencing an unknown user | 404 | 404 |
+| `POST` with a missing field | 400 | 400 |
+| `DELETE` with a non-numeric id | 400 | 400 |
+| `DELETE` of a non-existent row | 404 | 404 |
+| `GET` with a valid `userId` | 200 | 200 |
+
+Round trip with a real non-image file: upload **200** landing in `employee-files/` (the new folder works), attach **201**, list **1 row**, delete **200**, list **0 rows**.
+
+**The first two runs of this returned 500 on the two cases that touch the table, and the cause is worth recording.** `prisma.employeeFile` was `undefined` — the *running dev server* still held the pre-`prisma generate` client in memory, even though the on-disk client had been regenerated and `npm run build` passed. Restarting the server fixed it with no code change. **So the stale-client trap has two halves: regenerate after a `db push`, and restart any dev server that was already running.** I read the server's stack trace rather than assuming, which is the only reason this was diagnosed as an environment artifact instead of filed as a defect against a correct handler.
+
+**The storage leak was demonstrated, not asserted.** After deleting the file row, the object's public URL still returned **HTTP 200**. That is TJ-014 behaving exactly as this handler's comment documents. It also means the probe left a seventh orphan behind — recorded in TJ-014 so its delete list stays accurate.
 - **Branch:** `feat/employee-file-api` — cut from `master`.
 
 **Planner verification (static half):** 2026-08-15 — read all three files in full. **97 insertions, 1 deletion, exactly the three Scope files** measured against the real merge base `659a7be` rather than `master`'s tip, which had moved. Both new routes mirror `doctors/[id]/route.ts` in import order, guard phrasing and response shapes. All **three** handlers carry the ADMIN-only guard; `grep -c 'role !== "ADMIN"'` returns 2 for the two-handler file. Step 4's storage-leak comment is present **verbatim** above the delete call. `npm run build` exit 0 with both routes in the table; eslint **0 problems** across all three files. Merged; `master` rebuilds clean.
@@ -3307,7 +3324,7 @@ The anon key **can list**, even though it cannot delete, so the inventory needed
 | `EmployeeFile.filePath` (0 rows) | 0 |
 | **total referenced** | **0** |
 
-**All 6 objects are orphaned — 100% of the bucket.** The field names were verified against the actual API responses rather than assumed, because "nothing is referenced" is precisely the conclusion that would justify deleting files, and a mistyped field would produce that answer falsely.
+**All 6 objects are orphaned — 100% of the bucket.** **Now 7**: the TJ-009f1 runtime review uploaded `employee-files/1786824800278-qatraogyrqh.pdf`, attached it, deleted the row, and confirmed the object's public URL still returns **HTTP 200**. That is this leak demonstrated live rather than argued — and the demonstration itself added to it, which is the shape of the problem in one sentence. The field names were verified against the actual API responses rather than assumed, because "nothing is referenced" is precisely the conclusion that would justify deleting files, and a mistyped field would produce that answer falsely.
 
 **The standing note under-counted.** It recorded three orphans from the 2026-08-15 cleanup; there are six. The extras are `doctor-profiles/1786406148223-57mhn033vku.webp` and both `general/` objects, none of which any note had captured. That is the argument for inventorying rather than deleting from a list written earlier — the same lesson the cleanup itself produced.
 
