@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { useRouter } from "next/navigation";
+import { parseWorkingHours, formatWorkingHours, isLegacyWorkingHours } from "@/lib/workingHours";
 
 interface Doctor {
     id: string;
@@ -53,6 +54,9 @@ export default function DoctorsPage() {
     const [showPassword, setShowPassword] = useState(false);
     const [formError, setFormError] = useState("");
     const [filter, setFilter] = useState<(typeof FILTERS)[number]>("Active");
+    const [hoursFrom, setHoursFrom] = useState("");
+    const [hoursTo, setHoursTo] = useState("");
+    const [legacyHours, setLegacyHours] = useState("");
 
     const fetchDoctors = useCallback(async () => {
         const res = await fetch("/api/employees/doctors");
@@ -94,6 +98,9 @@ export default function DoctorsPage() {
         setForm({ name: "", email: "", phone: "", workingHours: "", username: "", password: "", confirmPassword: "", adminPassword: "", color: COLORS[0] });
         setShowPassword(false);
         setFormError("");
+        setHoursFrom("");
+        setHoursTo("");
+        setLegacyHours("");
         setShowModal(true);
     };
 
@@ -106,6 +113,10 @@ export default function DoctorsPage() {
         });
         setShowPassword(false);
         setFormError("");
+        const parsed = parseWorkingHours(doc.workingHours);
+        setHoursFrom(parsed?.from ?? "");
+        setHoursTo(parsed?.to ?? "");
+        setLegacyHours(isLegacyWorkingHours(doc.workingHours) ? (doc.workingHours ?? "") : "");
         setShowModal(true);
     };
 
@@ -278,7 +289,28 @@ export default function DoctorsPage() {
                             </div>
                             <div className="form-group">
                                 <label>Working Hours</label>
-                                <input value={form.workingHours} onChange={(e) => setForm({ ...form, workingHours: e.target.value })} placeholder="e.g. 9:00 AM - 3:00 PM" />
+                                <div className="hours-row">
+                                    <input
+                                        type="time"
+                                        aria-label="Start time"
+                                        value={hoursFrom}
+                                        onChange={(e) => {
+                                            setHoursFrom(e.target.value);
+                                            setForm({ ...form, workingHours: formatWorkingHours(e.target.value, hoursTo) });
+                                        }}
+                                    />
+                                    <span className="hours-sep">to</span>
+                                    <input
+                                        type="time"
+                                        aria-label="End time"
+                                        value={hoursTo}
+                                        onChange={(e) => {
+                                            setHoursTo(e.target.value);
+                                            setForm({ ...form, workingHours: formatWorkingHours(hoursFrom, e.target.value) });
+                                        }}
+                                    />
+                                </div>
+                                {legacyHours && <span className="field-hint">Currently: {legacyHours}</span>}
                             </div>
                             {!editingDoctor && (
                                 <div className="form-group">
@@ -456,6 +488,9 @@ export default function DoctorsPage() {
           font-size: 0.9rem; outline: none; font-family: inherit;
         }
         .form-group input:focus { border-color: #6ee7b7; }
+        .hours-row { display: flex; align-items: center; gap: 0.5rem; }
+        .hours-row input { flex: 1; min-width: 0; }
+        .hours-sep { font-size: 0.8rem; color: rgba(255,255,255,0.4); flex-shrink: 0; }
         .color-picker { display: flex; gap: 0.5rem; flex-wrap: wrap; margin-top: 0.25rem; }
         .color-swatch {
           width: 32px; height: 32px; border-radius: 8px; border: 2px solid transparent;

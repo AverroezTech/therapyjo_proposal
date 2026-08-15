@@ -2,6 +2,7 @@
 
 import { useState, useRef } from "react";
 import { useRouter } from "next/navigation";
+import { parseWorkingHours, formatWorkingHours, isLegacyWorkingHours } from "@/lib/workingHours";
 
 export default function NewSecretaryPage() {
     const router = useRouter();
@@ -16,6 +17,8 @@ export default function NewSecretaryPage() {
     const [saving, setSaving] = useState(false);
     const [error, setError] = useState("");
     const [showPassword, setShowPassword] = useState(false);
+    const [hoursFrom, setHoursFrom] = useState("");
+    const [hoursTo, setHoursTo] = useState("");
 
     const handlePictureChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
@@ -123,7 +126,28 @@ export default function NewSecretaryPage() {
                         </div>
                         <div className="field">
                             <label htmlFor="hours">Working Hours</label>
-                            <input id="hours" value={form.workingHours} onChange={(e) => setForm({ ...form, workingHours: e.target.value })} placeholder="e.g. 9:00 AM – 5:00 PM" />
+                            <div className="hours-row">
+                                <input
+                                    id="hours"
+                                    type="time"
+                                    aria-label="Start time"
+                                    value={hoursFrom}
+                                    onChange={(e) => {
+                                        setHoursFrom(e.target.value);
+                                        setForm({ ...form, workingHours: formatWorkingHours(e.target.value, hoursTo) });
+                                    }}
+                                />
+                                <span className="hours-sep">to</span>
+                                <input
+                                    type="time"
+                                    aria-label="End time"
+                                    value={hoursTo}
+                                    onChange={(e) => {
+                                        setHoursTo(e.target.value);
+                                        setForm({ ...form, workingHours: formatWorkingHours(hoursFrom, e.target.value) });
+                                    }}
+                                />
+                            </div>
                         </div>
                     </div>
 
@@ -230,6 +254,9 @@ export default function NewSecretaryPage() {
                 .field input:focus { border-color: var(--primary, #4CAF93); }
                 .field input::placeholder { color: rgba(255,255,255,0.2); }
                 .field-row { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
+                .hours-row { display: flex; align-items: center; gap: 0.5rem; }
+                .hours-row input { flex: 1; min-width: 0; }
+                .hours-sep { font-size: 0.8rem; color: rgba(255,255,255,0.4); flex-shrink: 0; }
                 .password-wrap { position: relative; }
                 .password-wrap input { width: 100%; padding-inline-end: 2.4rem; }
                 .toggle-password {
