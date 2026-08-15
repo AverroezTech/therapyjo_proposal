@@ -41,7 +41,7 @@ Two things that bear repeating here, because this is the file both agents open:
 | TJ-011 | Patients — reported issues | BACKLOG — needs a pass, splits further | — |
 | TJ-012 | Blog — hard delete a post | BACKLOG — needs a pass | — |
 | TJ-013 | Doctor profiles (public site) — hard delete | BACKLOG — needs a pass | — |
-| TJ-014 | Uploaded files are never removed from storage | BLOCKED — needs a Supabase service-role key | `feat/purge-orphaned-uploads` |
+| TJ-014 | Uploaded files are never removed from storage | BLOCKED — measured (6/6 objects orphaned); deleting needs a service-role key | `feat/purge-orphaned-uploads` |
 
 ---
 
@@ -3285,6 +3285,33 @@ Both doctors back to `"9-7"`, `Test Delete` RESIGNED on `#6ee7b7`, `Test Delete2
 | `DoctorProfile.photo` | 254 | profile photo — **public URL** |
 
 **The inconsistency in that table is the trap.** `POST /api/upload` returns both `url` and `path` (`upload/route.ts:69-70`), and the callers picked different ones: the `*File` models store the path, everything else stores the public URL (e.g. `doctors/new/page.tsx:97` assigns `data.url`). A delete needs the **path**, so four of the six columns require the path to be parsed back out of the URL by stripping the public-object prefix. Any implementation that assumes one shape will silently no-op on the other four.
+
+**MEASURED 2026-08-15 — stage 1 is done, and the result is worse than the note below suggested: every object in the bucket is garbage.**
+
+The anon key **can list**, even though it cannot delete, so the inventory needed no new credential. Listed all eight allow-listed folders, then enumerated every asset the database still references, checking **all six columns** and both the active and archived patient sets:
+
+| storage | count |
+|---|---|
+| `general/` | 2 |
+| `doctor-profiles/` | 4 |
+| every other folder | 0 |
+| **total objects** | **6** |
+
+| referencing column | rows with a non-null value |
+|---|---|
+| `User.pictureUrl` (2 doctors, 1 secretary) | 0 |
+| `Patient.pictureUrl` (3 active, 0 archived) | 0 |
+| `BlogPost.coverImage` (7 posts) | 0 |
+| `DoctorProfile.photo` (0 rows) | 0 |
+| `PatientFile.filePath` (0 rows) | 0 |
+| `EmployeeFile.filePath` (0 rows) | 0 |
+| **total referenced** | **0** |
+
+**All 6 objects are orphaned — 100% of the bucket.** The field names were verified against the actual API responses rather than assumed, because "nothing is referenced" is precisely the conclusion that would justify deleting files, and a mistyped field would produce that answer falsely.
+
+**The standing note under-counted.** It recorded three orphans from the 2026-08-15 cleanup; there are six. The extras are `doctor-profiles/1786406148223-57mhn033vku.webp` and both `general/` objects, none of which any note had captured. That is the argument for inventorying rather than deleting from a list written earlier — the same lesson the cleanup itself produced.
+
+**Stage 2 remains blocked:** listing works with the anon key, deleting does not. The six paths above are the delete list, and per the gate below they must be **re-derived at the moment of deletion**, not taken from this table.
 
 **Known orphans already on record:** three doctor-profile photos from the 2026-08-15 cleanup (`uploads/doctor-profiles/1786660147390-i6plxtpvr5.webp`, `…198903-44015a1rher.webp`, `…217456-if1l8fdlm5d.webp`), plus every photo ever replaced. The true count is unknown and **measuring it is part of this task, not a precondition for it**.
 
