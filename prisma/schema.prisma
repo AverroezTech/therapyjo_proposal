@@ -86,6 +86,24 @@ model User {
   reservations   Reservation[]    // doctor's reservations
   notes          Note[]           // notes linked to doctor
   doctorProfile  DoctorProfile?   // public-site profile, if this user has one
+  files          EmployeeFile[]   // identification documents
+}
+
+// ─── Employee Files (identification documents) ────────
+// Mirrors PatientFile, which is the established shape for an uploaded file in
+// this schema. Cascades with the employee: the rows go, but note that nothing
+// in this application ever removes the underlying object from Supabase Storage.
+
+model EmployeeFile {
+  id             Int              @id @default(autoincrement())
+  userId         String
+  fileName       String
+  filePath       String           // Supabase Storage path
+  fileType       String           // mime type
+  fileSize       Int              // bytes
+  uploadedAt     DateTime         @default(now())
+
+  user           User             @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
 // ─── Patient ──────────────────────────────────────────
