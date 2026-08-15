@@ -28,12 +28,12 @@ Two things that bear repeating here, because this is the file both agents open:
 | TJ-008b | Allow a session's state to be reverted | DONE — merged `e5765b9` | `feat/revert-session-status` |
 | TJ-009 | Employees / doctors — reported issues | SPLIT — see TJ-009a … TJ-009g | — |
 | TJ-009a | Reveal and confirm passwords on the employee forms | DONE — merged `234d800` | `feat/employee-password-fields` |
-| TJ-009b | Re-authenticate the admin before changing an employee's password | VISUAL REVIEW PASSED — ready to merge | `feat/admin-reauth-password-change` |
-| TJ-009c | Archive view and re-enrolment for resigned employees | VISUAL REVIEW PASSED — ready to merge | `feat/employee-archive-view` |
-| TJ-009d | One calendar colour per doctor | VISUAL REVIEW PASSED — ready to merge | `feat/unique-doctor-colours` |
-| TJ-009e | Working hours as a selector | VISUAL REVIEW PASSED — ready to merge | `feat/working-hours-selector` |
+| TJ-009b | Re-authenticate the admin before changing an employee's password | DONE — merged `ffd55a7` | `feat/admin-reauth-password-change` |
+| TJ-009c | Archive view and re-enrolment for resigned employees | DONE — merged `2724893` | `feat/employee-archive-view` |
+| TJ-009d | One calendar colour per doctor | DONE — merged `4e6587e` | `feat/unique-doctor-colours` |
+| TJ-009e | Working hours as a selector | DONE — merged `423935d` | `feat/working-hours-selector` |
 | TJ-009f | Upload identification documents | BLOCKED — planned, **not dispatched**: needs go-ahead for a production schema push | — |
-| TJ-009g | Hard delete a doctor | VISUAL REVIEW PASSED (refusal path) — ready to merge | `feat/hard-delete-doctor` |
+| TJ-009g | Hard delete a doctor | DONE — merged `fe05f69` (success path still unproven) | `feat/hard-delete-doctor` |
 | TJ-010 | Employees / secretaries — reported issues | BACKLOG — needs a pass, splits further; its §3 is closed by TJ-009a | — |
 | TJ-011 | Patients — reported issues | BACKLOG — needs a pass, splits further | — |
 | TJ-012 | Blog — hard delete a post | BACKLOG — needs a pass | — |
@@ -2293,7 +2293,7 @@ function statusFor(filter: (typeof FILTERS)[number]) {
 
 ### TJ-009d — One calendar colour per doctor
 
-- **Status:** REVIEW — statically verified on commit `5baacdf`; **unmerged**, awaiting the deferred runtime checks. One imprecision found in my own spec, recorded below and filed rather than patched.
+- **Status:** DONE — task commit `5baacdf`, merged to `master` as `4e6587e` with `--no-ff`. One imprecision found in my own spec, recorded below and filed rather than patched. Not pushed.
 - **Branch:** `feat/unique-doctor-colours` — **cut from `feat/employee-archive-view`, not from `master`.**
 
 **Planner verification (static half):** 2026-08-15 — read the full `git diff feat/employee-archive-view..feat/unique-doctor-colours`. **4 files, 106 insertions, 18 deletions, one commit `5baacdf`, nothing outside Scope.** The line the task exists for is present and correct: `where: { role: "DOCTOR", status: "ACTIVE", color, id: { not: id } }` — exactly one hit, so an unrelated save on an existing doctor cannot be refused by their own colour. POST carries the same check without the self-exclusion, correctly, since a new doctor has no id to exclude. Re-ran `npm run build`: **exit 0**. eslint baselined against `feat/employee-archive-view` rather than `master` (the stacked-branch control): **2 problems on both sides — zero new.**
@@ -2538,7 +2538,7 @@ function statusFor(filter: (typeof FILTERS)[number]) {
 
 ### TJ-009e — Working hours as a selector
 
-- **Status:** REVIEW — statically verified on commit `c50c134`; **unmerged**, awaiting the deferred runtime checks.
+- **Status:** DONE — task commit `c50c134`, merged to `master` as `423935d` with `--no-ff`. Verified, visually reviewed, merged. Not pushed.
 - **Branch:** `feat/working-hours-selector` — **cut from `feat/unique-doctor-colours`, not from `master`.** The chain is unmerged while the visual review is deferred.
 
 **Planner verification (static half):** 2026-08-15 — read the full `git diff feat/unique-doctor-colours..feat/working-hours-selector`. **5 files, 159 insertions, 4 deletions, one commit `c50c134`, nothing outside Scope.** `src/lib/workingHours.ts` matches the specified content character for character, including the `CANONICAL` anchored regex and the `formatWorkingHours` guard that returns `""` rather than a half-range. Re-ran `npm run build`: **exit 0**. `grep` confirms no free-text hour placeholder survives anywhere under `src/app/admin/employees/`, and `type="time"` appears exactly **8** times — two per form, four forms. eslint baselined against `feat/unique-doctor-colours`: **4 problems on both sides, same rules, same files, line numbers shifted only — zero new.**
@@ -2761,7 +2761,7 @@ Currently: 9-7
 
 ### TJ-009g — Hard delete a doctor
 
-- **Status:** REVIEW — statically verified on commit `4d5ec79`; **unmerged**, awaiting the deferred runtime checks. This is the destructive one; it does not merge on a green build.
+- **Status:** DONE — task commit `4d5ec79`, merged to `master` as `fe05f69` with `--no-ff`. Refusal path proven in the browser; **the successful-deletion path remains unproven** — see below. Not pushed.
 - **Branch:** `feat/hard-delete-doctor` — **cut from `feat/working-hours-selector`, not from `master`.**
 
 **Planner verification (static half):** 2026-08-15 — read the full `git diff feat/working-hours-selector..feat/hard-delete-doctor`. **2 files, 125 insertions, 8 deletions, one commit `4d5ec79`, nothing outside Scope, `prisma/schema.prisma` untouched.** The soft-delete path is byte-identical to what it was, merely nested under `if (!hard)`, so the existing behaviour cannot have changed. The refusal logic reads `_count` for reservations and notes and checks `doctorProfile` before anything is written, and `prisma.user.delete` is reachable only past an empty `blockers` array. `req` is correctly un-underscored. UI confirmed: **Delete permanently** renders only in the archived branch of the ternary, and the confirm button carries `disabled={deleting || deleteConfirm !== deleteTarget.name}`. Re-ran `npm run build`: **exit 0**. eslint baselined against `feat/working-hours-selector`: **1 problem on both sides — zero new.**
@@ -3076,6 +3076,15 @@ The archived doctor genuinely has 1 reservation, so the destructive path could b
 The typed-name gate behaves: disabled on an empty box, disabled on wrong text, enabled only on an exact match. *Delete permanently* renders on archived rows only.
 
 **Not exercised — needs the user's decision:** the *successful* deletion of a clean doctor. Both doctors in the database are referenced, so proving it would mean creating an account and destroying it. That is irreversible and was not assumed to be authorised.
+
+### Closed by the user, 2026-08-15 — the two checks I could not perform myself
+
+Both required typing a password, which is out of bounds for me, so the user ran them and reported the results. Designed as a controlled experiment: **same username, same password, only `status` changed**, so a difference in outcome can only be caused by re-enrolment.
+
+- **TJ-009b's `200` path — passed.** Setting a new password on `DeleteTest` with the correct admin password in the *Your Password* field saved cleanly. Together with the earlier `400`/`403` results, all three branches of the gate are now proven.
+- **TJ-009c end-to-end — passed.** While `RESIGNED`, `DeleteTest` could **not** sign in with the newly-set password. After re-enrolment, the **same credentials signed in successfully**. That closes the one link the API could not prove on its own: `status: "ACTIVE"` reaching the database really does restore the ability to log in.
+
+**Side effect worth keeping:** `DeleteTest` is now an `ACTIVE` doctor account with a password the user knows. The TJ-005a note recorded that *"nothing in the repo can log itself in"* — that is no longer true, and a second role is now available for any future review that needs one. Resign it if it is ever in the way; it is a UI click.
 
 ### Database left exactly as found
 
