@@ -9,6 +9,14 @@ Two things that bear repeating here, because this is the file both agents open:
 - **Only the planner writes to this file.** The executor reads a task, implements it, and reports back in conversation. It never edits `tasks.md` — not to claim a task, not to record status.
 - **`READY` requires a recorded planning pass.** A task with no `**Planning pass:**` block has not cleared the gate and must not be executed, whatever its status line says.
 
+### Standing rule — work that waits on a user-supplied secret
+
+**User directive, 2026-08-15.** A task segment that cannot finish without a credential the user has to obtain out of band — today `SUPABASE_SERVICE_ROLE_KEY`, previously `GOOGLE_PLACES_API_KEY` — **stays open at `BLOCKED` until the user supplies the key. It is never closed, never worked around, and never allowed to gate anything else.** When a pass hits one:
+
+1. **Quarantine the key-dependent part into its own task** and leave that task `BLOCKED`, with the exact env var named. Do not mark it `DONE` on the strength of the half that does work.
+2. **Split out everything that does *not* need the key and keep going.** The degradation rule (`src/lib/uploads.ts`) means almost all of this work builds, ships, and is verifiable with the key absent — it no-ops with a warning instead of throwing. Only the runtime proof and the live purge genuinely need it.
+3. **Say plainly which half is proven and which is owed** in the task's status, so nothing reads as finished when it is not.
+
 ---
 
 ## Queue
@@ -41,8 +49,11 @@ Two things that bear repeating here, because this is the file both agents open:
 | TJ-011 | Patients — reported issues | BACKLOG — needs a pass, splits further | — |
 | TJ-012 | Blog — hard delete a post | BACKLOG — needs a pass | — |
 | TJ-013 | Doctor profiles (public site) — hard delete | BACKLOG — needs a pass | — |
-| TJ-014 | Uploaded files are never removed from storage | BLOCKED — measured (7/7 orphaned); split into 014a + purge | — |
-| TJ-014a | Give the app the ability to delete a storage object | REVIEW — merged `b248edb`; removal half needs the key | `feat/storage-delete-capability` |
+| TJ-014 | Uploaded files are never removed from storage | SPLIT — measured (7/7 orphaned); see TJ-014a … TJ-014d | — |
+| TJ-014a | Give the app the ability to delete a storage object | OPEN — merged `b248edb`; degradation half proven, **removal half waits on the key** | `feat/storage-delete-capability` |
+| TJ-014b | Remove the replaced picture on the four hazard-free paths | READY — no key needed; degrades to a logged no-op | `feat/remove-replaced-pictures` |
+| TJ-014c | Linked translations share one cover image — guard before removing | BACKLOG — hazard proven in code, needs a pass to design the guard | — |
+| TJ-014d | Purge the existing orphans and prove the removal half | BLOCKED — **needs `SUPABASE_SERVICE_ROLE_KEY`** | — |
 
 ---
 
@@ -3283,7 +3294,18 @@ Both doctors back to `"9-7"`, `Test Delete` RESIGNED on `#6ee7b7`, `Test Delete2
 
 ### TJ-014 — Uploaded files are never removed from storage
 
-- **Status:** BLOCKED — needs a Supabase **service-role key** in the environment. The analysis is complete and the design is settled; the app simply cannot delete an object with the key it currently holds.
+- **Status:** SPLIT — superseded by **TJ-014a** (OPEN), **TJ-014b** (READY), **TJ-014c** (BACKLOG) and **TJ-014d** (BLOCKED). Nothing executes against this ID. Kept for the inventory, the feeder analysis, and the pass that produced the split.
+
+**Re-split 2026-08-15, on the user's directive that key-blocked work stays open and must not stall the rest.** The original framing — "BLOCKED, needs the service-role key" — was **too coarse, and it was blocking work that does not need the key at all.** TJ-014a already proved the shape: the capability was built, merged and half-verified with the key absent, because `removeUpload` degrades to a logged no-op. The same is true of every remaining wiring task. Sorting the parts by what actually requires the credential:
+
+| Segment | Needs the key? | Why |
+|---|---|---|
+| TJ-014a — the capability | **No** to build; **yes** to finish proving | Merged. Degradation half proven live; the 200→404 flip is owed. |
+| TJ-014b — 4 hazard-free replacement paths | **No** | Builds and ships; no-ops with a warning until the key lands. |
+| TJ-014c — blog cover images | **No** | The guard is a database question, not a storage one. |
+| TJ-014d — purge the 7 existing orphans | **Yes** | Deleting a real object is the one thing the anon key cannot do. |
+
+**Only TJ-014d is genuinely blocked.** Three of the four segments can proceed now.
 - **Branch:** `feat/purge-orphaned-uploads` (assigned; do not cut it until the blocker clears)
 - **Why:** **Every file this application has ever uploaded is still in Supabase Storage, and always will be.** Replace a doctor's photo and the old one stays. Replace a patient's and the old one stays. Delete a `PatientFile` or an `EmployeeFile` row and the row goes while the object stays. This is not a slow degradation to watch — it is unbounded growth in a bucket nobody prunes, on a clinic account, with patient documents in it.
 
@@ -3369,7 +3391,7 @@ The anon key **can list**, even though it cannot delete, so the inventory needed
 
 ### TJ-014a — Give the app the ability to delete a storage object
 
-- **Status:** REVIEW — statically verified on `0f2f29d`, merged to `master` as `b248edb`. **Degradation half proven at runtime; the removal half waits on the key.**
+- **Status:** OPEN — statically verified on `0f2f29d`, merged to `master` as `b248edb`. **Degradation half proven at runtime; the removal half waits on the key.** Per the standing rule at the top of this file, **this task stays open until `SUPABASE_SERVICE_ROLE_KEY` is supplied** — it is not `DONE`, because only one of its two runtime paths has ever been observed. The owed proof is carried in **TJ-014d**, which is where the key-dependent work now lives; when that runs, tick this one's last box and close both.
 - **Branch:** `feat/storage-delete-capability` — cut from `master`.
 
 **Planner verification:** 2026-08-15 — read the full diff: **3 files, 58 insertions, 5 deletions**, nothing outside Scope. `supabase.ts` gained the `server-only` guard it was missing and a `supabaseAdmin` that is `null` when the key is unset. `uploads.ts` never throws on either failure path. The delete handler deletes the row **before** the object, as specified. `npm run build` exit 0; eslint 0 problems on all three files, unchanged from baseline.
@@ -3495,11 +3517,229 @@ export async function removeUpload(value: string | null | undefined): Promise<bo
 - **Runtime, for the planner:** with the key **unset**, deleting an employee file still returns 200 with `objectRemoved: false` and logs the warning — the degradation path. With the key **set**, the same delete returns `objectRemoved: true` and the object's public URL then returns **404** instead of 200. That flip from 200 to 404 is the whole task.
 
 **Done when:**
-- [ ] The app can remove a storage object
-- [ ] It degrades to a logged no-op when the key is unset, never a 500
-- [ ] The row is deleted before the object, so a failure leaks rather than breaks
-- [ ] The service-role key name appears in no client chunk
-- [ ] Diff confined to the three Scope files
+- [ ] The app can remove a storage object — **owed, needs the key; carried by TJ-014d**
+- [x] It degrades to a logged no-op when the key is unset, never a 500 — proven live 2026-08-15
+- [x] The row is deleted before the object, so a failure leaks rather than breaks
+- [x] The service-role key name appears in no client chunk
+- [x] Diff confined to the three Scope files
+
+---
+
+### TJ-014b — Remove the previous picture when one is replaced
+
+- **Status:** READY
+- **Branch:** `feat/remove-replaced-pictures` — cut from current `master`.
+- **Why:** Replacement is feeder #1 of the three that fill the bucket, and it is the one that fires most often: every time an admin swaps a doctor's, secretary's or patient's photo, or a doctor profile's photo, the previous object is abandoned with nothing left pointing at it. TJ-014a built `removeUpload` and wired it into exactly one caller. This wires it into the four replacement paths that carry **no sharing hazard**, which is all of them except blog cover images (see TJ-014c).
+- **It does not need `SUPABASE_SERVICE_ROLE_KEY`.** With the key absent every call no-ops and logs; the saves behave exactly as they do today. When the key lands, these four paths start cleaning up with no further code change. This is the standing rule at the top of the file applied literally.
+
+**Planning pass:** 2026-08-15 — read all four route files in full, plus `src/lib/uploads.ts`, `src/lib/prisma.ts` and `src/app/api/blog/[id]/translate/route.ts`. What the pass established, none of it assumed:
+
+1. **The four paths split into two shapes, and the difference is load-bearing.** `doctor-profiles/[id]` already does `const existing = await prisma.doctorProfile.findUnique(...)` and 404s on a miss, so the old value is **already in hand for free**. The three `pictureUrl` routes do **not** read the row at all — they assemble an `updateData` object and go straight to `prisma.user.update` / `prisma.patient.update`. Those three need a read added. An instruction that treated all four alike would be wrong for three of them.
+2. **`prisma.update` returns the *updated* row**, so the old URL cannot be recovered after the fact. The read has to happen before the update, which is why step 2 below adds one rather than reusing the update's return value.
+3. **Nothing in the app copies a `pictureUrl` into another column**, confirmed by `grep -rn "\.pictureUrl\b" src/`: the only two hits are the two `updateData.pictureUrl = pictureUrl` assignments being edited here. A direct SQL join of `User.pictureUrl` against `DoctorProfile.photo` returned **zero overlapping rows**. So for these four columns, one object belongs to exactly one row and removing it on replacement is safe.
+4. **Blog is deliberately excluded and it is not an oversight** — `blog/[id]/translate/route.ts:41` copies `coverImage: original.coverImage` into a second row. Filed as TJ-014c.
+5. **Uploads produce unique names** (`folder/<timestamp>-<random>.<ext>`, per `api/upload/route.ts`), so re-uploading the same source file yields a distinct object. Two rows cannot collide onto one path by accident.
+
+**The regression risk, and it is the whole reason this task has a negative case.** Every one of these forms **posts `pictureUrl` back unchanged when the user edits any other field** — rename a doctor, fix a phone number, adjust working hours, and the request still carries the current picture URL. A naive "if there was a previous picture, delete it" would therefore **delete the photo the row still points at, on an ordinary save that never touched the image.** That is silent data loss on the most common operation these endpoints serve. The `previous !== incoming` comparison in the instructions is what prevents it, and the verification below exercises exactly that case.
+
+**Scope — touch only these:**
+- `src/app/api/employees/doctors/[id]/route.ts`
+- `src/app/api/employees/secretaries/[id]/route.ts`
+- `src/app/api/patients/[id]/route.ts`
+- `src/app/api/doctor-profiles/[id]/route.ts`
+
+**Do not touch:** `src/lib/uploads.ts` or `src/lib/supabase.ts` (TJ-014a settled both), `blog/[id]/route.ts` or the translate route (TJ-014c), the `POST`/create routes (creating a picture orphans nothing), any `DELETE` handler, and any admin page component. Do not add `SUPABASE_SERVICE_ROLE_KEY` to `.env` or to any committed file.
+
+**Instructions:**
+
+1. In **each of the four** Scope files, add this line to the imports, immediately after the `import { auth } from "@/lib/auth";` line:
+```ts
+import { removeUpload } from "@/lib/uploads";
+```
+
+2. In `src/app/api/employees/doctors/[id]/route.ts`, replace this single line:
+```
+    if (pictureUrl !== undefined) updateData.pictureUrl = pictureUrl;
+```
+   with:
+```ts
+    // prisma.update returns the new row, not the old one, so the previous
+    // picture has to be read before the write or it is unrecoverable. Read it
+    // only when the picture is actually in play, so that renames and phone
+    // edits cost no extra query.
+    let previousPicture: string | null = null;
+    if (pictureUrl !== undefined) {
+        const before = await prisma.user.findUnique({
+            where: { id },
+            select: { pictureUrl: true },
+        });
+        previousPicture = before?.pictureUrl ?? null;
+        updateData.pictureUrl = pictureUrl;
+    }
+```
+
+3. In the same file, replace:
+```
+    const doctor = await prisma.user.update({
+        where: { id },
+        data: updateData,
+    });
+
+    return NextResponse.json({ id: doctor.id, name: doctor.name, message: "Doctor updated" });
+```
+   with:
+```ts
+    const doctor = await prisma.user.update({
+        where: { id },
+        data: updateData,
+    });
+
+    // Only after the row is safely updated, and only when the value genuinely
+    // changed. These forms re-post the current pictureUrl on every save, so
+    // without the inequality check an ordinary rename would delete the photo
+    // the row still points at. removeUpload never throws: a storage failure
+    // leaks an object and logs, it does not fail this request.
+    if (previousPicture && previousPicture !== pictureUrl) {
+        await removeUpload(previousPicture);
+    }
+
+    return NextResponse.json({ id: doctor.id, name: doctor.name, message: "Doctor updated" });
+```
+
+4. In `src/app/api/employees/secretaries/[id]/route.ts`, apply **the same two edits**, with the same comments. The anchor for step 2 is byte-identical (`    if (pictureUrl !== undefined) updateData.pictureUrl = pictureUrl;`). The anchor for step 3 is the secretary variant:
+```
+    const secretary = await prisma.user.update({
+        where: { id },
+        data: updateData,
+    });
+
+    return NextResponse.json({ id: secretary.id, name: secretary.name, message: "Secretary updated" });
+```
+   Insert the same `if (previousPicture && previousPicture !== pictureUrl)` block between the update and the `return`.
+
+5. In `src/app/api/patients/[id]/route.ts`, the update is a single spread call, so the read goes just above it. Replace:
+```
+    const patient = await prisma.patient.update({
+        where: { id: patientId },
+        data: {
+            ...(name !== undefined && { name }),
+            ...(phone1 !== undefined && { phone1 }),
+            ...(phone2 !== undefined && { phone2 }),
+            ...(pictureUrl !== undefined && { pictureUrl }),
+        },
+    });
+
+    return NextResponse.json(patient);
+```
+   with:
+```ts
+    // Read the previous picture before the write — prisma.update returns the
+    // new row and the old URL is gone after it. Only when the picture is in
+    // play, so ordinary edits cost no extra query.
+    let previousPicture: string | null = null;
+    if (pictureUrl !== undefined) {
+        const before = await prisma.patient.findUnique({
+            where: { id: patientId },
+            select: { pictureUrl: true },
+        });
+        previousPicture = before?.pictureUrl ?? null;
+    }
+
+    const patient = await prisma.patient.update({
+        where: { id: patientId },
+        data: {
+            ...(name !== undefined && { name }),
+            ...(phone1 !== undefined && { phone1 }),
+            ...(phone2 !== undefined && { phone2 }),
+            ...(pictureUrl !== undefined && { pictureUrl }),
+        },
+    });
+
+    // The form re-posts the current pictureUrl on every save, so the
+    // inequality check is what stops a rename from deleting a live photo.
+    if (previousPicture && previousPicture !== pictureUrl) {
+        await removeUpload(previousPicture);
+    }
+
+    return NextResponse.json(patient);
+```
+
+6. In `src/app/api/doctor-profiles/[id]/route.ts`, **no read needs adding** — the handler already holds `existing`. In the `PUT` only, replace:
+```
+    return NextResponse.json(profile);
+}
+
+// DELETE /api/doctor-profiles/[id] — archive (soft delete) or restore
+```
+   with:
+```ts
+    // existing was already fetched for the 404 check above, so the previous
+    // photo is in hand at no extra cost. Same inequality guard as the other
+    // three: this form re-posts the current photo on every save.
+    if (existing.photo && photo !== undefined && photo !== existing.photo) {
+        await removeUpload(existing.photo);
+    }
+
+    return NextResponse.json(profile);
+}
+
+// DELETE /api/doctor-profiles/[id] — archive (soft delete) or restore
+```
+   **Do not add a removal to the `DELETE` handler below it.** That handler archives (`archived: true`); the row and its photo both survive and a restore must still find the image.
+
+**Verification:**
+- `npm run build` passes.
+- `npx eslint` on the four Scope files — no new problems against baseline.
+- `grep -rn "await removeUpload(" src/app/api/` returns **exactly 5** — the four added here plus the employee-file delete from TJ-014a. It returns **1** on `master` today, so the delta is 4, one per Scope file. (Grep the *call* form, not the bare name: a bare `grep -rn "removeUpload"` matches the import line too and returns 10, not 5. Baseline measured on `master` before writing this check rather than predicted — the four earlier grep miscounts in this file were all predicted counts.)
+- `grep -rn "SUPABASE_SERVICE_ROLE_KEY" src/` still shows it only in `src/lib/supabase.ts` and the warning string in `src/lib/uploads.ts` — this task adds no new reference to it.
+- **Runtime, and the negative case is the one that matters.** With the key still unset, on each of the four surfaces:
+  - **Save without touching the picture** (rename a doctor, change a phone) → 200, the picture still renders afterwards, and **no `[uploads]` line appears in the server log at all**. If a warning naming the current picture's path appears, the inequality guard is wrong and the code would be destroying live photos once the key lands. This is the check the task exists to pass.
+  - **Replace the picture** → 200, new image renders, and the log shows exactly one `[uploads] SUPABASE_SERVICE_ROLE_KEY unset — leaving <old path> in storage`, naming the **old** path, not the new one.
+- No visual regression: the four admin surfaces still save and still render their images.
+
+**Done when:**
+- [ ] All four replacement paths remove the previous object
+- [ ] A save that does not change the picture removes nothing — proven, not assumed
+- [ ] It degrades to a logged no-op with the key unset, never a 500
+- [ ] Blog cover images are untouched, and TJ-014c holds the reason
+- [ ] Diff confined to the four Scope files
+
+---
+
+### TJ-014c — Linked translations share one cover image
+
+- **Status:** BACKLOG — hazard proven, guard not yet designed. Needs its own planning pass before it can go `READY`.
+- **Why:** `src/app/api/blog/[id]/translate/route.ts:41` creates the translated post with `coverImage: original.coverImage` — **one storage object, two `BlogPost` rows.** Every other upload column in this app is owned by exactly one row; this one is not. So the removal logic that is safe for TJ-014b's four paths is **actively dangerous here**: replacing the cover image on an AR translation would delete the object its linked EN post still displays, and the EN post would render a broken image with no error anywhere to explain it.
+
+**Found during the TJ-014b planning pass, 2026-08-15**, by reading the translate route rather than trusting TJ-014's own summary — which listed "the replacement paths for the four URL-storing columns" as if all four were the same mechanical edit. They are not. This is the negative case TJ-014's verification demanded be asserted deliberately ("a purge that is slightly too eager destroys patient documents"), and it turned up in the blog rather than in patient files.
+
+**Currently latent, not live.** A direct SQL group-by on `BlogPost.coverImage` returns **zero shared values today**, because the inventory found all 7 objects orphaned and no post currently holds a cover image at all. The hazard fires the first time someone translates a post that has one. **Fixing it before that happens is cheap; afterwards it is a support ticket about a vanished image.**
+
+**The open design question for the pass** — do not pick one without reading the code:
+- **Count referencing rows before removing** (`count({ where: { coverImage: old } }) === 0`), which generalises to any future sharing; or
+- **Skip removal whenever `linkedId` is set**, which is simpler and cheaper but leaves an orphan behind on every translated post; or
+- **Stop sharing at the source** — have translate copy the object rather than the URL, so the two rows own separate files. Restores the one-object-one-row invariant everywhere, but adds a storage copy to translation, and TJ-014a's `supabaseAdmin` is the only client that could do it.
+
+**Do not start this until TJ-014b has merged** — they touch adjacent code and the same helper.
+
+---
+
+### TJ-014d — Purge the existing orphans and prove the removal half
+
+- **Status:** BLOCKED — **needs `SUPABASE_SERVICE_ROLE_KEY` in the environment.** Per the standing rule at the top of this file, this task stays open and is not to be closed, worked around, or allowed to gate TJ-014b or TJ-014c.
+- **Why:** this is the one segment that genuinely cannot proceed without the credential. Two things are owed:
+  1. **The runtime proof TJ-014a never got.** Delete an employee file with the key set: the response must return `objectRemoved: true` and the object's public URL must flip from **HTTP 200 to 404**. Until that is observed, the app has never actually removed a storage object and nobody should claim it can.
+  2. **The 7 existing orphans**, inventoried above — 100% of the bucket, including `employee-files/1786824800278-qatraogyrqh.pdf` which the TJ-009f1 runtime review added while demonstrating the leak.
+
+**The pre-flight gate is mandatory and it is not a formality.** The delete list in the inventory above was written on 2026-08-15 and **must be re-derived at the moment of deletion** — re-list the bucket, re-read all six referencing columns, diff again, and delete only what is still unreferenced *then*. TJ-006 and the 2026-08-15 cleanup both used this gate. By the time the key arrives, TJ-014b will have shipped and may itself have removed some of these objects; the list will be stale by construction.
+
+**When the key lands, in this order:** TJ-014a's owed proof first (it is one delete and it validates the whole mechanism), then the purge. If the first fails, do not run the second.
+
+**Done when:**
+- [ ] `objectRemoved: true` observed, with a public URL confirmed flipping 200 → 404
+- [ ] TJ-014a's last checkbox ticked and that task closed
+- [ ] The bucket re-inventoried at deletion time, not read from the table above
+- [ ] Every remaining orphan removed, and every referenced object still present
 
 ---
 
