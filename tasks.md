@@ -34,7 +34,7 @@ Two things that bear repeating here, because this is the file both agents open:
 | TJ-009e | Working hours as a selector | DONE — merged `423935d` | `feat/working-hours-selector` |
 | TJ-009h | New-doctor form defaults to a colour it will not accept | READY | `bugfix/default-doctor-colour` |
 | TJ-009f | Upload identification documents | SCHEMA DONE — merged `ade1a06`; endpoints + UI still to build | `feat/employee-documents` |
-| TJ-009g | Hard delete a doctor | DONE — merged `fe05f69` (success path still unproven) | `feat/hard-delete-doctor` |
+| TJ-009g | Hard delete a doctor | DONE — merged `fe05f69`; both paths proven | `feat/hard-delete-doctor` |
 | TJ-010 | Employees / secretaries — reported issues | BACKLOG — needs a pass, splits further; its §3 is closed by TJ-009a | — |
 | TJ-011 | Patients — reported issues | BACKLOG — needs a pass, splits further | — |
 | TJ-012 | Blog — hard delete a post | BACKLOG — needs a pass | — |
@@ -2789,7 +2789,24 @@ Currently: 9-7
 
 ### TJ-009g — Hard delete a doctor
 
-- **Status:** DONE — task commit `4d5ec79`, merged to `master` as `fe05f69` with `--no-ff`. Refusal path proven in the browser; **the successful-deletion path remains unproven** — see below. Not pushed.
+- **Status:** DONE — task commit `4d5ec79`, merged to `master` as `fe05f69` with `--no-ff`. **Both paths now proven**: refusal on 2026-08-15, and the successful deletion the same day once the user supplied a clean doctor. Not pushed.
+
+**Success path proven, 2026-08-15.** The refusal path could be tested against existing data, but the positive path could not — every doctor in the database was referenced, and creating an account requires sending a password, which is out of bounds for me. The user created a throwaway doctor (`claude`) for the purpose. Driven through the real UI, not the API:
+
+| step | result |
+|---|---|
+| Resign (moves it to Archived, where the delete lives) | `ACTIVE` → `RESIGNED` |
+| Typed gate — empty box | disabled |
+| Typed gate — wrong text (`claudX`) | disabled |
+| Typed gate — exact name (`claude`) | enabled |
+| `DELETE …?hard=true` | **200** |
+| Doctor count | **3 → 2** |
+| Row present afterwards | **gone** |
+| Other two doctors | untouched |
+
+**This is the first hard delete this application has ever performed.** The note further down recording that *"this app has no hard delete anywhere"* is now out of date for doctors specifically — Blog, patients, and secretaries still have none.
+
+**Worth carrying into TJ-013 and TJ-011 §3:** the delete removed the `User` row and nothing else. Had the doctor owned an uploaded file, the `EmployeeFile` row would have cascaded but **the object in Supabase Storage would have remained**, because no code path in this application ever removes one. That is now a live concern rather than a theoretical one, since TJ-009f's table exists.
 - **Branch:** `feat/hard-delete-doctor` — **cut from `feat/working-hours-selector`, not from `master`.**
 
 **Planner verification (static half):** 2026-08-15 — read the full `git diff feat/working-hours-selector..feat/hard-delete-doctor`. **2 files, 125 insertions, 8 deletions, one commit `4d5ec79`, nothing outside Scope, `prisma/schema.prisma` untouched.** The soft-delete path is byte-identical to what it was, merely nested under `if (!hard)`, so the existing behaviour cannot have changed. The refusal logic reads `_count` for reservations and notes and checks `doctorProfile` before anything is written, and `prisma.user.delete` is reachable only past an empty `blockers` array. `req` is correctly un-underscored. UI confirmed: **Delete permanently** renders only in the archived branch of the ternary, and the confirm button carries `disabled={deleting || deleteConfirm !== deleteTarget.name}`. Re-ran `npm run build`: **exit 0**. eslint baselined against `feat/working-hours-selector`: **1 problem on both sides — zero new.**
