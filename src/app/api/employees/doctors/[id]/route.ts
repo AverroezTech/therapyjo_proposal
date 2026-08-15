@@ -59,7 +59,23 @@ export async function PUT(
     if (email !== undefined) updateData.email = email;
     if (phone !== undefined) updateData.phone = phone;
     if (workingHours !== undefined) updateData.workingHours = workingHours;
-    if (color !== undefined) updateData.color = color;
+    if (color !== undefined) {
+        // Exclude the doctor being edited, or saving any other field would
+        // reject the colour they already hold.
+        if (color) {
+            const clash = await prisma.user.findFirst({
+                where: { role: "DOCTOR", status: "ACTIVE", color, id: { not: id } },
+                select: { name: true },
+            });
+            if (clash) {
+                return NextResponse.json(
+                    { error: `That colour is already used by ${clash.name}` },
+                    { status: 409 }
+                );
+            }
+        }
+        updateData.color = color;
+    }
     if (pictureUrl !== undefined) updateData.pictureUrl = pictureUrl;
     if (status !== undefined) updateData.status = status;
     if (password) {
