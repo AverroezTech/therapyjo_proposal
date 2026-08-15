@@ -8,9 +8,9 @@ const VALID_TRANSITIONS: Record<string, string[]> = {
     WAITING: ["CHECKED_IN", "CANCELLED"],
     CHECKED_IN: ["WITH_DOCTOR", "WAITING", "CANCELLED"],
     WITH_DOCTOR: ["CHECKED_OUT"],
-    CHECKED_OUT: [], // terminal state
-    CANCELLED: [], // terminal state
-    NO_SHOW: [], // terminal state
+    CHECKED_OUT: ["WITH_DOCTOR"], // revert only — undo a premature checkout
+    CANCELLED: ["SCHEDULED"], // revert only — undo a cancellation
+    NO_SHOW: ["SCHEDULED"], // revert only — undo a no-show
 };
 
 // GET /api/reservations/[id]
@@ -126,7 +126,11 @@ export async function PATCH(
     // Set timestamps for status changes
     const timestamps: Record<string, unknown> = {};
     if (newStatus === "CHECKED_IN") timestamps.checkedInAt = new Date();
-    if (newStatus === "WITH_DOCTOR") timestamps.withDoctorAt = new Date();
+    // Guarded: reverting a checkout also lands on WITH_DOCTOR, and the session
+    // really did start when it started — do not rewrite it with the undo time.
+    if (newStatus === "WITH_DOCTOR" && reservation.status !== "CHECKED_OUT") {
+        timestamps.withDoctorAt = new Date();
+    }
     if (newStatus === "CHECKED_OUT") {
         timestamps.checkedOutAt = new Date();
         // Auto-update patient's lastVisitDate
@@ -134,6 +138,35 @@ export async function PATCH(
             where: { id: reservation.patientId },
             data: { lastVisitDate: new Date() },
         });
+    }
+
+    // Undoing a checkout: drop the checkout stamp, then recompute the patient's
+    // lastVisitDate from the sessions still checked out. Clearing it outright
+    // would erase an earlier, legitimate visit.
+    if (reservation.status === "CHECKED_OUT" && newStatus === "WITH_DOCTOR") {
+        timestamps.checkedOutAt = null;
+        const priorVisit = await prisma.reservation.findFirst({
+            where: {
+                patientId: reservation.patientId,
+                status: "CHECKED_OUT",
+                id: { not: reservation.id },
+                checkedOutAt: { not: null },
+            },
+            orderBy: { checkedOutAt: "desc" },
+            select: { checkedOutAt: true },
+        });
+        await prisma.patient.update({
+            where: { id: reservation.patientId },
+            data: { lastVisitDate: priorVisit?.checkedOutAt ?? null },
+        });
+    }
+
+    // Returning to SCHEDULED means the session has not happened yet, so any
+    // stamps left over from a check-in before the cancellation are now stale.
+    if (newStatus === "SCHEDULED") {
+        timestamps.checkedInAt = null;
+        timestamps.withDoctorAt = null;
+        timestamps.checkedOutAt = null;
     }
 
     const updated = await prisma.reservation.update({

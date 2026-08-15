@@ -91,6 +91,12 @@ export default function ReservationSlot({
     if (status === "WITH_DOCTOR") {
         actions.push({ label: "Checkout", icon: "🚪", onClick: () => onStatusChange(id, "CHECKED_OUT") });
     }
+    if (status === "CANCELLED" || status === "NO_SHOW") {
+        actions.push({ label: "Reschedule", icon: "↩️", onClick: () => onStatusChange(id, "SCHEDULED") });
+    }
+    if (status === "CHECKED_OUT") {
+        actions.push({ label: "Undo Checkout", icon: "↩️", onClick: () => onStatusChange(id, "WITH_DOCTOR") });
+    }
     actions.push({ label: "Duplicate", icon: "📋", onClick: () => onDuplicate(id) });
     const cancellable = ["SCHEDULED", "WAITING", "CHECKED_IN"].includes(status);
     if (cancellable) {
