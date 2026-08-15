@@ -1956,7 +1956,7 @@ Re-ran verification independently: `npm run build` **exit 0**, 49 static pages, 
 
 ### TJ-009b — Re-authenticate the admin before changing an employee's password
 
-- **Status:** REVIEW — statically verified on commit `8ed59cd`; **unmerged**, awaiting the runtime checks the user has deferred.
+- **Status:** DONE — task commit `8ed59cd`, merged to `master` as `ffd55a7`. Runtime gate re-confirmed during the TJ-009 visual review (see "the gate holds, and it is enforced server-side" below). **Status line corrected 2026-08-15** — it still read `REVIEW — unmerged` long after the merge landed.
 - **Branch:** `feat/admin-reauth-password-change`
 
 **Planner verification (static half):** 2026-08-15 — read the full diff rather than the report. **4 files, 102 insertions, 8 deletions, one commit `8ed59cd`, tree clean, nothing outside Scope.** The security-bearing line is right: `const actingAdminId = (session.user as { id?: string }).id;` — the acting admin comes from the session, never the body, so the gate cannot be pointed at another account by tampering with the request. Both routes carry byte-identical logic; both `POST` handlers and both `/new` pages are untouched (`grep` for `adminPassword` in the create pages returns nothing). Re-ran `npm run build` independently: **exit 0**. Re-ran the eslint baseline myself by restoring the `master` versions in place: **2 problems on the branch, 2 on the baseline — zero new.**
@@ -2144,8 +2144,8 @@ Re-ran verification independently: `npm run build` **exit 0**, 49 static pages, 
 
 ### TJ-009c — Archive view and re-enrolment for resigned employees
 
-- **Status:** READY
-- **Branch:** `feat/employee-archive-view` — **cut from `feat/admin-reauth-password-change`, not from `master`.** That branch is unmerged (the visual review is deferred), so branching from `master` would silently drop TJ-009b's work.
+- **Status:** DONE — task commit `b75cb9f`, merged to `master` as `2724893`. Round trip proven in both directions during the TJ-009 visual review. **Status line corrected 2026-08-15** — it still read `READY`, which would have sent an executor to redo merged work.
+- **Branch:** `feat/employee-archive-view` — was **cut from `feat/admin-reauth-password-change`, not from `master`**, because TJ-009b was unmerged at the time. Both are merged now; the note is kept as history, not as an instruction.
 
 **Planner verification (static half):** 2026-08-15 — read the full `git diff feat/admin-reauth-password-change..feat/employee-archive-view`. **2 files, 121 insertions, 13 deletions, one commit `b75cb9f`, nothing outside Scope.** All 11 instructions applied verbatim. Checked the two places step 11 said this file diverges, because a blind repeat of steps 1–10 would have broken both: the secretaries `{sec.status === "ACTIVE" && (` guard was correctly converted to the `? :` form so archived rows now offer **Re-enrol** instead of nothing, and `colSpan={6}` was preserved rather than copied as `{7}` from the doctors file. Re-ran `npm run build`: **exit 0**. Both greps clean — `>Delete<` and `handleDelete` are gone from `src/app/admin/employees/` entirely, so the button that lied is no longer in the tree.
 
@@ -2762,7 +2762,7 @@ Currently: 9-7
 
 ### TJ-009h — The new-doctor form defaults to a colour it will not accept
 
-- **Status:** READY — small, self-contained, no decision needed.
+- **Status:** DONE — task commit `e8cfde7`, merged to `master` as `f76e2e0`. **Status line corrected 2026-08-15** — it still read `READY`, which would have sent an executor to redo merged work.
 - **Branch:** `bugfix/default-doctor-colour`
 - **Why:** TJ-009d added server-side colour uniqueness but left `/admin/employees/doctors/new` initialising `color: COLORS[0]`. When `COLORS[0]` (`#6ee7b7`) is already held by an ACTIVE doctor, the form opens with that swatch **selected and simultaneously disabled**, and pressing *Create Doctor* without touching the colour sends a value the server refuses with 409 — naming a colour the admin never chose. **Proven in the browser 2026-08-15**, not inferred: `selectedIndex=0`, `selectedColour=#6ee7b7`, `selectedIsDisabled=true`, `disabledIndexes=[0, 2]`.
 
@@ -3746,6 +3746,8 @@ import { removeUpload } from "@/lib/uploads";
 ## Notes for the planner
 
 Findings reported by the executor, or surfaced during a pass, that fall outside the scope of the task that turned them up. The planner triages these into tasks. **The executor does not write here** — it reports in conversation and the planner records.
+
+- **Three task status lines had drifted out of sync with the Queue table, two of them still reading `READY` on merged work.** Found 2026-08-15 while checking that TJ-014b was genuinely the topmost `READY` task before dispatching it. TJ-009b read `REVIEW — unmerged` (merged as `ffd55a7`), TJ-009c read `READY` (merged as `2724893`), TJ-009h read `READY` (merged as `f76e2e0`). All three verified against `git log` and corrected in place. **This was not cosmetic:** the executor rule is "pull the topmost `READY` task," and TJ-009c sits ~1,400 lines above TJ-014b — an executor dispatched without a named task would have pulled merged work and rebuilt it from a branch note that no longer applied. **Cause: at merge time the Queue table was updated and the task body was not.** The table and the body are two records of the same fact and only one was being maintained. **Fix going forward — a merge is not recorded until both are updated**, and check `grep -n "^- \*\*Status:\*\* READY" tasks.md` before every dispatch; it should list only the task being handed off.
 
 - **The employee tables clip their own Actions column on a phone, and the app already ships the fix elsewhere.** Measured at 320px during the TJ-009 visual review, inside a same-origin iframe: `.data-table` is **804px wide inside a 256px `.table-container`**, and that container is `overflow: hidden` — so the Actions column is not merely off-screen, it is **unreachable**, with no scroll. On the Archived tab that hides *Re-enrol* and *Delete permanently* entirely. **Pre-existing and not caused by the TJ-009 chain** — `git diff master..feat/hard-delete-doctor` does not touch `.table-container`. The fix is one declaration and it is already in this repo: `admin/blog/page.tsx` uses `overflow: hidden; overflow-x: auto;` on the same class while both employee pages use `overflow: hidden` alone. **TJ-009g raises the stakes**, because it puts an irreversible action in the column a phone cannot reach. Fold into the same 320px admin task as the navbar overflow below; the two are the same bug family and the navbar offenders (`.dropdown-panel`, `.dropdown-item`) were re-confirmed in the same run at `scrollWidth 415` vs a 320px viewport. (Found during the TJ-009 visual review.)
 - **Redaction in the browser tool fires on message *content*, not just key names, and it will silently blank a result you needed.** During the TJ-009b gate check, returning `{ code, error }` from the API came back as `[BLOCKED: Sensitive key]` — not because of the key names, which I renamed twice, but because the response body contained the phrase *"…your own password…"*. The fix that worked: return **derived values only** — a bare status code, or a boolean from a regex — never the raw message. Worth knowing before concluding that an endpoint returned nothing. Same class of trap as reading `res.status` alone: the tool is shaping what you see. (Found during the TJ-009 visual review.)
