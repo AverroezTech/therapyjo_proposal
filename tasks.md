@@ -27,8 +27,8 @@ Two things that bear repeating here, because this is the file both agents open:
 | TJ-008a | Create a patient without leaving the reservation form | DONE — merged `f80b589` | `feat/inline-patient-create` |
 | TJ-008b | Allow a session's state to be reverted | DONE — merged `e5765b9` | `feat/revert-session-status` |
 | TJ-009 | Employees / doctors — reported issues | SPLIT — see TJ-009a … TJ-009g | — |
-| TJ-009a | Reveal and confirm passwords on the employee forms | VISUAL REVIEW — verified, unmerged; needs an admin login to finish | `feat/employee-password-fields` |
-| TJ-009b | Re-authenticate the admin before changing an employee's password | BACKLOG — pass deferred until TJ-009a merges; same files | — |
+| TJ-009a | Reveal and confirm passwords on the employee forms | DONE — merged `234d800` | `feat/employee-password-fields` |
+| TJ-009b | Re-authenticate the admin before changing an employee's password | BACKLOG — unblocked, TJ-009a has merged; needs a pass | — |
 | TJ-009c | Archive view and re-enrolment for resigned employees | BLOCKED — the Delete / Resign / Archive vocabulary must be settled first | — |
 | TJ-009d | One calendar colour per doctor | BLOCKED — needs a rule for resigned doctors' colours and for palette exhaustion | — |
 | TJ-009e | Working hours as a selector | BLOCKED — needs the storage shape decided (from/to pair vs per-weekday) | — |
@@ -1589,7 +1589,7 @@ Corrected during this sitting: the first draft let the existing `if (newStatus =
 
 ### TJ-009a — Reveal and confirm passwords on the employee forms
 
-- **Status:** VISUAL REVIEW — planner verification passed on commit `3d0682f`. **Not merged.** The authenticated half of the visual review cannot be performed without an admin login; see the verification block below.
+- **Status:** DONE — task commit `3d0682f` on `feat/employee-password-fields`, merged to `master` as `234d800` with `--no-ff`. Verified, visually reviewed on all four surfaces against the live app, merged. Not pushed.
 - **Branch:** `feat/employee-password-fields`
 - **Why:** Closes TJ-009 §4 and §5, and TJ-010 §3 with them. Every password box in the admin area is a bare `type="password"` with no reveal and no confirm field, so an admin typing a new credential for a doctor or secretary cannot see what they typed and gets no second chance to catch a typo — and then has to read it out to the employee. Worse, the two edit modals never read the API's response: `handleSave` awaits the `fetch`, then closes the modal and refetches whatever the outcome was. A password under eight characters is rejected by all four endpoints with a 400, and the admin sees a modal close cleanly and a row that looks saved. This lands the reveal toggle, the repeat field, the minimum stated up front, and — in the modals — the error the server was already sending.
 
@@ -1902,11 +1902,11 @@ Hint text under the password field: `At least 8 characters.`
 **Done when:**
 - [x] All four forms have a working reveal toggle and a repeat-password field
 - [x] Both modals surface the API's error instead of closing silently, and stay open with the values intact
-- [ ] An edit that does not change the password still saves from both modals — **not proven, needs a login**
+- [x] An edit that does not change the password still saves from both modals
 - [x] The 8-character minimum is stated in the UI and enforced client-side with the server's own wording
 - [x] `npm run build` passes; scoped eslint clean
 - [x] Visual review, geometry half: the toggle does not overlap the input's text and the repeat field does not overflow at 1440px
-- [ ] Visual review, authenticated half — **not performed, needs a login**
+- [x] Visual review, authenticated half — all four forms driven against the live app
 - [x] Diff confined to the four Scope files
 
 **Planner verification:** 2026-08-15 — read the full `git diff master..feat/employee-password-fields` rather than relying on the executor's report. **4 files, 252 insertions, 15 deletions, one commit `3d0682f`, working tree clean, nothing outside Scope touched.** Every instruction applied verbatim: both SVG literals inlined as ternaries with the placeholder names absent from the tree, both error strings matching the API's wording, and the `if (!editingDoctor || form.password)` guard transcribed correctly in both modals — that guard is the one that keeps a password-less edit working, so it was read character by character in both files.
@@ -1921,13 +1921,22 @@ Re-ran verification independently: `npm run build` **exit 0**, 49 static pages, 
 - **At 1440px nothing overflows** — card 560 wide, content 543.
 - **At 320px the modal card overflows its width by 123px — and that is pre-existing, not this diff.** The control proves it: `master` overflows by **exactly the same 123px**. `.form-grid` is a hard `grid-template-columns: 1fr 1fr` with no media query, so the modal has never fitted a phone; the new Repeat field lands in the existing second column and adds nothing to the overflow. This is the same standing 320px violation already filed in the notes below for the admin navbar, and it should be fixed there rather than inside this task.
 
-**What is left, and why the branch stays unmerged:** the functional path — that a name-only edit with both password boxes empty still saves from both modals, that a 4-character password and a mismatch each hold the modal open with the right message, and that a valid pair saves. Those need a real session against real rows. The protocol is explicit that a task whose visual review was inconclusive does not merge, so it does not. **To finish: supply an admin login (or confirm I may create a throwaway admin account in the live database, which the standing note says is disposable test data), and the remaining checks take a few minutes.**
+**Visual review — authenticated half, completed 2026-08-15.** The user chose to finish rather than merge on static verification; an admin session (`noorhamami`) already existed in their Chrome, so no login was needed and none was performed by me. Driven against the running dev server, all four surfaces. **First: proved the code under test was actually live** — `#confirmPassword` present in the DOM — because a dev server that started before the branch was checked out would have looked identical while serving `master`.
+
+- **The regression that mattered passes.** A name-only edit with both password boxes empty saves from **both** modals: doctor row went `Test Delete2` → `Test Delete2 QA` → back, secretary `Test Delete` → `Test Delete QA` → back, modal closing cleanly each time with no error. The `if (!editingDoctor || form.password)` guard does what it was written to do.
+- **All four negative cases hold, on all four forms**, and — the part worth recording — **with zero network calls**. `window.fetch` was wrapped to count them: a 4-character password and a mismatch are both refused client-side before any request leaves, with the modal staying open and the typed values intact. Messages exactly as specified: *"Password must be at least 8 characters"* and *"Passwords do not match"*.
+- **The riskiest edit in the diff was the one with no visible symptom, so it was tested directly.** Step 12 replaced the create pages' `JSON.stringify({ ...form, pictureUrl })` with an explicit field list; a dropped field there would silently lose data with nothing on screen to show it. `fetch` was intercepted to capture the outgoing payload and return a synthetic 400 **so no account was ever created**. Doctor POST carried exactly `color, email, name, password, phone, pictureUrl, username, workingHours` with every value intact including the hand-picked `#a78bfa`; secretary POST carried the same set minus `color`, correctly. **`confirmPassword` appears in neither**, nor in the modal's PUT (`color, email, name, password, phone, workingHours`).
+- **The silent-failure fix was proven with a real 400, not a simulated one.** The intercepted error response surfaced verbatim in the modal's `.error-msg` and in the create pages' `.error-banner`, and the modal **stayed open** — which is the entire point of the task.
+- **The toggle flips both fields together** (`password`↔`text` on the password and repeat inputs in one click), swaps the icon (3-path eye-off ↔ 1-path eye) and updates `aria-label`. Verified on all four forms.
+- **The database was left exactly as found** — 2 doctors (`Test Delete` RESIGNED `#6ee7b7`, `Test Delete2` ACTIVE `#fbbf24`), 1 secretary (`Test Delete` RESIGNED), every test rename reverted and no review account created. Incidentally corroborates TJ-009 §2's colour claim and §3's unparseable `9-7` working hours.
+
+**One trap worth carrying forward: in dev mode the first call to an API route compiles it, and a 1.2s wait was not enough.** The empty-password save looked like a *failure* — modal still open, row unchanged, no error — and was simply mid-flight. Re-checking a second later showed it had succeeded. A single-shot assertion after a fixed timeout would have condemned working code; wait for the state to settle, or poll.
 
 ---
 
 ### TJ-009b — Re-authenticate the admin before changing an employee's password
 
-- **Status:** BACKLOG — pass deferred, deliberately. Do not execute against this ID.
+- **Status:** BACKLOG — **now unblocked**: TJ-009a merged as `234d800` on 2026-08-15, so the anchors this task needs exist. Needs a planning pass before it can go READY. Do not execute against this ID yet.
 - **Why:** TJ-009 §6. The edit modals already offer *New Password (optional)* and `PUT` already hashes whatever arrives, so anyone holding a live admin session — or an unlocked machine at the front desk — can silently reset a doctor's credentials. The missing piece is the gate: the admin re-enters their **own** password, and the API verifies it against `session.user.id`'s hash with `bcrypt.compare` before touching `passwordHash`.
 - **Why it is not READY:** nothing here needs a product decision, so this is not `BLOCKED`. It is held because it rewrites `handleSave` and the password block in the same two modal files TJ-009a is rewriting. Dispatching both at once guarantees a conflict and makes each diff unreadable against its own task. **Run the pass and move this to READY once TJ-009a has merged to `master`** — the anchors it will need do not exist yet.
 
