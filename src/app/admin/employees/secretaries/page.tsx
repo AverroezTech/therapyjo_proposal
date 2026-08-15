@@ -21,6 +21,7 @@ interface SecretaryForm {
     workingHours: string;
     username: string;
     password: string;
+    confirmPassword: string;
 }
 
 export default function SecretariesPage() {
@@ -31,8 +32,10 @@ export default function SecretariesPage() {
     const [editing, setEditing] = useState<Secretary | null>(null);
     const [saving, setSaving] = useState(false);
     const [form, setForm] = useState<SecretaryForm>({
-        name: "", email: "", phone: "", workingHours: "", username: "", password: "",
+        name: "", email: "", phone: "", workingHours: "", username: "", password: "", confirmPassword: "",
     });
+    const [showPassword, setShowPassword] = useState(false);
+    const [formError, setFormError] = useState("");
 
     const fetchSecretaries = useCallback(async () => {
         const res = await fetch("/api/employees/secretaries");
@@ -45,7 +48,9 @@ export default function SecretariesPage() {
 
     const openAdd = () => {
         setEditing(null);
-        setForm({ name: "", email: "", phone: "", workingHours: "", username: "", password: "" });
+        setForm({ name: "", email: "", phone: "", workingHours: "", username: "", password: "", confirmPassword: "" });
+        setShowPassword(false);
+        setFormError("");
         setShowModal(true);
     };
 
@@ -54,11 +59,27 @@ export default function SecretariesPage() {
         setForm({
             name: sec.name, email: sec.email || "", phone: sec.phone || "",
             workingHours: sec.workingHours || "", username: sec.username, password: "",
+            confirmPassword: "",
         });
+        setShowPassword(false);
+        setFormError("");
         setShowModal(true);
     };
 
     const handleSave = async () => {
+        setFormError("");
+
+        if (!editing || form.password) {
+            if (form.password.length < 8) {
+                setFormError("Password must be at least 8 characters");
+                return;
+            }
+            if (form.password !== form.confirmPassword) {
+                setFormError("Passwords do not match");
+                return;
+            }
+        }
+
         setSaving(true);
         const url = editing
             ? `/api/employees/secretaries/${editing.id}`
@@ -76,13 +97,20 @@ export default function SecretariesPage() {
             body.password = form.password;
         }
 
-        await fetch(url, {
+        const res = await fetch(url, {
             method,
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify(body),
         });
 
         setSaving(false);
+
+        if (!res.ok) {
+            const data = await res.json().catch(() => ({}));
+            setFormError(data.error || "Failed to save secretary");
+            return;
+        }
+
         setShowModal(false);
         fetchSecretaries();
     };
@@ -149,6 +177,7 @@ export default function SecretariesPage() {
                 <div className="modal-overlay" onClick={() => setShowModal(false)}>
                     <div className="modal-card" onClick={(e) => e.stopPropagation()}>
                         <h2>{editing ? "Edit Secretary" : "Add Secretary"}</h2>
+                            {formError && <div className="error-msg" role="alert">{formError}</div>}
 
                         <div className="form-grid">
                             <div className="form-group">
@@ -175,7 +204,41 @@ export default function SecretariesPage() {
                             )}
                             <div className="form-group">
                                 <label>{editing ? "New Password (optional)" : "Password *"}</label>
-                                <input type="password" value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} />
+                                <div className="password-wrap">
+                                    <input
+                                        type={showPassword ? "text" : "password"}
+                                        value={form.password}
+                                        onChange={(e) => setForm({ ...form, password: e.target.value })}
+                                    />
+                                    <button
+                                        type="button"
+                                        className="toggle-password"
+                                        aria-label={showPassword ? "Hide password" : "Show password"}
+                                        onClick={() => setShowPassword(!showPassword)}
+                                    >
+                                        {showPassword ? (
+                                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+                                                <path d="M9.9 4.24A9.1 9.1 0 0 1 12 4c6.4 0 10 7 10 7a17.6 17.6 0 0 1-2.2 3.15M6.6 6.6A17.7 17.7 0 0 0 2 11s3.6 7 10 7a9 9 0 0 0 4.4-1.1" />
+                                                <path d="m2 2 20 20" />
+                                                <path d="M9.9 9.9a3 3 0 0 0 4.2 4.2" />
+                                            </svg>
+                                        ) : (
+                                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+                                                <path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7-10-7-10-7Z" />
+                                                <circle cx="12" cy="12" r="3" />
+                                            </svg>
+                                        )}
+                                    </button>
+                                </div>
+                                <span className="field-hint">At least 8 characters.</span>
+                            </div>
+                            <div className="form-group">
+                                <label>{editing ? "Repeat New Password" : "Repeat Password *"}</label>
+                                <input
+                                    type={showPassword ? "text" : "password"}
+                                    value={form.confirmPassword}
+                                    onChange={(e) => setForm({ ...form, confirmPassword: e.target.value })}
+                                />
                             </div>
                         </div>
 
@@ -256,6 +319,20 @@ export default function SecretariesPage() {
         }
         .form-group input:focus { border-color: #6ee7b7; }
         .modal-actions { display: flex; justify-content: flex-end; gap: 0.75rem; margin-top: 1.5rem; }
+        .error-msg {
+          background: rgba(220,38,38,0.1); border: 1px solid rgba(220,38,38,0.2);
+          color: #fca5a5; padding: 0.5rem 0.75rem; border-radius: var(--radius-sm, 2px);
+          font-size: 0.82rem; margin-bottom: 0.75rem;
+        }
+        .password-wrap { position: relative; }
+        .password-wrap input { width: 100%; padding-inline-end: 2.4rem; }
+        .toggle-password {
+          position: absolute; inset-inline-end: 0.5rem; top: 50%; transform: translateY(-50%);
+          background: none; border: none; padding: 0.15rem; line-height: 0;
+          color: rgba(255,255,255,0.45); cursor: pointer;
+        }
+        .toggle-password:hover { color: #fff; }
+        .field-hint { font-size: 0.72rem; color: rgba(255,255,255,0.35); }
       `}</style>
         </div>
     );

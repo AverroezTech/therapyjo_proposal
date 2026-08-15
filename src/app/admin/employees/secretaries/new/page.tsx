@@ -9,12 +9,13 @@ export default function NewSecretaryPage() {
 
     const [form, setForm] = useState({
         name: "", email: "", phone: "", workingHours: "",
-        username: "", password: "",
+        username: "", password: "", confirmPassword: "",
     });
     const [pictureFile, setPictureFile] = useState<File | null>(null);
     const [previewUrl, setPreviewUrl] = useState<string | null>(null);
     const [saving, setSaving] = useState(false);
     const [error, setError] = useState("");
+    const [showPassword, setShowPassword] = useState(false);
 
     const handlePictureChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
@@ -36,6 +37,8 @@ export default function NewSecretaryPage() {
         if (!form.name.trim()) { setError("Name is required"); return; }
         if (!form.username.trim()) { setError("Username is required"); return; }
         if (!form.password.trim()) { setError("Password is required"); return; }
+        if (form.password.length < 8) { setError("Password must be at least 8 characters"); return; }
+        if (form.password !== form.confirmPassword) { setError("Passwords do not match"); return; }
         setSaving(true);
 
         let pictureUrl: string | null = null;
@@ -52,7 +55,11 @@ export default function NewSecretaryPage() {
         const res = await fetch("/api/employees/secretaries", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ ...form, pictureUrl }),
+            body: JSON.stringify({
+                name: form.name, email: form.email, phone: form.phone,
+                workingHours: form.workingHours, username: form.username,
+                password: form.password, pictureUrl,
+            }),
         });
         const data = await res.json();
         if (!res.ok) {
@@ -129,8 +136,34 @@ export default function NewSecretaryPage() {
                             </div>
                             <div className="field">
                                 <label htmlFor="password">Password <span className="req">*</span></label>
-                                <input id="password" type="password" value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} placeholder="••••••••" />
+                                <div className="password-wrap">
+                                    <input id="password" type={showPassword ? "text" : "password"} value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} placeholder="••••••••" />
+                                    <button
+                                        type="button"
+                                        className="toggle-password"
+                                        aria-label={showPassword ? "Hide password" : "Show password"}
+                                        onClick={() => setShowPassword(!showPassword)}
+                                    >
+                                        {showPassword ? (
+                                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+                                                <path d="M9.9 4.24A9.1 9.1 0 0 1 12 4c6.4 0 10 7 10 7a17.6 17.6 0 0 1-2.2 3.15M6.6 6.6A17.7 17.7 0 0 0 2 11s3.6 7 10 7a9 9 0 0 0 4.4-1.1" />
+                                                <path d="m2 2 20 20" />
+                                                <path d="M9.9 9.9a3 3 0 0 0 4.2 4.2" />
+                                            </svg>
+                                        ) : (
+                                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+                                                <path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7-10-7-10-7Z" />
+                                                <circle cx="12" cy="12" r="3" />
+                                            </svg>
+                                        )}
+                                    </button>
+                                </div>
+                                <span className="field-hint">At least 8 characters.</span>
                             </div>
+                        </div>
+                        <div className="field">
+                            <label htmlFor="confirmPassword">Repeat Password <span className="req">*</span></label>
+                            <input id="confirmPassword" type={showPassword ? "text" : "password"} value={form.confirmPassword} onChange={(e) => setForm({ ...form, confirmPassword: e.target.value })} placeholder="••••••••" />
                         </div>
                     </div>
 
@@ -197,6 +230,15 @@ export default function NewSecretaryPage() {
                 .field input:focus { border-color: var(--primary, #4CAF93); }
                 .field input::placeholder { color: rgba(255,255,255,0.2); }
                 .field-row { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
+                .password-wrap { position: relative; }
+                .password-wrap input { width: 100%; padding-inline-end: 2.4rem; }
+                .toggle-password {
+                  position: absolute; inset-inline-end: 0.5rem; top: 50%; transform: translateY(-50%);
+                  background: none; border: none; padding: 0.15rem; line-height: 0;
+                  color: rgba(255,255,255,0.45); cursor: pointer;
+                }
+                .toggle-password:hover { color: #fff; }
+                .field-hint { font-size: 0.72rem; color: rgba(255,255,255,0.35); }
 
                 .form-actions { display: flex; justify-content: flex-end; gap: 0.75rem; }
                 .btn-cancel {
