@@ -23,6 +23,7 @@ interface DoctorForm {
     username: string;
     password: string;
     confirmPassword: string;
+    adminPassword: string;
     color: string;
 }
 
@@ -41,7 +42,7 @@ export default function DoctorsPage() {
     const [saving, setSaving] = useState(false);
     const [form, setForm] = useState<DoctorForm>({
         name: "", email: "", phone: "", workingHours: "",
-        username: "", password: "", confirmPassword: "", color: COLORS[0],
+        username: "", password: "", confirmPassword: "", adminPassword: "", color: COLORS[0],
     });
     const [showPassword, setShowPassword] = useState(false);
     const [formError, setFormError] = useState("");
@@ -57,7 +58,7 @@ export default function DoctorsPage() {
 
     const openAdd = () => {
         setEditingDoctor(null);
-        setForm({ name: "", email: "", phone: "", workingHours: "", username: "", password: "", confirmPassword: "", color: COLORS[0] });
+        setForm({ name: "", email: "", phone: "", workingHours: "", username: "", password: "", confirmPassword: "", adminPassword: "", color: COLORS[0] });
         setShowPassword(false);
         setFormError("");
         setShowModal(true);
@@ -68,7 +69,7 @@ export default function DoctorsPage() {
         setForm({
             name: doc.name, email: doc.email || "", phone: doc.phone || "",
             workingHours: doc.workingHours || "", username: doc.username,
-            password: "", confirmPassword: "", color: doc.color || COLORS[0],
+            password: "", confirmPassword: "", adminPassword: "", color: doc.color || COLORS[0],
         });
         setShowPassword(false);
         setFormError("");
@@ -89,6 +90,11 @@ export default function DoctorsPage() {
             }
         }
 
+        if (editingDoctor && form.password && !form.adminPassword) {
+            setFormError("Enter your own password to confirm this change");
+            return;
+        }
+
         setSaving(true);
         const url = editingDoctor
             ? `/api/employees/doctors/${editingDoctor.id}`
@@ -104,6 +110,7 @@ export default function DoctorsPage() {
             body.password = form.password;
         } else if (form.password) {
             body.password = form.password;
+            body.adminPassword = form.adminPassword;
         }
 
         const res = await fetch(url, {
@@ -257,6 +264,17 @@ export default function DoctorsPage() {
                                     onChange={(e) => setForm({ ...form, confirmPassword: e.target.value })}
                                 />
                             </div>
+                            {editingDoctor && form.password && (
+                                <div className="form-group">
+                                    <label>Your Password *</label>
+                                    <input
+                                        type="password"
+                                        value={form.adminPassword}
+                                        onChange={(e) => setForm({ ...form, adminPassword: e.target.value })}
+                                    />
+                                    <span className="field-hint">Confirm it is you before changing someone else&apos;s password.</span>
+                                </div>
+                            )}
                         </div>
 
                         <div className="form-group">
