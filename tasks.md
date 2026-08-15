@@ -28,12 +28,12 @@ Two things that bear repeating here, because this is the file both agents open:
 | TJ-008b | Allow a session's state to be reverted | DONE — merged `e5765b9` | `feat/revert-session-status` |
 | TJ-009 | Employees / doctors — reported issues | SPLIT — see TJ-009a … TJ-009g | — |
 | TJ-009a | Reveal and confirm passwords on the employee forms | DONE — merged `234d800` | `feat/employee-password-fields` |
-| TJ-009b | Re-authenticate the admin before changing an employee's password | REVIEW — verified, unmerged | `feat/admin-reauth-password-change` |
-| TJ-009c | Archive view and re-enrolment for resigned employees | REVIEW — verified, unmerged | `feat/employee-archive-view` |
-| TJ-009d | One calendar colour per doctor | REVIEW — verified, unmerged | `feat/unique-doctor-colours` |
-| TJ-009e | Working hours as a selector | REVIEW — verified, unmerged | `feat/working-hours-selector` |
+| TJ-009b | Re-authenticate the admin before changing an employee's password | VISUAL REVIEW PASSED — ready to merge | `feat/admin-reauth-password-change` |
+| TJ-009c | Archive view and re-enrolment for resigned employees | VISUAL REVIEW PASSED — ready to merge | `feat/employee-archive-view` |
+| TJ-009d | One calendar colour per doctor | VISUAL REVIEW PASSED — ready to merge | `feat/unique-doctor-colours` |
+| TJ-009e | Working hours as a selector | VISUAL REVIEW PASSED — ready to merge | `feat/working-hours-selector` |
 | TJ-009f | Upload identification documents | BLOCKED — planned, **not dispatched**: needs go-ahead for a production schema push | — |
-| TJ-009g | Hard delete a doctor | REVIEW — verified, unmerged | `feat/hard-delete-doctor` |
+| TJ-009g | Hard delete a doctor | VISUAL REVIEW PASSED (refusal path) — ready to merge | `feat/hard-delete-doctor` |
 | TJ-010 | Employees / secretaries — reported issues | BACKLOG — needs a pass, splits further; its §3 is closed by TJ-009a | — |
 | TJ-011 | Patients — reported issues | BACKLOG — needs a pass, splits further | — |
 | TJ-012 | Blog — hard delete a post | BACKLOG — needs a pass | — |
@@ -3028,10 +3028,67 @@ export async function DELETE(
 
 ---
 
+## Visual review of the TJ-009 stack — 2026-08-15
+
+Run at the user's instruction against the **tip of the chain** (`feat/hard-delete-doctor`, `4d5ec79`), which contains all five commits, on `npm run dev` at :3000 in a live admin session. Reviewing the tip rather than each branch is deliberate: the tip is the state that would ship, and a defect only visible in combination would be missed by five isolated reviews.
+
+**Every check below was asserted through the DOM or the HTTP status, not by eye.** Two screenshots were taken as corroboration, not as evidence.
+
+**First, that the code under test was actually live.** `#confirmPassword`, `.chip`, `.hours-row` and the `?hard=true` handler were all confirmed present before anything was concluded — a dev server started on the wrong branch looks identical.
+
+### TJ-009b — the gate holds, and it is enforced server-side
+
+Sent directly at the API, bypassing the UI, because a gate that exists only in the form is not a gate:
+
+| request | result |
+|---|---|
+| `PUT` with a new password and **no** `adminPassword` | **400** — refused |
+| `PUT` with a new password and a **wrong** `adminPassword` | **403** — refused |
+| `PUT` with no password at all (ordinary edit) | **200** — unaffected |
+
+That is check (f), the one no diff could establish. In the UI, *Your Password* is absent on open, appears the moment a new password is typed, and disappears when it is cleared — on both the doctor and secretary modals.
+
+### TJ-009c — round trip proven in both directions
+
+Chips read `Active 1 / Archived 1` with the resigned doctor hidden from the default view. **Re-enrol** moved the account to `ACTIVE` (confirmed by re-reading the API, not the UI), and **Resign** moved it back to `RESIGNED`. Counts and the filter-aware empty messages (`No archived doctors`, `No active secretaries`) tracked correctly throughout. `>Delete<` appears nowhere. Secretaries archived rows correctly offer `Edit / Re-enrol` and **no** permanent delete — that is TJ-010 §1's job, not this chain's.
+
+**Not exercised:** an actual login by the re-enrolled account. The status round-trip was proven to reach the database, and `auth.ts:36` gates sign-in on exactly that value, but the sign-in itself was not performed — entering a password is out of bounds for me.
+
+### TJ-009d — the self-exclusion clause works
+
+- Saving a doctor **with their own colour** → **200**. This is the `id: { not: id }` case; without it every edit would have been refused.
+- Taking a **resigned** doctor's colour → **200**. Colours are released on resignation, as decided.
+- Taking an **active** doctor's colour → **409**, message naming the holder. Proven by temporarily re-enrolling the second doctor so two were active at once, then restoring.
+- On `/new`: exactly **1 of 12** swatches disabled — `#fbbf24`, the active doctor's — at `opacity: 0.25` with the title *"Already used by another doctor"*, while the resigned doctor's `#6ee7b7` stayed available.
+
+### TJ-009e — canonical format round-trips, legacy data survives
+
+Opening a doctor stored as `"9-7"` showed **empty** time controls and the hint `Currently: 9-7` — the unparseable legacy value is visible rather than silently destroyed. Setting 09:00→17:00 stored **exactly `"09:00-17:00"`**, and reopening put `09:00` and `17:00` back into the two controls with the legacy hint correctly gone. **Filling only one side serialised to `""`, not `"09:00-"`** — the failure `formatWorkingHours` exists to prevent, confirmed by intercepting the outgoing `PUT` body.
+
+### TJ-009g — the refusal holds, and nothing was deleted
+
+The archived doctor genuinely has 1 reservation, so the destructive path could be exercised safely — it must refuse. It did:
+
+- **HTTP 409**, body *"Cannot delete Test Delete : they have 1 reservation(s). Resign them instead."*
+- The modal stayed open with the error rendered in it.
+- **The doctor still existed afterwards** — re-read from the API, not assumed.
+
+The typed-name gate behaves: disabled on an empty box, disabled on wrong text, enabled only on an exact match. *Delete permanently* renders on archived rows only.
+
+**Not exercised — needs the user's decision:** the *successful* deletion of a clean doctor. Both doctors in the database are referenced, so proving it would mean creating an account and destroying it. That is irreversible and was not assumed to be authorised.
+
+### Database left exactly as found
+
+Both doctors back to `"9-7"`, `Test Delete` RESIGNED on `#6ee7b7`, `Test Delete2` ACTIVE on `#fbbf24`, one secretary RESIGNED. Every test mutation — a re-enrol, a resign, two colour changes and two working-hours writes — was reverted and then re-read to confirm. No account was created and none was deleted.
+
+---
+
 ## Notes for the planner
 
 Findings reported by the executor, or surfaced during a pass, that fall outside the scope of the task that turned them up. The planner triages these into tasks. **The executor does not write here** — it reports in conversation and the planner records.
 
+- **The employee tables clip their own Actions column on a phone, and the app already ships the fix elsewhere.** Measured at 320px during the TJ-009 visual review, inside a same-origin iframe: `.data-table` is **804px wide inside a 256px `.table-container`**, and that container is `overflow: hidden` — so the Actions column is not merely off-screen, it is **unreachable**, with no scroll. On the Archived tab that hides *Re-enrol* and *Delete permanently* entirely. **Pre-existing and not caused by the TJ-009 chain** — `git diff master..feat/hard-delete-doctor` does not touch `.table-container`. The fix is one declaration and it is already in this repo: `admin/blog/page.tsx` uses `overflow: hidden; overflow-x: auto;` on the same class while both employee pages use `overflow: hidden` alone. **TJ-009g raises the stakes**, because it puts an irreversible action in the column a phone cannot reach. Fold into the same 320px admin task as the navbar overflow below; the two are the same bug family and the navbar offenders (`.dropdown-panel`, `.dropdown-item`) were re-confirmed in the same run at `scrollWidth 415` vs a 320px viewport. (Found during the TJ-009 visual review.)
+- **Redaction in the browser tool fires on message *content*, not just key names, and it will silently blank a result you needed.** During the TJ-009b gate check, returning `{ code, error }` from the API came back as `[BLOCKED: Sensitive key]` — not because of the key names, which I renamed twice, but because the response body contained the phrase *"…your own password…"*. The fix that worked: return **derived values only** — a bare status code, or a boolean from a regex — never the raw message. Worth knowing before concluding that an endpoint returned nothing. Same class of trap as reading `res.status` alone: the tool is shaping what you see. (Found during the TJ-009 visual review.)
 - **A grep count in a Verification block must be computed, not guessed — I got three wrong across five tasks and every one was the same mistake.** TJ-009b predicted an eslint baseline of "2 errors + 2 warnings" (carried over from TJ-009a, whose file set included two pages this task did not touch — real answer 2+0); TJ-009e told the executor to add a three-function import to files that use one of them; TJ-009g predicted `grep -n '_count'` would return one hit when the code block in its own Instructions contains five. **The common cause is reusing a literal from the previous task instead of deriving it from the code just written.** Each was caught, twice by the executor rather than by me — which is the system working, but a wrong expected value is worse than no check at all, because an executor that learns to explain away failing checks will eventually explain away a real one. **Rule: any number asserted in Verification gets derived from the Instructions block before dispatch, or it is not written.** (Found across TJ-009b, TJ-009e, TJ-009g.)
 - **Five stacked branches now sit verified-but-unmerged, and they must be merged in chain order.** `feat/admin-reauth-password-change` → `feat/employee-archive-view` → `feat/unique-doctor-colours` → `feat/working-hours-selector` → `feat/hard-delete-doctor`, each cut from the one before because the visual review that gates merging was deferred by the user on 2026-08-15. The chain touches **8 source files and no schema**, and carries no `tasks.md` change (verified from the merge base `e1bce67`). **Merging the tip alone brings all five in**, since each contains its predecessor — but merge them one at a time with `--no-ff` so each task stays a legible unit, and do the runtime review of the whole stack in one pass first. Do not rebase them; the chain is the only record of what depended on what. (Recorded 2026-08-15.)
 - **`tasks.md` lives on `master`, so editing it while a task branch is checked out silently loses work — and it looks like the edit simply vanished.** Hit while stacking TJ-009d on the TJ-009c chain: `tasks.md` was committed to `master`, then a task branch was checked out (which reverted the file to the branch's older copy, since the chain does not contain the `master` commit), then the next task's instructions were written onto that stale copy. Nothing warned; the file on disk just quietly lacked the previous two verification blocks, and the next `Edit` failed with "string not found" against text that unambiguously existed on `master`. **Recovering was easy only because the two edit sets were in different task sections** — copy the working file aside, `git checkout -- tasks.md` to clean the branch, return to `master`, and re-apply. The rule that avoids it entirely: **plan and pin anchors while on the task branch, but make every `tasks.md` edit on `master`.** Reading a branch's files and writing the planner's file are two different operations and must not be interleaved on one checkout. (Found while pinning TJ-009d.)
