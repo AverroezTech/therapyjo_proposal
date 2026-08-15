@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
+import { removeUpload } from "@/lib/uploads";
 
 // DELETE /api/employees/files/[fileId] — detach a document from an employee
 export async function DELETE(
@@ -23,11 +24,11 @@ export async function DELETE(
         return NextResponse.json({ error: "File not found" }, { status: 404 });
     }
 
-    // Removes the database row only. The object stays in Supabase Storage:
-    // src/lib/supabase.ts holds the anon key, which cannot delete, and no code
-    // path in this application has ever removed an uploaded object. This is a
-    // known leak, tracked in tasks.md, not an oversight in this handler.
+    // Remove the row first: if the storage removal fails or is unconfigured we
+    // want an orphaned object, not a row pointing at a file that is gone. The
+    // helper never throws, so a storage problem cannot fail this request.
     await prisma.employeeFile.delete({ where: { id } });
+    const objectRemoved = await removeUpload(file.filePath);
 
-    return NextResponse.json({ message: "File removed" });
+    return NextResponse.json({ message: "File removed", objectRemoved });
 }
