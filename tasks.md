@@ -42,7 +42,7 @@ Two things that bear repeating here, because this is the file both agents open:
 | TJ-012 | Blog — hard delete a post | BACKLOG — needs a pass | — |
 | TJ-013 | Doctor profiles (public site) — hard delete | BACKLOG — needs a pass | — |
 | TJ-014 | Uploaded files are never removed from storage | BLOCKED — measured (7/7 orphaned); split into 014a + purge | — |
-| TJ-014a | Give the app the ability to delete a storage object | READY | `feat/storage-delete-capability` |
+| TJ-014a | Give the app the ability to delete a storage object | REVIEW — merged `b248edb`; removal half needs the key | `feat/storage-delete-capability` |
 
 ---
 
@@ -3369,8 +3369,18 @@ The anon key **can list**, even though it cannot delete, so the inventory needed
 
 ### TJ-014a — Give the app the ability to delete a storage object
 
-- **Status:** READY
+- **Status:** REVIEW — statically verified on `0f2f29d`, merged to `master` as `b248edb`. **Degradation half proven at runtime; the removal half waits on the key.**
 - **Branch:** `feat/storage-delete-capability` — cut from `master`.
+
+**Planner verification:** 2026-08-15 — read the full diff: **3 files, 58 insertions, 5 deletions**, nothing outside Scope. `supabase.ts` gained the `server-only` guard it was missing and a `supabaseAdmin` that is `null` when the key is unset. `uploads.ts` never throws on either failure path. The delete handler deletes the row **before** the object, as specified. `npm run build` exit 0; eslint 0 problems on all three files, unchanged from baseline.
+
+**Security checks re-run independently:** the key name appears in `src/` exactly twice — the `process.env` read and the warning string — **never** with a `NEXT_PUBLIC_` prefix, and `grep -rl` across `.next/static/` finds it in **no client chunk**.
+
+**Runtime, degradation half — passed, and tested without creating a new orphan.** Rather than uploading a fresh file, a row was pointed at an **already-orphaned** object (`general/1786659988893-95o67g0v8l4.webp`) and then deleted, so the test consumed an existing leak instead of adding to it. Attach **201**; delete **200 — not a 500**, which is the whole point; `objectRemoved: false`; the row gone; and the server logged `[uploads] SUPABASE_SERVICE_ROLE_KEY unset — leaving general/… in storage`. **An unconfigured host keeps working and says so.**
+
+**Still owed, and it needs the key:** the same delete with `SUPABASE_SERVICE_ROLE_KEY` set must return `objectRemoved: true` and flip the object's public URL from **200 to 404**.
+
+**A fifth Instructions↔Verification mismatch of mine, caught by the executor.** Verification claimed the key name would appear "only in `src/lib/supabase.ts`", but the `console.warn` string in my own step-2 code block embeds that constant name, so `grep` returns two hits. **The executor implemented the literal instructed code rather than editing it to satisfy my wrong check** — exactly the right call, and it said so instead of quietly reconciling the two. The security property that matters (never `NEXT_PUBLIC_`, never in a client chunk) is unaffected. This is the same failure as the three grep miscounts and the "client is already generated" premise: **an expectation written without deriving it from the code in the same task.**
 - **Why:** the first and smallest slice of TJ-014: the capability itself, wired into exactly one caller (the employee-file delete) to prove it works. **It is deliberately buildable and shippable before the service-role key exists** — see the degradation rule below — so it does not sit blocked behind an environment change.
 
 **Planning pass:** 2026-08-15 — read `src/lib/supabase.ts`, `src/app/api/upload/route.ts`, `src/lib/prisma.ts` and `src/lib/auth.ts`. Confirmed with `grep -rn "lib/supabase" src/` that **`@/lib/supabase` is imported by exactly one file** — `api/upload/route.ts`, a server route — so adding a service-role client to that module cannot reach a browser bundle today. Confirmed `prisma.ts` and `auth.ts` both open with `import "server-only"`, which is the established guard here and which `supabase.ts` is currently missing. Confirmed the bucket is `uploads` and that `POST /api/upload` returns `path` (`folder/name.ext`) alongside the public `url`.
