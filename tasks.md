@@ -33,7 +33,9 @@ Two things that bear repeating here, because this is the file both agents open:
 | TJ-009d | One calendar colour per doctor | DONE — merged `4e6587e` | `feat/unique-doctor-colours` |
 | TJ-009e | Working hours as a selector | DONE — merged `423935d` | `feat/working-hours-selector` |
 | TJ-009h | New-doctor form defaults to a colour it will not accept | READY | `bugfix/default-doctor-colour` |
-| TJ-009f | Upload identification documents | SCHEMA DONE — merged `ade1a06`; endpoints + UI still to build | `feat/employee-documents` |
+| TJ-009f | Upload identification documents | SCHEMA DONE — merged `ade1a06`; split into f1 + f2 | `feat/employee-documents` |
+| TJ-009f1 | Employee document endpoints | READY | `feat/employee-file-api` |
+| TJ-009f2 | Employee documents UI | PLANNED — needs a placement decision | — |
 | TJ-009g | Hard delete a doctor | DONE — merged `fe05f69`; both paths proven | `feat/hard-delete-doctor` |
 | TJ-010 | Employees / secretaries — reported issues | BACKLOG — needs a pass, splits further; its §3 is closed by TJ-009a | — |
 | TJ-011 | Patients — reported issues | BACKLOG — needs a pass, splits further | — |
@@ -2811,6 +2813,82 @@ Currently: 9-7
 **Schema push, 2026-08-15 — what was checked and in what order.** The condition attached to the authorisation was *no conflicts or errors*, so it was verified rather than hoped for. **First, drift, before editing anything:** `prisma migrate diff --from-config-datasource --to-schema` returned *"This is an empty migration"*, proving the live database was already an exact match for `schema.prisma` — had it drifted, a `db push` could have silently reconciled the difference in ways nobody chose. **Second, the generated SQL was read before it was applied:** one `CREATE TABLE "EmployeeFile"` and one `ADD CONSTRAINT` on that same new table. **No `DROP`, and no `ALTER` against any existing table.** Run without `--accept-data-loss`, so the command would refuse rather than destroy if it disagreed. **Afterwards:** the drift check is empty again, and every list endpoint still returns its rows — doctors 2, secretaries 1, patients 3, blog 7, doctor profiles 0, reservations 8 on 2026-08-15. Nothing was lost.
 
 **The table is inert until the feature lands**, which is the right order: an additive table that nothing reads costs nothing, whereas code shipped against a missing table is broken on arrival.
+
+**Planning pass on the remaining half, 2026-08-15** — read `src/app/api/upload/route.ts` in full, `src/lib/supabase.ts`, `src/app/admin/patients/[id]/page.tsx` (the Files tab that is the closest existing pattern), and enumerated every route under `src/app/admin/employees` and `src/app/api/employees`. Four findings that shape the split:
+
+- **The storage half genuinely does work already**, as the original capture claimed: `POST /api/upload` passes non-images through untouched, keeps the extension, caps at 10MB, and returns `{ url, path, contentType }`. **But `ALLOWED_FOLDERS` has no employee-documents entry** (`upload/route.ts:16`), and the closest existing one is `patient-files`. Reusing that for staff ID documents would file employee passports under a patients folder — wrong, and the sort of thing nobody untangles later. One new folder entry is needed.
+- **There is no employee detail page.** Patients have `/admin/patients/[id]` with an Intake/Sessions/Files tab strip; employees have only a list, a modal and a `/new` page. So the documents UI has no obvious home, and inventing a whole detail page for both roles is a much larger change than the original capture implied.
+- **`EmployeeFile.userId` points at `User`, not at a role**, so one set of endpoints serves doctors and secretaries both. The API does not need splitting per role even though the UI pages do.
+- **Deleting a file row cannot delete the stored object.** `src/lib/supabase.ts` holds only the **anon** key. Any delete endpoint here removes the row and knowingly orphans the object — that must be stated in the code rather than papered over, and it is the third feeder into the storage leak noted at the bottom of this file.
+
+**Split:** **TJ-009f1** (API, below) is READY. **TJ-009f2** (UI) follows it and is planned but not pinned, because its anchors do not exist until f1 lands.
+
+---
+
+### TJ-009f1 — Employee document endpoints
+
+- **Status:** READY
+- **Branch:** `feat/employee-file-api` — cut from `master`.
+- **Why:** `EmployeeFile` exists in the database (`ade1a06`) and nothing reads or writes it. This is the server half: list, attach and detach a document for any employee. No UI — that is TJ-009f2, and keeping them apart means the endpoints can be proven with real requests before any screen depends on them.
+
+**Planning pass:** see TJ-009f's block above — `upload/route.ts`, `supabase.ts`, `schema.prisma` and the whole employee route tree were read for it. Confirmed `EmployeeFile` is live and empty (`employeeFiles=0` at the time of the push). Confirmed `POST /api/upload` needs no change beyond one folder entry. Confirmed the route path below collides with nothing: `src/app/api/employees/` currently holds only the static `doctors/` and `secretaries/` segments.
+
+**Route shape, and why not `/api/employees/[id]/files`:** a dynamic `[id]` segment placed beside the existing static `doctors` and `secretaries` segments resolves correctly in Next.js but reads as though `/api/employees/doctors/files` might be a thing. `/api/employees/files` keeps the employee id in the query string or body and leaves the existing tree unambiguous.
+
+**Scope — touch only these:**
+- `src/app/api/upload/route.ts` (one line)
+- `src/app/api/employees/files/route.ts` (new)
+- `src/app/api/employees/files/[fileId]/route.ts` (new)
+
+**Do not touch:** the schema — `EmployeeFile` is already correct and already applied. No UI file. Do not add a Supabase service-role key or attempt to delete storage objects; see step 4.
+
+**Instructions:**
+
+1. In `src/app/api/upload/route.ts`, replace:
+```
+    const ALLOWED_FOLDERS = ["general", "doctors", "secretaries", "patients", "patient-files", "blog", "doctor-profiles"];
+```
+   with:
+```
+    const ALLOWED_FOLDERS = ["general", "doctors", "secretaries", "patients", "patient-files", "employee-files", "blog", "doctor-profiles"];
+```
+
+2. Create `src/app/api/employees/files/route.ts` with `GET` and `POST`. **Both are ADMIN-only** — these are identification documents, so they are not readable by the employee's own session and certainly not by a secretary. Follow the existing guard exactly as the other employee routes write it: `if (!session || (session.user as { role: string }).role !== "ADMIN")` → 401.
+   - `GET ?userId=<id>` → the user's files, `orderBy: { uploadedAt: "desc" }`, selecting `id, fileName, filePath, fileType, fileSize, uploadedAt`. Missing `userId` → 400 `{ error: "userId is required" }`.
+   - `POST` with `{ userId, fileName, filePath, fileType, fileSize }` → creates the row and returns it with 201. Reject a missing field with 400 `{ error: "userId, fileName, filePath, fileType and fileSize are required" }`. Verify the user exists first (`prisma.user.findUnique`) and 404 `{ error: "Employee not found" }` if not — a row pointing at a deleted employee would violate the FK anyway, and a clear 404 beats a Prisma error.
+   - The client uploads to `POST /api/upload` with `folder: "employee-files"` first, then calls this with the returned `path` as `filePath`. **This endpoint does not receive the file itself.**
+
+3. Create `src/app/api/employees/files/[fileId]/route.ts` with `DELETE`, ADMIN-only, `{ params }: { params: Promise<{ fileId: string }> }` matching the other dynamic routes in this project. Parse with `Number(fileId)`; a `NaN` gets 400. Missing row gets 404. On success delete the row and return `{ message: "File removed" }`.
+
+4. **In that DELETE handler, carry this comment verbatim** — it is the honest record of a known limitation and must not be softened or dropped:
+```ts
+    // Removes the database row only. The object stays in Supabase Storage:
+    // src/lib/supabase.ts holds the anon key, which cannot delete, and no code
+    // path in this application has ever removed an uploaded object. This is a
+    // known leak, tracked in tasks.md, not an oversight in this handler.
+```
+
+**Verification:**
+- `npm run build` passes.
+- `npx eslint` on the three Scope files — no new problems (the two new files have no baseline; report their own result).
+- `grep -c "employee-files" src/app/api/upload/route.ts` → 1.
+- `grep -c "role !== \"ADMIN\"" src/app/api/employees/files/route.ts` → matches the number of handlers in the file.
+- **Runtime, for the planner:** `GET` without `userId` → 400; `GET` as a non-admin → 401; `POST` with a missing field → 400; `POST` referencing a non-existent user → 404; a real upload → `POST /api/upload` (folder `employee-files`) then `POST /api/employees/files` → 201, and the row comes back from `GET`; `DELETE` → row gone, and **confirm the storage object is still present**, which is the leak behaving as documented rather than a bug.
+
+**Done when:**
+- [ ] An employee's documents can be listed, attached and detached through the API
+- [ ] Every handler is ADMIN-only
+- [ ] Uploads land in their own `employee-files` folder, not among patient files
+- [ ] The storage-leak limitation is stated in the code, not hidden
+- [ ] Diff confined to the three Scope files
+
+---
+
+### TJ-009f2 — Employee documents UI
+
+- **Status:** PLANNED — anchors pinned once TJ-009f1 lands.
+- **Why:** the endpoints from f1 with nothing calling them.
+- **The open design question, and it is worth deciding rather than defaulting:** there is no employee detail page, so the documents list has to go either **(a)** into the existing edit modal, which is already carrying name, contact, hours, colour, a password change and an admin re-auth field, or **(b)** into a new `/admin/employees/doctors/[id]` and `/admin/employees/secretaries/[id]` pair mirroring `admin/patients/[id]`. (a) is a much smaller diff and keeps the task inside two files; (b) matches the pattern the app already uses for exactly this problem and gives documents room to grow, at the cost of two new routes. **Recommend (a) for now** — a modal section behind a *Documents* heading — on the grounds that a clinic with a handful of staff does not need a detail page per employee, and (b) can be lifted out later if the modal gets crowded. Raise it with the user before pinning.
 - **Why:** TJ-009 §1. There is no model for employee documents; `User` carries only `pictureUrl` (`schema.prisma:79`). The storage half already works — `POST /api/upload` passes non-images through untouched and keeps the extension, and `patient-files` is already in `ALLOWED_FOLDERS` — so what is missing is a table and a UI.
 
 **Planning pass:** 2026-08-15 — read `prisma/schema.prisma` in full, `src/app/api/upload/route.ts`, and the `PatientFile` model that is the obvious template (`schema.prisma:112-122`: `fileName`, `filePath`, `fileType`, `fileSize`, `uploadedAt`, plus an `onDelete: Cascade` back to its owner). The design is therefore settled and small — an `EmployeeFile` model mirroring `PatientFile` with `userId String` and `user User @relation(..., onDelete: Cascade)`, a `POST`/`GET`/`DELETE` under `api/employees/[id]/files`, and a Files section on the employee edit surface.
