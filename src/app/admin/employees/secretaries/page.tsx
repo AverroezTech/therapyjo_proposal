@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { useRouter } from "next/navigation";
+import { parseWorkingHours, formatWorkingHours, isLegacyWorkingHours } from "@/lib/workingHours";
 
 interface Secretary {
     id: string;
@@ -44,6 +45,9 @@ export default function SecretariesPage() {
     const [showPassword, setShowPassword] = useState(false);
     const [formError, setFormError] = useState("");
     const [filter, setFilter] = useState<(typeof FILTERS)[number]>("Active");
+    const [hoursFrom, setHoursFrom] = useState("");
+    const [hoursTo, setHoursTo] = useState("");
+    const [legacyHours, setLegacyHours] = useState("");
 
     const fetchSecretaries = useCallback(async () => {
         const res = await fetch("/api/employees/secretaries");
@@ -69,6 +73,9 @@ export default function SecretariesPage() {
         setForm({ name: "", email: "", phone: "", workingHours: "", username: "", password: "", confirmPassword: "", adminPassword: "" });
         setShowPassword(false);
         setFormError("");
+        setHoursFrom("");
+        setHoursTo("");
+        setLegacyHours("");
         setShowModal(true);
     };
 
@@ -81,6 +88,10 @@ export default function SecretariesPage() {
         });
         setShowPassword(false);
         setFormError("");
+        const parsed = parseWorkingHours(sec.workingHours);
+        setHoursFrom(parsed?.from ?? "");
+        setHoursTo(parsed?.to ?? "");
+        setLegacyHours(isLegacyWorkingHours(sec.workingHours) ? (sec.workingHours ?? "") : "");
         setShowModal(true);
     };
 
@@ -243,7 +254,28 @@ export default function SecretariesPage() {
                             </div>
                             <div className="form-group">
                                 <label>Working Hours</label>
-                                <input value={form.workingHours} onChange={(e) => setForm({ ...form, workingHours: e.target.value })} placeholder="e.g. 9:00 AM - 5:00 PM" />
+                                <div className="hours-row">
+                                    <input
+                                        type="time"
+                                        aria-label="Start time"
+                                        value={hoursFrom}
+                                        onChange={(e) => {
+                                            setHoursFrom(e.target.value);
+                                            setForm({ ...form, workingHours: formatWorkingHours(e.target.value, hoursTo) });
+                                        }}
+                                    />
+                                    <span className="hours-sep">to</span>
+                                    <input
+                                        type="time"
+                                        aria-label="End time"
+                                        value={hoursTo}
+                                        onChange={(e) => {
+                                            setHoursTo(e.target.value);
+                                            setForm({ ...form, workingHours: formatWorkingHours(hoursFrom, e.target.value) });
+                                        }}
+                                    />
+                                </div>
+                                {legacyHours && <span className="field-hint">Currently: {legacyHours}</span>}
                             </div>
                             {!editing && (
                                 <div className="form-group">
@@ -389,6 +421,9 @@ export default function SecretariesPage() {
           outline: none; font-family: inherit;
         }
         .form-group input:focus { border-color: #6ee7b7; }
+        .hours-row { display: flex; align-items: center; gap: 0.5rem; }
+        .hours-row input { flex: 1; min-width: 0; }
+        .hours-sep { font-size: 0.8rem; color: rgba(255,255,255,0.4); flex-shrink: 0; }
         .modal-actions { display: flex; justify-content: flex-end; gap: 0.75rem; margin-top: 1.5rem; }
         .error-msg {
           background: rgba(220,38,38,0.1); border: 1px solid rgba(220,38,38,0.2);
