@@ -65,6 +65,7 @@ export default function AdminDashboard() {
         isTwoHours: false,
     });
     const [addError, setAddError] = useState("");
+    const [statusError, setStatusError] = useState("");
     const [saving, setSaving] = useState(false);
 
     // Reservation detail modal
@@ -107,11 +108,17 @@ export default function AdminDashboard() {
     }, [patientSearch]);
 
     const handleStatusChange = async (id: number, status: string) => {
-        await fetch(`/api/reservations/${id}`, {
+        setStatusError("");
+        const res = await fetch(`/api/reservations/${id}`, {
             method: "PATCH",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ status }),
         });
+        if (!res.ok) {
+            const data = await res.json().catch(() => ({}));
+            setStatusError(data.error || "Could not change the session status.");
+            return;
+        }
         fetchReservations();
     };
 
@@ -207,6 +214,12 @@ export default function AdminDashboard() {
 
     return (
         <div className="dashboard">
+            {statusError && (
+                <div className="error-msg status-error" role="alert">
+                    <span>{statusError}</span>
+                    <button className="dismiss-error" onClick={() => setStatusError("")}>Dismiss</button>
+                </div>
+            )}
             {/* Controls */}
             <div className="controls">
                 <div className="controls-left">
@@ -489,6 +502,15 @@ export default function AdminDashboard() {
                     color: #fca5a5; padding: 0.5rem 0.75rem; border-radius: var(--radius-sm, 2px);
                     font-size: 0.82rem; margin-bottom: 0.75rem;
                 }
+                .status-error {
+                    display: flex; align-items: center; justify-content: space-between;
+                    gap: 0.75rem; margin-bottom: 1rem;
+                }
+                .dismiss-error {
+                    background: none; border: none; color: #fca5a5; text-decoration: underline;
+                    font-size: 0.78rem; cursor: pointer; font-family: inherit; flex-shrink: 0;
+                }
+                .dismiss-error:hover { color: #fff; }
                 .form-group { margin-bottom: 0.75rem; display: flex; flex-direction: column; gap: 0.25rem; }
                 .form-row { display: flex; gap: 0.75rem; }
                 .form-row .form-group { flex: 1; }
