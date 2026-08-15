@@ -34,9 +34,26 @@ export default function NewDoctorPage() {
             const res = await fetch("/api/employees/doctors");
             if (!res.ok) return;
             const data: { status: string; color: string | null }[] = await res.json();
-            setTakenColors(
-                data.filter((d) => d.status === "ACTIVE" && d.color).map((d) => d.color as string)
-            );
+            const taken = data
+                .filter((d) => d.status === "ACTIVE" && d.color)
+                .map((d) => d.color as string);
+            setTakenColors(taken);
+
+            // The form initialises to COLORS[0], which may already be taken —
+            // leaving it selected means an untouched submit is refused with a
+            // 409 naming a colour the admin never chose. Move to the first free
+            // swatch instead. This runs once on mount, before the admin can
+            // interact, and the functional update only replaces a colour that
+            // is actually unavailable — a deliberate pick is never overridden.
+            // When every colour is taken there is no free one to move to, so
+            // the selection stays and the server stays the backstop.
+            if (taken.length < COLORS.length) {
+                setForm((f) =>
+                    taken.includes(f.color)
+                        ? { ...f, color: COLORS.find((c) => !taken.includes(c)) as string }
+                        : f
+                );
+            }
         })();
     }, []);
 
