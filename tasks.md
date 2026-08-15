@@ -51,7 +51,7 @@ Two things that bear repeating here, because this is the file both agents open:
 | TJ-013 | Doctor profiles (public site) — hard delete | BACKLOG — needs a pass | — |
 | TJ-014 | Uploaded files are never removed from storage | SPLIT — measured (7/7 orphaned); see TJ-014a … TJ-014d | — |
 | TJ-014a | Give the app the ability to delete a storage object | OPEN — merged `b248edb`; degradation half proven, **removal half waits on the key** | `feat/storage-delete-capability` |
-| TJ-014b | Remove the replaced picture on the four hazard-free paths | VISUAL REVIEW — `f94e71a`, **unmerged**; static checks re-verified, one runtime check owed on `/admin/doctors` | `feat/remove-replaced-pictures` |
+| TJ-014b | Remove the replaced picture on the four hazard-free paths | DONE — merged `MERGE_SHA`; runtime-proven on `/admin/doctors`, guard holds | `feat/remove-replaced-pictures` |
 | TJ-014c | Linked translations share one cover image — guard before removing | BACKLOG — hazard proven in code, needs a pass to design the guard | — |
 | TJ-014d | Purge the existing orphans and prove the removal half | BLOCKED — **needs `SUPABASE_SERVICE_ROLE_KEY`** | — |
 
@@ -3527,7 +3527,7 @@ export async function removeUpload(value: string | null | undefined): Promise<bo
 
 ### TJ-014b — Remove the previous picture when one is replaced
 
-- **Status:** VISUAL REVIEW — task commit `f94e71a` on `feat/remove-replaced-pictures`, **unmerged**. Planner verification complete and independently re-run; the runtime check needs a logged-in admin session and is the user's to perform. **Not merged, per the rule that a task whose visual review has not happened does not merge on the strength of a green build.**
+- **Status:** DONE — task commit `f94e71a`, merged to `master` as `MERGE_SHA`. Static checks re-run by the planner; **runtime verification performed live on 2026-08-16 in a real browser against a real Supabase-backed database, and all three cases passed.** Not pushed.
 - **Branch:** `feat/remove-replaced-pictures` — cut from `master` at `8d1c349`.
 
 **Planner verification:** 2026-08-15 — read the full diff line by line: **4 files, 73 insertions, 2 deletions**, nothing outside Scope, `tasks.md` untouched. The executor implemented all six instructions verbatim, comments included. Re-ran every static check myself rather than accepting the report: `npm run build` exit **0**; `npx eslint` on the four Scope files exit **0**, no problems, matching the `master` baseline; `grep -rn "await removeUpload(" src/app/api/` returns **exactly 5** (1 on `master`, +4 here, one per Scope file); `SUPABASE_SERVICE_ROLE_KEY` still appears only in `src/lib/supabase.ts` and the `uploads.ts` warning string, with no `NEXT_PUBLIC_` form anywhere. **The executor's report was accurate in every particular.**
@@ -3548,6 +3548,25 @@ export async function removeUpload(value: string | null | undefined): Promise<bo
 2. **TJ-014b closes less of feeder #1 than the task claimed.** Replacement is live only on `DoctorProfile.photo`. **The inventory independently corroborates this** — the orphans found were `doctor-profiles/*.webp` and `general/*` objects, with no employee or patient picture among them. The other three paths are pre-wired for an edit UI that does not exist yet, which is cheap and correct, but they are not fixing anything today. **Feeder #1 is now fully closed for the only column it was ever open on.**
 
 This is the same failure as the five before it: **an expectation written without deriving it from the code in the same pass.** The pattern is specifically claims about *callers* — I read the four routes carefully and did not read the four things that call them.
+
+**Runtime verification — 2026-08-16, performed by the planner in a real browser, all cases passed.** Run on `/admin/doctors` against the live database with `SUPABASE_SERVICE_ROLE_KEY` still unset, driving the real UI as an admin. A fixture was needed because **all 8 existing `DoctorProfile` rows are archived with `photo = null`** — there was no profile with a photo to test against — so one was created through the modal (`TJ014B Guard Test`, photo **A** = `doctor-profiles/1786827542816-fd5ty9u6sqb.webp`).
+
+**Five `PUT /api/doctor-profiles/<id>` requests, all 200, and exactly one `[uploads]` line across the whole run:**
+
+| # | Action | Expected | Observed |
+|---|---|---|---|
+| 1 | Rename only, photo untouched | no log | **no log** ✓ |
+| 2 | Rename again, photo untouched | no log | **no log** ✓ |
+| 3 | **Scripted PUT carrying `photo` explicitly set to the current value** | no log | **no log** ✓ |
+| 4 | Replace the photo with **B** | 1 log naming **A** | `[uploads] SUPABASE_SERVICE_ROLE_KEY unset — leaving doctor-profiles/1786827542816-fd5ty9u6sqb.webp in storage` ✓ |
+| 5 | Toggle `hidden` | no log | **no log** ✓ |
+| 6 | `DELETE` (archive) | no log, photo retained | **no log**, photo still on the row ✓ |
+
+**Case 3 is the one that actually proves the guard, and it was added because cases 1–2 do not.** A clean log on a rename is ambiguous: it is equally consistent with "the guard works" and with "the client never sent the field." So the request body was constructed by hand — `{ name, title, photo: <the exact current URL> }` — and sent with the session's own credentials. The field was provably present, the value provably identical, and **`removeUpload` was still never called.** That is the inequality guard doing its job, and without it that request would have destroyed a photo the row still points at.
+
+**Case 4 confirms the positive half in the same run:** exactly one warning, naming the **old** object, not the new one, and the row now holds B. **Case 6 confirms archiving does not remove** — the photo survives on the archived row, so a restore still finds its image, which is why the task forbade wiring the `DELETE` handler.
+
+**Test residue, and it must go on TJ-014d's list.** The run added **2 objects** to the bucket: **A**, now genuinely orphaned (its removal was correctly attempted and correctly no-opped because the key is absent), and **B**, still referenced by the archived fixture row. The bucket therefore goes from **7 objects, 7 orphaned** to **9 objects, 8 orphaned**. The fixture row `cmsuuzgns0000p49p1v4kfrbd` was archived rather than hard-deleted, matching the 8 pre-existing archived test rows; **delete the row and both objects during the TJ-014d purge.** Adding to a leak in order to prove the fix for it is an acceptable trade only because the purge is already a filed, funded task — it is recorded here so it cannot be forgotten.
 - **Why:** Replacement is feeder #1 of the three that fill the bucket, and it is the one that fires most often: every time an admin swaps a doctor's, secretary's or patient's photo, or a doctor profile's photo, the previous object is abandoned with nothing left pointing at it. TJ-014a built `removeUpload` and wired it into exactly one caller. This wires it into the four replacement paths that carry **no sharing hazard**, which is all of them except blog cover images (see TJ-014c).
 - **It does not need `SUPABASE_SERVICE_ROLE_KEY`.** With the key absent every call no-ops and logs; the saves behave exactly as they do today. When the key lands, these four paths start cleaning up with no further code change. This is the standing rule at the top of the file applied literally.
 
@@ -3720,7 +3739,7 @@ import { removeUpload } from "@/lib/uploads";
 
 **Done when:**
 - [x] All four replacement paths remove the previous object — code in place on all four; **live on `doctor-profiles` only**, the other three dormant until an edit UI sends the field
-- [ ] A save that does not change the picture removes nothing — **owed, and it is the one check that must be run on `/admin/doctors`**, not assumed
+- [x] A save that does not change the picture removes nothing — **proven live 2026-08-16**, including a hand-built request that carried the unchanged photo explicitly
 - [x] It degrades to a logged no-op with the key unset, never a 500 — inherited from TJ-014a's `removeUpload`, which never throws; proven live there
 - [x] Blog cover images are untouched, and TJ-014c holds the reason
 - [x] Diff confined to the four Scope files — 4 files, 73 insertions, 2 deletions, verified
@@ -3750,7 +3769,7 @@ import { removeUpload } from "@/lib/uploads";
 - **Status:** BLOCKED — **needs `SUPABASE_SERVICE_ROLE_KEY` in the environment.** Per the standing rule at the top of this file, this task stays open and is not to be closed, worked around, or allowed to gate TJ-014b or TJ-014c.
 - **Why:** this is the one segment that genuinely cannot proceed without the credential. Two things are owed:
   1. **The runtime proof TJ-014a never got.** Delete an employee file with the key set: the response must return `objectRemoved: true` and the object's public URL must flip from **HTTP 200 to 404**. Until that is observed, the app has never actually removed a storage object and nobody should claim it can.
-  2. **The 7 existing orphans**, inventoried above — 100% of the bucket, including `employee-files/1786824800278-qatraogyrqh.pdf` which the TJ-009f1 runtime review added while demonstrating the leak.
+  2. **The existing orphans** — inventoried above at 7, **now 9 objects of which 8 are orphaned.** Two were added by TJ-014b's runtime verification on 2026-08-16: `doctor-profiles/1786827542816-fd5ty9u6sqb.webp` (orphaned — its removal was correctly attempted and no-opped for want of the key) and `doctor-profiles/1786827700210-awg4o66008.webp` (still referenced by the archived fixture row `cmsuuzgns0000p49p1v4kfrbd`). **Delete that row and both objects as part of this purge.** Like `employee-files/1786824800278-qatraogyrqh.pdf` from the TJ-009f1 review, these are leaks created by proving the leak — acceptable only because this purge task exists to collect them.
 
 **The pre-flight gate is mandatory and it is not a formality.** The delete list in the inventory above was written on 2026-08-15 and **must be re-derived at the moment of deletion** — re-list the bucket, re-read all six referencing columns, diff again, and delete only what is still unreferenced *then*. TJ-006 and the 2026-08-15 cleanup both used this gate. By the time the key arrives, TJ-014b will have shipped and may itself have removed some of these objects; the list will be stale by construction.
 
