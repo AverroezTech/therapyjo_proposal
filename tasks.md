@@ -25,7 +25,7 @@ Two things that bear repeating here, because this is the file both agents open:
 | TJ-007 | End a resigned employee's session immediately | DONE — merged `a1af675` | `bugfix/revoke-session-on-resign` |
 | TJ-008 | Dashboard / reservations — reported issues | SPLIT — see TJ-008a, TJ-008b | — |
 | TJ-008a | Create a patient without leaving the reservation form | DONE — merged `f80b589` | `feat/inline-patient-create` |
-| TJ-008b | Allow a session's state to be reverted | PASS INCOMPLETE — do not pull | `feat/revert-session-status` |
+| TJ-008b | Allow a session's state to be reverted | READY | `feat/revert-session-status` |
 | TJ-009 | Employees / doctors — reported issues | BACKLOG — needs a pass, splits further | — |
 | TJ-010 | Employees / secretaries — reported issues | BACKLOG — needs a pass, splits further | — |
 | TJ-011 | Patients — reported issues | BACKLOG — needs a pass, splits further | — |
@@ -1241,7 +1241,7 @@ Apply all six steps to **both** files in Scope. The JSX and CSS anchors are iden
 
 ### TJ-008b — Allow a session's state to be reverted
 
-- **Status:** PASS INCOMPLETE — **the executor must not pull this.** The investigative half of the pass is done and recorded below, and the open decision is settled, but the Instructions block is still a placeholder. The protocol's own rule applies to the planner too: *"Supply every literal. If the executor would have to choose a value, the pass is not finished."* Reverting a checkout has to recompute `lastVisitDate`, and handing that over as prose rather than as an exact query is precisely how a clinical field gets silently corrupted. Finish the Instructions, then move to `READY`.
+- **Status:** READY
 - **Branch:** `feat/revert-session-status`
 - **Why:** `CANCELLED`, `NO_SHOW` and `CHECKED_OUT` are terminal in the API's state machine, so any misclick is permanent — a session cancelled by accident can never be rescheduled, and the row stays wrong forever. The user asked for this directly, and chose the widest of the three options offered: **all three states become revertible, including checked-out.** Checkout is the likeliest misclick because it is the last step of the normal flow.
 
@@ -1261,16 +1261,270 @@ Confirmed:
 - `src/app/admin/page.tsx` — `handleStatusChange` only
 - `src/app/secretary/page.tsx` — `handleStatusChange` only
 
-**Do not touch:** the `DELETE` handler, the `PUT` handler, the duplicate flow, or the `checkedInAt` / `withDoctorAt` / `checkedOutAt` columns other than where a revert must clear them.
+**Do not touch:** the `DELETE` handler, the `PUT` handler, the duplicate flow, or the `checkedInAt` / `withDoctorAt` / `checkedOutAt` columns other than where a revert must clear them. **Do not edit `src/app/doctor/session/[id]/page.tsx`** — it is named here because it *is* in the blast radius and was read during the pass, and it turns out to need no change: its own guard at line 215 already restores the doctor's Checkout button once the status returns to `WITH_DOCTOR`. Leave it alone and confirm that behaviour instead. Do not add a role gate — the user explicitly chose the un-gated option over admin-only reverts.
 
-**Instructions:** *(mechanical steps to be written before dispatch — the pass above is complete and the decision is settled; this task is dispatched after TJ-008a merges, since both touch the reservation surface and reviewing them separately keeps the visual review honest.)*
+**Pass completed:** 2026-08-15 — second sitting, after TJ-008a merged. Additionally read `src/app/admin/page.tsx:208-232` and `:485-491`, `src/app/secretary/page.tsx:159-183` and `:266`, and `src/app/doctor/session/[id]/page.tsx:185-220`.
+
+Further confirmed:
+- `const handleStatusChange = async (id: number, status: string) => {` occurs **exactly once** in each dashboard, and the two handler bodies are byte-identical. `fetchReservations();` on its own occurs **five times** per file and must **not** be used as an anchor.
+- **`.error-msg` already exists in both dashboards** — `admin/page.tsx:487-491` (multi-line) and `secretary/page.tsx:266` (single-line). styled-jsx scopes per component, not per element, so the class is reusable anywhere in the same file. No new banner styling is needed beyond the dismiss button.
+- The two files' render roots **differ** — admin opens `<div className="dashboard">` followed by a `{/* Controls */}` comment, secretary opens a bare `<div>`. The banner anchors are therefore per-file, and are given separately below.
+- **`/doctor/session/[id]` is a consumer and it behaves correctly under the change.** Line 215 hides the action row when `status === "CHECKED_OUT"`; line 219 shows *Checkout* when `WITH_DOCTOR`. So an undone checkout correctly returns the doctor's own Checkout button. No edit needed there — but it is why the doctor session page is named under Do not touch rather than simply omitted.
+
+Corrected during this sitting: the first draft let the existing `if (newStatus === "WITH_DOCTOR") timestamps.withDoctorAt = new Date();` line run on a revert, which would have **overwritten the real session start time with the moment of the undo**. The guard in step 2 exists for that reason — the session genuinely did start when it started, and reverting a checkout must not rewrite that.
+
+**Anchors verified mechanically, not by eye.** Every one of the 11 anchor strings below was matched against its target file by script before this task was dispatched; all 11 occur **exactly once**. The check also caught something worth knowing: all four Scope files are **100% CRLF** on disk (`core.autocrlf=true`, no `.gitattributes`), so a byte-exact comparison against the LF text in this file fails on every multi-line anchor. The editing tooling normalises this — TJ-008a's files were equally CRLF and its multi-line anchors applied cleanly — so the anchors below are correct as written. Recorded because a future pass that verifies anchors by raw `indexOf` will see eleven false failures and conclude the task is broken.
+
+**Instructions:**
+
+**A. `src/app/api/reservations/[id]/route.ts`**
+
+1. Open the three terminal states. Find, verbatim:
+   ```ts
+   const VALID_TRANSITIONS: Record<string, string[]> = {
+       SCHEDULED: ["CHECKED_IN", "WAITING", "CANCELLED", "NO_SHOW"],
+       WAITING: ["CHECKED_IN", "CANCELLED"],
+       CHECKED_IN: ["WITH_DOCTOR", "WAITING", "CANCELLED"],
+       WITH_DOCTOR: ["CHECKED_OUT"],
+       CHECKED_OUT: [], // terminal state
+       CANCELLED: [], // terminal state
+       NO_SHOW: [], // terminal state
+   };
+   ```
+   Replace with:
+   ```ts
+   const VALID_TRANSITIONS: Record<string, string[]> = {
+       SCHEDULED: ["CHECKED_IN", "WAITING", "CANCELLED", "NO_SHOW"],
+       WAITING: ["CHECKED_IN", "CANCELLED"],
+       CHECKED_IN: ["WITH_DOCTOR", "WAITING", "CANCELLED"],
+       WITH_DOCTOR: ["CHECKED_OUT"],
+       CHECKED_OUT: ["WITH_DOCTOR"], // revert only — undo a premature checkout
+       CANCELLED: ["SCHEDULED"], // revert only — undo a cancellation
+       NO_SHOW: ["SCHEDULED"], // revert only — undo a no-show
+   };
+   ```
+   Note what is deliberately **not** here: `CHECKED_OUT` does not lead to `SCHEDULED`, and `SCHEDULED` still does not lead to `CHECKED_OUT`. Each terminal state gets exactly one way back and nothing else.
+
+2. Handle the timestamps and the recomputation. Find, verbatim:
+   ```ts
+       // Set timestamps for status changes
+       const timestamps: Record<string, unknown> = {};
+       if (newStatus === "CHECKED_IN") timestamps.checkedInAt = new Date();
+       if (newStatus === "WITH_DOCTOR") timestamps.withDoctorAt = new Date();
+       if (newStatus === "CHECKED_OUT") {
+           timestamps.checkedOutAt = new Date();
+           // Auto-update patient's lastVisitDate
+           await prisma.patient.update({
+               where: { id: reservation.patientId },
+               data: { lastVisitDate: new Date() },
+           });
+       }
+   ```
+   Replace with:
+   ```ts
+       // Set timestamps for status changes
+       const timestamps: Record<string, unknown> = {};
+       if (newStatus === "CHECKED_IN") timestamps.checkedInAt = new Date();
+       // Guarded: reverting a checkout also lands on WITH_DOCTOR, and the session
+       // really did start when it started — do not rewrite it with the undo time.
+       if (newStatus === "WITH_DOCTOR" && reservation.status !== "CHECKED_OUT") {
+           timestamps.withDoctorAt = new Date();
+       }
+       if (newStatus === "CHECKED_OUT") {
+           timestamps.checkedOutAt = new Date();
+           // Auto-update patient's lastVisitDate
+           await prisma.patient.update({
+               where: { id: reservation.patientId },
+               data: { lastVisitDate: new Date() },
+           });
+       }
+
+       // Undoing a checkout: drop the checkout stamp, then recompute the patient's
+       // lastVisitDate from the sessions still checked out. Clearing it outright
+       // would erase an earlier, legitimate visit.
+       if (reservation.status === "CHECKED_OUT" && newStatus === "WITH_DOCTOR") {
+           timestamps.checkedOutAt = null;
+           const priorVisit = await prisma.reservation.findFirst({
+               where: {
+                   patientId: reservation.patientId,
+                   status: "CHECKED_OUT",
+                   id: { not: reservation.id },
+                   checkedOutAt: { not: null },
+               },
+               orderBy: { checkedOutAt: "desc" },
+               select: { checkedOutAt: true },
+           });
+           await prisma.patient.update({
+               where: { id: reservation.patientId },
+               data: { lastVisitDate: priorVisit?.checkedOutAt ?? null },
+           });
+       }
+
+       // Returning to SCHEDULED means the session has not happened yet, so any
+       // stamps left over from a check-in before the cancellation are now stale.
+       if (newStatus === "SCHEDULED") {
+           timestamps.checkedInAt = null;
+           timestamps.withDoctorAt = null;
+           timestamps.checkedOutAt = null;
+       }
+   ```
+   The `checkedOutAt: { not: null }` filter is deliberate — it keeps rows with a missing stamp out of the ordering rather than relying on how PostgreSQL sorts NULLs.
+
+**B. `src/app/components/ReservationSlot.tsx`**
+
+3. Add the revert actions. Find, verbatim:
+   ```tsx
+       if (status === "WITH_DOCTOR") {
+           actions.push({ label: "Checkout", icon: "🚪", onClick: () => onStatusChange(id, "CHECKED_OUT") });
+       }
+       actions.push({ label: "Duplicate", icon: "📋", onClick: () => onDuplicate(id) });
+   ```
+   Replace with:
+   ```tsx
+       if (status === "WITH_DOCTOR") {
+           actions.push({ label: "Checkout", icon: "🚪", onClick: () => onStatusChange(id, "CHECKED_OUT") });
+       }
+       if (status === "CANCELLED" || status === "NO_SHOW") {
+           actions.push({ label: "Reschedule", icon: "↩️", onClick: () => onStatusChange(id, "SCHEDULED") });
+       }
+       if (status === "CHECKED_OUT") {
+           actions.push({ label: "Undo Checkout", icon: "↩️", onClick: () => onStatusChange(id, "WITH_DOCTOR") });
+       }
+       actions.push({ label: "Duplicate", icon: "📋", onClick: () => onDuplicate(id) });
+   ```
+   Emoji icons are correct here — this component already uses ✅ ⏳ 🩺 🚪 📋 🚫 🗑️ and matching the file wins over the no-emoji rule, which governs the public marketing site.
+
+**C. Both dashboards — `src/app/admin/page.tsx` and `src/app/secretary/page.tsx`**
+
+4. Add the error state. Find the line, unique in each file:
+   ```ts
+       const [addError, setAddError] = useState("");
+   ```
+   Insert immediately **after** it:
+   ```ts
+       const [statusError, setStatusError] = useState("");
+   ```
+
+5. Make the handler read the response. Find, verbatim and identical in both files:
+   ```ts
+       const handleStatusChange = async (id: number, status: string) => {
+           await fetch(`/api/reservations/${id}`, {
+               method: "PATCH",
+               headers: { "Content-Type": "application/json" },
+               body: JSON.stringify({ status }),
+           });
+           fetchReservations();
+       };
+   ```
+   Replace with:
+   ```ts
+       const handleStatusChange = async (id: number, status: string) => {
+           setStatusError("");
+           const res = await fetch(`/api/reservations/${id}`, {
+               method: "PATCH",
+               headers: { "Content-Type": "application/json" },
+               body: JSON.stringify({ status }),
+           });
+           if (!res.ok) {
+               const data = await res.json().catch(() => ({}));
+               setStatusError(data.error || "Could not change the session status.");
+               return;
+           }
+           fetchReservations();
+       };
+   ```
+
+6. Render the banner. **The anchor differs per file.**
+
+   In `src/app/admin/page.tsx`, find:
+   ```tsx
+       return (
+           <div className="dashboard">
+               {/* Controls */}
+   ```
+   Replace with:
+   ```tsx
+       return (
+           <div className="dashboard">
+               {statusError && (
+                   <div className="error-msg status-error" role="alert">
+                       <span>{statusError}</span>
+                       <button className="dismiss-error" onClick={() => setStatusError("")}>Dismiss</button>
+                   </div>
+               )}
+               {/* Controls */}
+   ```
+
+   In `src/app/secretary/page.tsx`, find:
+   ```tsx
+       return (
+           <div>
+               <div className="controls">
+   ```
+   Replace with:
+   ```tsx
+       return (
+           <div>
+               {statusError && (
+                   <div className="error-msg status-error" role="alert">
+                       <span>{statusError}</span>
+                       <button className="dismiss-error" onClick={() => setStatusError("")}>Dismiss</button>
+                   </div>
+               )}
+               <div className="controls">
+   ```
+
+7. Add the two CSS rules. **The anchor differs per file** because `.error-msg` is written multi-line in one and single-line in the other.
+
+   In `src/app/admin/page.tsx`, find:
+   ```css
+                   .error-msg {
+                       background: rgba(220,38,38,0.1); border: 1px solid rgba(220,38,38,0.2);
+                       color: #fca5a5; padding: 0.5rem 0.75rem; border-radius: var(--radius-sm, 2px);
+                       font-size: 0.82rem; margin-bottom: 0.75rem;
+                   }
+   ```
+   Insert immediately **after** it the block given below.
+
+   In `src/app/secretary/page.tsx`, find:
+   ```css
+                   .error-msg { background: rgba(220,38,38,0.1); border: 1px solid rgba(220,38,38,0.2); color: #fca5a5; padding: 0.5rem; border-radius: var(--radius-sm, 2px); font-size: 0.82rem; margin-bottom: 0.75rem; }
+   ```
+   Insert immediately **after** it the same block:
+   ```css
+                   .status-error {
+                       display: flex; align-items: center; justify-content: space-between;
+                       gap: 0.75rem; margin-bottom: 1rem;
+                   }
+                   .dismiss-error {
+                       background: none; border: none; color: #fca5a5; text-decoration: underline;
+                       font-size: 0.78rem; cursor: pointer; font-family: inherit; flex-shrink: 0;
+                   }
+                   .dismiss-error:hover { color: #fff; }
+   ```
 
 **Verification:**
 - `npm run build` passes.
-- `npx eslint` scoped to the four files in Scope.
-- **Named regression risk — the forward path.** Widening a state machine can accidentally admit transitions that should stay illegal. Build the **negative** case into the check, not just the positive one: confirm `CHECKED_OUT → SCHEDULED` is still **rejected with 400**, and that `SCHEDULED → CHECKED_OUT` (skipping check-in) is still rejected. Proving a revert works does not prove the machine still refuses anything.
-- **Second regression risk — `lastVisitDate`.** After reverting a checkout, the patient's `lastVisitDate` must equal the most recent *remaining* checked-out session, or be null if there is none. Verify against a patient with two checked-out sessions, not one.
-- A rejected transition must now surface a visible message on both dashboards.
+- `npx eslint src/app/api/reservations/[id]/route.ts src/app/components/ReservationSlot.tsx src/app/admin/page.tsx src/app/secretary/page.tsx` introduces no **new** problems. `admin/page.tsx` and `secretary/page.tsx` already fail on `master`, so compare against a baseline — run the same command on `master` via `git stash` and diff the counts. A raw number proves nothing here. Do **not** run `npm run lint`.
+- `git status --porcelain` lists exactly the four files in Scope.
+
+- **Named regression risk — the machine must still refuse things.** Widening a state machine can quietly admit transitions that should stay illegal, and every positive test passes either way. Build the **negative** cases in explicitly. Against a logged-in session, `PATCH /api/reservations/<id>` must return **400** for each of:
+  - `CHECKED_OUT → SCHEDULED` (a checkout reverts one step, never straight to scheduled)
+  - `SCHEDULED → CHECKED_OUT` (still cannot skip check-in)
+  - `CANCELLED → CHECKED_IN` (a cancellation reverts to scheduled and nothing else)
+
+  Read the **body**, not just the status code — and remember `fetch` follows redirects, so a 200 can mean "bounced to the login page." Use `redirect: "manual"` or assert on the JSON.
+
+- **Second regression risk — `lastVisitDate`, and it needs the two-visit case.** A patient with a single checked-out session cannot distinguish "recomputed correctly" from "cleared to null", so testing with one visit proves nothing. Set up a patient with **two** checked-out sessions, then:
+  - Undo the **later** checkout → `lastVisitDate` must fall back to the **earlier** session's `checkedOutAt`, not to null and not stay where it was.
+  - Undo the **earlier** checkout (with both checked out) → `lastVisitDate` must be **unchanged**, since the later visit is still the most recent.
+  - Undo the only remaining checkout → `lastVisitDate` must be `null`.
+
+- **Third check — the undo must not rewrite history.** After `CHECKED_OUT → WITH_DOCTOR`, the row's `withDoctorAt` must still hold the **original** session start time, and `checkedOutAt` must be `null`. This is the guard added in step A2; without it the undo silently backdates the session to the moment of the click.
+
+- A rejected transition must now show a visible, dismissible message on **both** dashboards — confirm by driving a rejected transition through the UI, not by reading the code.
+
+- Visual review: the slot menu offers *Reschedule* on a cancelled and on a no-show session, and *Undo Checkout* on a checked-out one, on both `/admin` and `/secretary`.
 
 **Done when:**
 - [ ] All three reverts work from the slot menu on both dashboards
@@ -1350,6 +1604,7 @@ Confirmed:
 
 Findings reported by the executor, or surfaced during a pass, that fall outside the scope of the task that turned them up. The planner triages these into tasks. **The executor does not write here** — it reports in conversation and the planner records.
 
+- **The whole working tree is CRLF, and it makes anchor verification lie.** `core.autocrlf=true` with no `.gitattributes`, so every source file on disk uses `\r\n` while `tasks.md`'s fenced anchors are written with `\n`. A planner script that checks anchors with a raw `indexOf` therefore reports **zero matches for every multi-line anchor** while single-line ones pass — a signature worth recognising instantly, because it looks exactly like a task whose anchors are all wrong. The editing tooling normalises line endings, so the anchors are fine; the *check* was wrong. Strip `\r` before comparing. Verifying anchors mechanically is still the right move — it is how TJ-008b was cleared for dispatch — just normalise first. (Found during the TJ-008b pass.)
 - **The admin/secretary navbar overflows horizontally below ~490px.** Measured during the TJ-008a visual review at a 320px viewport: `document.documentElement.scrollWidth` is **490** against a 316px viewport, and every offending element belongs to the nav chrome — `.nav-links` (330px wide, right edge at 416), `.nav-dropdown`, `.dropdown-panel`, `.dropdown-item`. It predates TJ-008a and is unrelated to it, but it means **every admin page currently side-scrolls on a phone**, and the clinic's secretary is the most likely person to open this on one. The Responsive Rules in `Claude_Instructions.md` require 320px to work, so this is a standing violation rather than a nicety. Worth its own task. (Found during the TJ-008a visual review.)
 - **`resize_window` reports success without resizing, and a 320px check done through it is worthless.** Both the executor and I hit this on TJ-008a: the call returns "Successfully resized… to 320x700" and `window.innerWidth` stays at 1920. The executor noticed and honestly reported the check as *not performed* rather than claiming a pass — which is the behaviour to want. The workaround that does work: inject a same-origin `<iframe>` at the target width, let it load, and measure inside `contentDocument`. Real layout, real media queries, no dependency on the window manager. Reusable for every future responsive review. (Found during the TJ-008a visual review.)
 - **Test data added during the TJ-008a review, left in place deliberately.** Patient *ZZ Review Patient* (`0799000111`) plus one reservation, and the executor's *TJ008A TestPatient* (`0700000001`) plus one reservation. The user confirmed on 2026-08-15 that the entire live database is test data and disposable, so this harms nothing — but it is worth writing down that **the app still cannot delete any of it** (TJ-011 §3), so it will need the same out-of-band cleanup as last time. Do not run that cleanup without asking: the previous one was explicitly scoped and confirmed with the user first.
