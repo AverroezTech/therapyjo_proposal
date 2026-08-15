@@ -28,8 +28,8 @@ Two things that bear repeating here, because this is the file both agents open:
 | TJ-008b | Allow a session's state to be reverted | DONE — merged `e5765b9` | `feat/revert-session-status` |
 | TJ-009 | Employees / doctors — reported issues | SPLIT — see TJ-009a … TJ-009g | — |
 | TJ-009a | Reveal and confirm passwords on the employee forms | DONE — merged `234d800` | `feat/employee-password-fields` |
-| TJ-009b | Re-authenticate the admin before changing an employee's password | READY — dispatch 1st | `feat/admin-reauth-password-change` |
-| TJ-009c | Archive view and re-enrolment for resigned employees | PLANNED — dispatch 2nd, vocabulary assumed | `feat/employee-archive-view` |
+| TJ-009b | Re-authenticate the admin before changing an employee's password | REVIEW — verified, unmerged | `feat/admin-reauth-password-change` |
+| TJ-009c | Archive view and re-enrolment for resigned employees | READY — dispatch 2nd, vocabulary assumed | `feat/employee-archive-view` |
 | TJ-009d | One calendar colour per doctor | PLANNED — dispatch 3rd, colour rules assumed | `feat/unique-doctor-colours` |
 | TJ-009e | Working hours as a selector | PLANNED — dispatch 4th, from/to pair assumed | `feat/working-hours-selector` |
 | TJ-009f | Upload identification documents | BLOCKED — planned, **not dispatched**: needs go-ahead for a production schema push | — |
@@ -1940,8 +1940,14 @@ Re-ran verification independently: `npm run build` **exit 0**, 49 static pages, 
 
 ### TJ-009b — Re-authenticate the admin before changing an employee's password
 
-- **Status:** READY
+- **Status:** REVIEW — statically verified on commit `8ed59cd`; **unmerged**, awaiting the runtime checks the user has deferred.
 - **Branch:** `feat/admin-reauth-password-change`
+
+**Planner verification (static half):** 2026-08-15 — read the full diff rather than the report. **4 files, 102 insertions, 8 deletions, one commit `8ed59cd`, tree clean, nothing outside Scope.** The security-bearing line is right: `const actingAdminId = (session.user as { id?: string }).id;` — the acting admin comes from the session, never the body, so the gate cannot be pointed at another account by tampering with the request. Both routes carry byte-identical logic; both `POST` handlers and both `/new` pages are untouched (`grep` for `adminPassword` in the create pages returns nothing). Re-ran `npm run build` independently: **exit 0**. Re-ran the eslint baseline myself by restoring the `master` versions in place: **2 problems on the branch, 2 on the baseline — zero new.**
+
+**The executor corrected the pass, and it was right.** This block originally predicted a `master` baseline of "2 errors + 2 warnings"; the real figure for *these four* files is 2 errors + 0 warnings. The two `no-img-element` warnings belong to the two `/new` pages, which were in TJ-009a's file set and are **not** in this task's. The number was carried over from the previous task without re-deriving it for a different Scope — a small error, but exactly the kind that trains an executor to ignore a failing check. Recorded rather than quietly fixed.
+
+**Still outstanding:** the six runtime checks (a)–(f) in Verification, above all (f) — a `PUT` carrying `password` but no `adminPassword` must return 400. That is the case that proves the gate exists rather than merely appearing in the UI, and it cannot be established from a diff.
 - **Why:** TJ-009 §6. The edit modals already offer *New Password (optional)* and `PUT` already hashes whatever arrives, so anyone holding a live admin session — an unlocked machine at the front desk is the realistic case — can silently reset a doctor's or secretary's credentials and lock them out. The missing piece is the gate: the admin re-enters their **own** password, and the API verifies it with `bcrypt.compare` before `passwordHash` is touched.
 
 **Planning pass:** 2026-08-15 — read the post-merge `src/app/admin/employees/doctors/page.tsx` and `.../secretaries/page.tsx` (both as they stand after `234d800`), `src/app/api/employees/doctors/[id]/route.ts`, `.../secretaries/[id]/route.ts`, `src/lib/auth.ts`, `src/lib/auth.config.ts` and `prisma/schema.prisma`. Confirmed:
@@ -2122,7 +2128,8 @@ Re-ran verification independently: `npm run build` **exit 0**, 49 static pages, 
 
 ### TJ-009c — Archive view and re-enrolment for resigned employees
 
-- **Status:** PLANNED — design settled, **anchors pinned at dispatch** (TJ-009b rewrites parts of both files first). Dispatch second, branch `feat/employee-archive-view` cut from TJ-009b's branch.
+- **Status:** READY
+- **Branch:** `feat/employee-archive-view` — **cut from `feat/admin-reauth-password-change`, not from `master`.** That branch is unmerged (the visual review is deferred), so branching from `master` would silently drop TJ-009b's work.
 - **Why:** TJ-009 §7, less the hard delete. Resigned staff sit mixed into the active list with a red badge, there is no archived view, and nothing re-enrols them — though re-enrolment needs **no API work at all**, since `PUT` already accepts `status` (`doctors/[id]/route.ts:64`, `secretaries/[id]/route.ts:61`) and `src/lib/auth.ts:36` lets the account sign in again the moment it reads `ACTIVE`. UI-only, across the two list pages.
 
 **Planning pass:** 2026-08-15 — read both employee list pages, both `[id]` routes, `src/lib/auth.ts`, and the two archive patterns the app already ships: `src/app/admin/blog/page.tsx:17-56` (in-page filter chips with counts, `FILTERS` + `statusFor` + a `useMemo` over the fetched rows) and `src/app/secretary/patients/archived/page.tsx` (a separate `/archived` route with a back link). Confirmed re-enrolment needs no endpoint work. Confirmed the two lists already diverge in *behaviour*, not just wording: `secretaries/page.tsx:134` hides its button once the row is `RESIGNED`, while the doctors list leaves *Delete* clickable on an already-resigned doctor where it is a silent no-op.
@@ -2139,7 +2146,138 @@ Re-ran verification independently: `npm run build` **exit 0**, 49 static pages, 
 
 **Approach:** mirror `admin/blog/page.tsx` — a `FILTERS = ["Active", "Archived"]` chip row with counts, a `useMemo`-derived visible list filtering on `status`, `Resign` shown only on `ACTIVE` rows, `Re-enrol` shown only on `RESIGNED` rows and calling the existing `PUT` with `{ status: "ACTIVE" }`. Reuse the existing `.chip` / `.chip-count` CSS from the blog page verbatim, and fix the doctors page to stop offering its button on already-resigned rows.
 
-**Verification:** build; no new eslint problems; `grep` shows no `>Delete<` left in either employee list. **Runtime checks deferred by the user** — record for the planner: resigning moves a row out of Active and into Archived without a reload; Re-enrol moves it back; the counts track; and the re-enrolled account can sign in again, which is the one check that proves the `status` round-trip actually reached the database.
+**Anchors verified mechanically 2026-08-15** against the tip of `feat/admin-reauth-password-change`, `\r` stripped — each matches exactly once in its file.
+
+**Instructions — `src/app/admin/employees/doctors/page.tsx`:**
+
+1. Replace `import { useState, useEffect, useCallback } from "react";` with:
+   `import { useState, useEffect, useCallback, useMemo } from "react";`
+2. Directly after the closing `];` of the `COLORS` array, add:
+```
+const FILTERS = ["Active", "Archived"] as const;
+
+function statusFor(filter: (typeof FILTERS)[number]) {
+    return filter === "Archived" ? "RESIGNED" : "ACTIVE";
+}
+```
+3. Directly after the line `    const [formError, setFormError] = useState("");`, add:
+```
+    const [filter, setFilter] = useState<(typeof FILTERS)[number]>("Active");
+```
+4. Directly after the line `    useEffect(() => { fetchDoctors(); }, [fetchDoctors]);`, add:
+```
+
+    const counts = useMemo(() => ({
+        Active: doctors.filter((d) => d.status === "ACTIVE").length,
+        Archived: doctors.filter((d) => d.status === "RESIGNED").length,
+    }), [doctors]);
+
+    const visible = useMemo(
+        () => doctors.filter((d) => d.status === statusFor(filter)),
+        [doctors, filter]
+    );
+```
+5. Replace the whole `handleDelete` function:
+```
+    const handleDelete = async (id: string) => {
+        if (!confirm("Mark this doctor as resigned? This is a soft delete.")) return;
+        await fetch(`/api/employees/doctors/${id}`, { method: "DELETE" });
+        fetchDoctors();
+    };
+```
+   with:
+```
+    const handleResign = async (id: string) => {
+        if (!confirm("Resign this doctor? They move to Archived and can be re-enrolled later.")) return;
+        await fetch(`/api/employees/doctors/${id}`, { method: "DELETE" });
+        fetchDoctors();
+    };
+
+    const handleReEnrol = async (id: string) => {
+        await fetch(`/api/employees/doctors/${id}`, {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ status: "ACTIVE" }),
+        });
+        fetchDoctors();
+    };
+```
+6. Directly after the closing `</div>` of the `page-header` block (the one containing `<h1>Doctors</h1>`), add:
+```
+
+            <div className="filter-row">
+                {FILTERS.map((f) => (
+                    <button
+                        key={f}
+                        className={`chip ${filter === f ? "active" : ""}`}
+                        onClick={() => setFilter(f)}
+                    >
+                        {f} <span className="chip-count">{counts[f]}</span>
+                    </button>
+                ))}
+            </div>
+```
+7. Replace `                        {doctors.map((doc) => (` with `                        {visible.map((doc) => (`.
+8. Replace the action-buttons block:
+```
+                                    <div className="action-buttons">
+                                        <button className="btn-sm btn-edit" onClick={() => openEdit(doc)}>Edit</button>
+                                        <button className="btn-sm btn-delete" onClick={() => handleDelete(doc.id)}>Delete</button>
+                                    </div>
+```
+   with:
+```
+                                    <div className="action-buttons">
+                                        <button className="btn-sm btn-edit" onClick={() => openEdit(doc)}>Edit</button>
+                                        {doc.status === "ACTIVE" ? (
+                                            <button className="btn-sm btn-delete" onClick={() => handleResign(doc.id)}>Resign</button>
+                                        ) : (
+                                            <button className="btn-sm btn-edit" onClick={() => handleReEnrol(doc.id)}>Re-enrol</button>
+                                        )}
+                                    </div>
+```
+9. Replace:
+```
+                        {doctors.length === 0 && (
+                            <tr><td colSpan={7} style={{ textAlign: "center", color: "rgba(255,255,255,0.4)" }}>No doctors found</td></tr>
+                        )}
+```
+   with:
+```
+                        {visible.length === 0 && (
+                            <tr><td colSpan={7} style={{ textAlign: "center", color: "rgba(255,255,255,0.4)" }}>
+                                {filter === "Archived" ? "No archived doctors" : "No active doctors"}
+                            </td></tr>
+                        )}
+```
+10. In the `<style jsx>` block, directly after the line
+    `        .page-header h1 { font-size: 1.5rem; font-weight: 600; }`
+    add the chip rules, copied from `admin/blog/page.tsx:159-169` and re-indented to this file's 8-space style:
+```
+        .filter-row { display: flex; gap: 0.5rem; flex-wrap: wrap; margin-bottom: 1.25rem; }
+        .chip {
+          background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1);
+          color: rgba(255,255,255,0.65); padding: 0.4rem 0.9rem; border-radius: 999px;
+          font-size: 0.8rem; font-weight: 600; cursor: pointer; font-family: inherit;
+          display: inline-flex; align-items: center; gap: 0.4rem; transition: all 0.15s;
+        }
+        .chip:hover { background: rgba(255,255,255,0.08); }
+        .chip.active { background: rgba(255,255,255,0.12); border-color: rgba(255,255,255,0.3); color: #fff; }
+        .chip-count { color: rgba(255,255,255,0.4); font-weight: 500; }
+        .chip.active .chip-count { color: rgba(255,255,255,0.7); }
+```
+
+**Instructions — `src/app/admin/employees/secretaries/page.tsx`:**
+
+11. Apply steps 1–10 again with these differences, and no others:
+    - Step 2's block goes directly after the closing `}` of `interface SecretaryForm` (this file has no `COLORS` array).
+    - Substitute `secretaries` for `doctors`, `sec` for `doc`, `fetchSecretaries` for `fetchDoctors`, `Secretaries` for `Doctors`.
+    - Step 5: this file's function is already named `handleResign` and already reads `secretary`. Replace only its `confirm` string with `"Resign this secretary? They move to Archived and can be re-enrolled later."`, and add `handleReEnrol` beside it calling `/api/employees/secretaries/${id}`.
+    - Step 8: this file already guards with `{sec.status === "ACTIVE" && (`. Convert that to the same `? :` form so archived rows get **Re-enrol** instead of nothing.
+    - Step 9: the anchor is `colSpan={6}` and the messages are `"No archived secretaries"` / `"No active secretaries"`.
+    - Step 10: this file's `.page-header h1` line is `        .page-header h1 { font-size: 1.5rem; font-weight: 600; }` — same string, same insertion point.
+
+**Verification:** build; no new eslint problems (baseline the two page files against their `feat/admin-reauth-password-change` versions, **not** against `master` — this branch is stacked on TJ-009b, so `master` is the wrong control and will show TJ-009b's changes as if they were yours); `grep -n ">Delete<" src/app/admin/employees/` returns nothing; `grep -rn "handleDelete" src/app/admin/employees/` returns nothing. **Runtime checks deferred by the user** — record for the planner: resigning moves a row out of Active and into Archived without a reload; Re-enrol moves it back; the counts track; and the re-enrolled account can sign in again, which is the one check that proves the `status` round-trip actually reached the database.
 
 **Done when:**
 - [ ] Resigned staff are out of the default list and reachable under Archived
