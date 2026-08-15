@@ -26,8 +26,15 @@ Two things that bear repeating here, because this is the file both agents open:
 | TJ-008 | Dashboard / reservations — reported issues | SPLIT — see TJ-008a, TJ-008b | — |
 | TJ-008a | Create a patient without leaving the reservation form | DONE — merged `f80b589` | `feat/inline-patient-create` |
 | TJ-008b | Allow a session's state to be reverted | DONE — merged `e5765b9` | `feat/revert-session-status` |
-| TJ-009 | Employees / doctors — reported issues | BACKLOG — needs a pass, splits further | — |
-| TJ-010 | Employees / secretaries — reported issues | BACKLOG — needs a pass, splits further | — |
+| TJ-009 | Employees / doctors — reported issues | SPLIT — see TJ-009a … TJ-009g | — |
+| TJ-009a | Reveal and confirm passwords on the employee forms | READY | `feat/employee-password-fields` |
+| TJ-009b | Re-authenticate the admin before changing an employee's password | BACKLOG — pass deferred until TJ-009a merges; same files | — |
+| TJ-009c | Archive view and re-enrolment for resigned employees | BLOCKED — the Delete / Resign / Archive vocabulary must be settled first | — |
+| TJ-009d | One calendar colour per doctor | BLOCKED — needs a rule for resigned doctors' colours and for palette exhaustion | — |
+| TJ-009e | Working hours as a selector | BLOCKED — needs the storage shape decided (from/to pair vs per-weekday) | — |
+| TJ-009f | Upload identification documents | BLOCKED — schema change with no migration path; needs the user's go-ahead | — |
+| TJ-009g | Hard delete a doctor | BLOCKED — needs a decision on RESTRICT-ed reservations and notes | — |
+| TJ-010 | Employees / secretaries — reported issues | BACKLOG — needs a pass, splits further; its §3 is closed by TJ-009a | — |
 | TJ-011 | Patients — reported issues | BACKLOG — needs a pass, splits further | — |
 | TJ-012 | Blog — hard delete a post | BACKLOG — needs a pass | — |
 | TJ-013 | Doctor profiles (public site) — hard delete | BACKLOG — needs a pass | — |
@@ -1554,7 +1561,7 @@ Corrected during this sitting: the first draft let the existing `if (newStatus =
 
 ### TJ-009 — Employees / doctors — reported issues
 
-- **Status:** BACKLOG — no planning pass. Splits into at least five tasks; do not execute against this ID.
+- **Status:** SPLIT — planning pass run 2026-08-15. Seven tasks, TJ-009a … TJ-009g. Do not execute against this ID.
 - **Why:** Seven issues were reported against `/admin/employees/doctors`. All seven are real; one is half-built already. They are captured together because the user grouped them, but they touch the schema, the API and two UI surfaces, so they cannot ship as one task.
 
 **Verified against `src/app/admin/employees/doctors/page.tsx`, `.../doctors/new/page.tsx`, `src/app/api/employees/doctors/route.ts`, `.../doctors/[id]/route.ts`, and the live database:**
@@ -1567,6 +1574,388 @@ Corrected during this sitting: the first draft let the existing `if (newStatus =
 6. **Change a password from the admin dashboard, with the admin re-entering their own password.** **Half-built.** The edit modal already exposes *New Password (optional)* and `PUT` already hashes it. What is missing is only the re-authentication gate. Small task, worth doing on its own.
 7. **Hard delete / archive tab / re-enrol.** **All three real.** `DELETE` sets `status: "RESIGNED"` (`[id]/route.ts:88-98`) — the button says *Delete* and does not delete, which is the worst of both. There is no archived view, so resigned doctors sit mixed into the main list. Re-enrolment needs **no API work at all** — `PUT` already accepts `status` (`[id]/route.ts:63`) — it is a UI-only fix. Hard delete is the hard one: `Reservation_doctorId_fkey` and `Note_doctorId_fkey` are both **RESTRICT**, so a doctor who has ever been booked cannot be deleted until the user decides whether those sessions are reassigned or destroyed.
 
+**Planning pass:** 2026-08-15 — read in full: `src/app/admin/employees/doctors/page.tsx`, `.../doctors/new/page.tsx`, `.../secretaries/page.tsx`, `.../secretaries/new/page.tsx`, `src/app/api/employees/doctors/route.ts`, `.../doctors/[id]/route.ts`, `.../secretaries/[id]/route.ts`, `.../secretaries/route.ts` (POST half), `src/lib/auth.ts`, `package.json`, and `src/app/admin/page.tsx:496-515` for the shipped error-banner styles. Every claim in the seven findings above re-confirmed against the code as it stands today; nothing was corrected. Four things the original capture did not record, all of which change how the splits are written:
+
+- **The four employee forms are two matched pairs, not four independent surfaces.** `doctors/page.tsx` and `secretaries/page.tsx` are the same modal with a colour picker added to one; `doctors/new/page.tsx` and `secretaries/new/page.tsx` are the same page with the same avatar block. The password defects (§4, §5) are identical in all four, and the earlier note under TJ-010 arguing for one change across both surfaces is right — TJ-009a therefore covers all four files and closes TJ-010 §3 as well.
+- **The silent failure in §5 is worse than "the forms never mention the minimum."** Both *modals* (`doctors/page.tsx:89`, `secretaries/page.tsx:79`) `await fetch(...)` and never look at the result — they close and refetch regardless, so a rejected save looks exactly like a successful one. Both *create pages* already read the response and render an `.error-banner` (`doctors/new/page.tsx:63-68`). So the fix is not symmetric: the create pages need the fields, the modals need the fields *and* the error path.
+- **All four endpoints enforce the same rule with the same wording** — `password.length < 8` → `"Password must be at least 8 characters"` (`doctors/route.ts:50-55`, `doctors/[id]/route.ts:66-71`, `secretaries/route.ts:49-54`, `secretaries/[id]/route.ts:63-68`). The client-side check can mirror the server's string verbatim rather than inventing copy, so the two can never disagree.
+- **`lucide-react@0.564.0` is a dependency but is imported nowhere in `src/`.** The admin UI draws every icon as inline SVG (e.g. the avatar placeholder at `doctors/new/page.tsx:89-92`). TJ-009a follows the existing convention and inlines the eye icons; it does not introduce the codebase's first Lucide import for a two-icon toggle.
+
+**The admin area is English-only.** `src/app/i18n/translations.ts` serves the public site; every string under `src/app/admin/` is hardcoded EN. No `ar` copy is required for any TJ-009 split — recorded here so no future pass goes looking for it.
+
+**Splits and why each one falls where it does:** §4 and §5 are one concern (password entry) and need no decision → **TJ-009a, READY**. §6 needs no decision either but rewrites the same lines of the same two modals → **TJ-009b**, held until TJ-009a merges rather than dispatched into a guaranteed conflict. §7 splits in two: archive-view-plus-re-enrol is UI-only but cannot be specified until the button vocabulary is settled → **TJ-009c, BLOCKED**; hard delete is **TJ-009g, BLOCKED**. §2, §3 and §1 keep the blockers already named on them → **TJ-009d, TJ-009e, TJ-009f**.
+
+---
+
+### TJ-009a — Reveal and confirm passwords on the employee forms
+
+- **Status:** READY
+- **Branch:** `feat/employee-password-fields`
+- **Why:** Closes TJ-009 §4 and §5, and TJ-010 §3 with them. Every password box in the admin area is a bare `type="password"` with no reveal and no confirm field, so an admin typing a new credential for a doctor or secretary cannot see what they typed and gets no second chance to catch a typo — and then has to read it out to the employee. Worse, the two edit modals never read the API's response: `handleSave` awaits the `fetch`, then closes the modal and refetches whatever the outcome was. A password under eight characters is rejected by all four endpoints with a 400, and the admin sees a modal close cleanly and a row that looks saved. This lands the reveal toggle, the repeat field, the minimum stated up front, and — in the modals — the error the server was already sending.
+
+**Planning pass:** 2026-08-15 — see the TJ-009 pass block above; the four form files and all four endpoints were read in full for it. **All 28 anchor strings quoted below were verified mechanically against the working tree on 2026-08-15** — each matches exactly once per file, with `\r` stripped before comparing (see the CRLF note at the bottom of this file; skip that normalisation and every multi-line anchor here reports zero matches). Confirmed for this task specifically: no show-password toggle exists anywhere in `src/` (`src/app/login/page.tsx:112` is a bare `type="password"` too, and is deliberately **out of scope** — the reported issue is the admin forms). Confirmed `globals.css:65-69` sets `box-sizing: border-box` on `*`, so `width: 100%` on an input with inline padding is safe. Confirmed the styled-jsx blocks are component-scoped, so each of the four files needs its own copy of the new rules — `.error-msg` is copied verbatim from the shipped `src/app/admin/page.tsx:500-504` rather than invented. One trap found and written into the steps: **`openAdd` in both modal files is unreachable dead code** (the header button routes to `/new` instead) but it still type-checks against the form interface, so leaving it alone breaks `tsc`. It must be updated, not deleted — deleting it belongs to the dead-code task already noted under TJ-011.
+
+**Scope — touch only these:**
+- `src/app/admin/employees/doctors/page.tsx`
+- `src/app/admin/employees/doctors/new/page.tsx`
+- `src/app/admin/employees/secretaries/page.tsx`
+- `src/app/admin/employees/secretaries/new/page.tsx`
+
+**Do not touch:** any file under `src/app/api/` — the server-side rule is already correct and this task deliberately mirrors it rather than moving it. Not `src/app/login/page.tsx`. Not `src/app/globals.css` — all new CSS goes in each file's own `<style jsx>` block. Do not delete the dead `openAdd` handlers, do not touch the colour picker, and do not change the `disabled={...}` expressions on the Save buttons — validation lands in `handleSave` where it can explain itself.
+
+**Shared literals — use these exact values in all four files.**
+
+Eye icon (shown when the password is hidden — click to reveal):
+```jsx
+<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7-10-7-10-7Z" />
+    <circle cx="12" cy="12" r="3" />
+</svg>
+```
+
+Eye-off icon (shown when the password is visible — click to hide):
+```jsx
+<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M9.9 4.24A9.1 9.1 0 0 1 12 4c6.4 0 10 7 10 7a17.6 17.6 0 0 1-2.2 3.15M6.6 6.6A17.7 17.7 0 0 0 2 11s3.6 7 10 7a9 9 0 0 0 4.4-1.1" />
+    <path d="m2 2 20 20" />
+    <path d="M9.9 9.9a3 3 0 0 0 4.2 4.2" />
+</svg>
+```
+
+Error strings, verbatim:
+- `"Password must be at least 8 characters"` — matches the four endpoints word for word. Do not reword it.
+- `"Passwords do not match"`
+- Modal fallback when the API returns an error with no `error` field: `"Failed to save doctor"` / `"Failed to save secretary"`.
+
+Hint text under the password field: `At least 8 characters.`
+
+**One `showPassword` state per file drives both the password and the repeat input**, so they reveal together. The toggle button renders inside the password field only; the repeat field has no button of its own.
+
+**Instructions — `src/app/admin/employees/doctors/page.tsx`:**
+
+1. In `interface DoctorForm`, add `confirmPassword: string;` on its own line directly after `    password: string;`.
+2. Replace:
+   ```
+       const [form, setForm] = useState<DoctorForm>({
+           name: "", email: "", phone: "", workingHours: "",
+           username: "", password: "", color: COLORS[0],
+       });
+   ```
+   with:
+   ```
+       const [form, setForm] = useState<DoctorForm>({
+           name: "", email: "", phone: "", workingHours: "",
+           username: "", password: "", confirmPassword: "", color: COLORS[0],
+       });
+       const [showPassword, setShowPassword] = useState(false);
+       const [formError, setFormError] = useState("");
+   ```
+3. In `openAdd`, replace the line
+   `        setForm({ name: "", email: "", phone: "", workingHours: "", username: "", password: "", color: COLORS[0] });`
+   with:
+   ```
+           setForm({ name: "", email: "", phone: "", workingHours: "", username: "", password: "", confirmPassword: "", color: COLORS[0] });
+           setShowPassword(false);
+           setFormError("");
+   ```
+   (`openAdd` is never called today. It is updated anyway because the object literal is typed as `DoctorForm` and the build fails otherwise. Do not delete it.)
+4. In `openEdit`, replace:
+   ```
+           setForm({
+               name: doc.name, email: doc.email || "", phone: doc.phone || "",
+               workingHours: doc.workingHours || "", username: doc.username,
+               password: "", color: doc.color || COLORS[0],
+           });
+   ```
+   with:
+   ```
+           setForm({
+               name: doc.name, email: doc.email || "", phone: doc.phone || "",
+               workingHours: doc.workingHours || "", username: doc.username,
+               password: "", confirmPassword: "", color: doc.color || COLORS[0],
+           });
+           setShowPassword(false);
+           setFormError("");
+   ```
+5. Replace the whole `handleSave` function — from `    const handleSave = async () => {` through its closing `    };` — with:
+   ```
+       const handleSave = async () => {
+           setFormError("");
+
+           if (!editingDoctor || form.password) {
+               if (form.password.length < 8) {
+                   setFormError("Password must be at least 8 characters");
+                   return;
+               }
+               if (form.password !== form.confirmPassword) {
+                   setFormError("Passwords do not match");
+                   return;
+               }
+           }
+
+           setSaving(true);
+           const url = editingDoctor
+               ? `/api/employees/doctors/${editingDoctor.id}`
+               : "/api/employees/doctors";
+           const method = editingDoctor ? "PUT" : "POST";
+
+           const body: Record<string, string> = {
+               name: form.name, email: form.email, phone: form.phone,
+               workingHours: form.workingHours, color: form.color,
+           };
+           if (!editingDoctor) {
+               body.username = form.username;
+               body.password = form.password;
+           } else if (form.password) {
+               body.password = form.password;
+           }
+
+           const res = await fetch(url, {
+               method,
+               headers: { "Content-Type": "application/json" },
+               body: JSON.stringify(body),
+           });
+
+           setSaving(false);
+
+           if (!res.ok) {
+               const data = await res.json().catch(() => ({}));
+               setFormError(data.error || "Failed to save doctor");
+               return;
+           }
+
+           setShowModal(false);
+           fetchDoctors();
+       };
+   ```
+   The behaviour change to be deliberate about: **on failure the modal now stays open** with the typed values intact. That is the point of the task.
+6. Directly after the line `                        <h2>{editingDoctor ? "Edit Doctor" : "Add Doctor"}</h2>`, add:
+   ```
+                           {formError && <div className="error-msg" role="alert">{formError}</div>}
+   ```
+7. Replace this block:
+   ```
+                               <div className="form-group">
+                                   <label>{editingDoctor ? "New Password (optional)" : "Password *"}</label>
+                                   <input type="password" value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} />
+                               </div>
+   ```
+   with:
+   ```
+                               <div className="form-group">
+                                   <label>{editingDoctor ? "New Password (optional)" : "Password *"}</label>
+                                   <div className="password-wrap">
+                                       <input
+                                           type={showPassword ? "text" : "password"}
+                                           value={form.password}
+                                           onChange={(e) => setForm({ ...form, password: e.target.value })}
+                                       />
+                                       <button
+                                           type="button"
+                                           className="toggle-password"
+                                           aria-label={showPassword ? "Hide password" : "Show password"}
+                                           onClick={() => setShowPassword(!showPassword)}
+                                       >
+                                           {showPassword ? EYE_OFF_SVG : EYE_SVG}
+                                       </button>
+                                   </div>
+                                   <span className="field-hint">At least 8 characters.</span>
+                               </div>
+                               <div className="form-group">
+                                   <label>{editingDoctor ? "Repeat New Password" : "Repeat Password *"}</label>
+                                   <input
+                                       type={showPassword ? "text" : "password"}
+                                       value={form.confirmPassword}
+                                       onChange={(e) => setForm({ ...form, confirmPassword: e.target.value })}
+                                   />
+                               </div>
+   ```
+   substituting the two SVG literals from **Shared literals** above for `EYE_OFF_SVG` and `EYE_SVG`. Those two placeholder names must not survive into the committed file.
+8. In the `<style jsx>` block, directly after the line
+   `        .modal-actions { display: flex; justify-content: flex-end; gap: 0.75rem; margin-top: 1.5rem; }`
+   add:
+   ```
+           .error-msg {
+             background: rgba(220,38,38,0.1); border: 1px solid rgba(220,38,38,0.2);
+             color: #fca5a5; padding: 0.5rem 0.75rem; border-radius: var(--radius-sm, 2px);
+             font-size: 0.82rem; margin-bottom: 0.75rem;
+           }
+           .password-wrap { position: relative; }
+           .password-wrap input { width: 100%; padding-inline-end: 2.4rem; }
+           .toggle-password {
+             position: absolute; inset-inline-end: 0.5rem; top: 50%; transform: translateY(-50%);
+             background: none; border: none; padding: 0.15rem; line-height: 0;
+             color: rgba(255,255,255,0.45); cursor: pointer;
+           }
+           .toggle-password:hover { color: #fff; }
+           .field-hint { font-size: 0.72rem; color: rgba(255,255,255,0.35); }
+   ```
+
+**Instructions — `src/app/admin/employees/secretaries/page.tsx`:**
+
+9. Apply steps 1–8 again, with these substitutions and no others:
+   - `DoctorForm` → `SecretaryForm`; `editingDoctor` → `editing`; `fetchDoctors` → `fetchSecretaries`.
+   - The form object has **no `color` key** here. In step 2 the literal becomes `username: "", password: "", confirmPassword: "",` and the `color: COLORS[0]` fragment does not appear; likewise in `openAdd` (step 3) and `openEdit` (step 4, where the source object ends `username: sec.username, password: "",` and gains `confirmPassword: "",`). `doc` is `sec` throughout.
+   - Step 5's `body` object omits `color: form.color` — keep the existing body exactly as it is in this file and change only the `fetch`/error handling around it. The fallback string is `"Failed to save secretary"`.
+   - Step 6's anchor is `                        <h2>{editing ? "Edit Secretary" : "Add Secretary"}</h2>`.
+   - Step 7's labels use `editing` in place of `editingDoctor`.
+   - Step 8's anchor is byte-identical in this file — `        .modal-actions { display: flex; justify-content: flex-end; gap: 0.75rem; margin-top: 1.5rem; }`, the last rule before the closing `` `}</style> ``. Verified 2026-08-15; add the same block after it, unchanged.
+
+**Instructions — `src/app/admin/employees/doctors/new/page.tsx`:**
+
+10. In the `useState` initialiser, replace
+    `        username: "", password: "",`
+    with
+    `        username: "", password: "", confirmPassword: "",`
+    and add, directly after the `const [error, setError] = useState("");` line:
+    ```
+        const [showPassword, setShowPassword] = useState(false);
+    ```
+11. In `handleSubmit`, replace the line
+    `        if (!form.password.trim()) { setError("Password is required"); return; }`
+    with:
+    ```
+            if (!form.password.trim()) { setError("Password is required"); return; }
+            if (form.password.length < 8) { setError("Password must be at least 8 characters"); return; }
+            if (form.password !== form.confirmPassword) { setError("Passwords do not match"); return; }
+    ```
+12. `handleSubmit` posts `{ ...form, pictureUrl }`, which would now send `confirmPassword` to the API. The endpoint destructures named fields and ignores the rest, so nothing breaks — but do not send it. Replace
+    `            body: JSON.stringify({ ...form, pictureUrl }),`
+    with:
+    ```
+                body: JSON.stringify({
+                    name: form.name, email: form.email, phone: form.phone,
+                    workingHours: form.workingHours, username: form.username,
+                    password: form.password, color: form.color, pictureUrl,
+                }),
+    ```
+13. Replace this block:
+    ```
+                            <div className="field">
+                                <label htmlFor="password">Password <span className="req">*</span></label>
+                                <input id="password" type="password" value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} placeholder="••••••••" />
+                            </div>
+    ```
+    with:
+    ```
+                            <div className="field">
+                                <label htmlFor="password">Password <span className="req">*</span></label>
+                                <div className="password-wrap">
+                                    <input id="password" type={showPassword ? "text" : "password"} value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} placeholder="••••••••" />
+                                    <button
+                                        type="button"
+                                        className="toggle-password"
+                                        aria-label={showPassword ? "Hide password" : "Show password"}
+                                        onClick={() => setShowPassword(!showPassword)}
+                                    >
+                                        {showPassword ? EYE_OFF_SVG : EYE_SVG}
+                                    </button>
+                                </div>
+                                <span className="field-hint">At least 8 characters.</span>
+                            </div>
+    ```
+    then add, as a new `.field` immediately after the closing `</div>` of the `.field-row` that contains it:
+    ```
+                            <div className="field">
+                                <label htmlFor="confirmPassword">Repeat Password <span className="req">*</span></label>
+                                <input id="confirmPassword" type={showPassword ? "text" : "password"} value={form.confirmPassword} onChange={(e) => setForm({ ...form, confirmPassword: e.target.value })} placeholder="••••••••" />
+                            </div>
+    ```
+    The repeat field goes **outside** the two-column `.field-row` (which holds Username and Password), full width beneath it. Substitute the SVG literals as in step 7.
+14. In the `<style jsx>` block, directly after the line
+    `                .field-row { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }`
+    add:
+    ```
+                    .password-wrap { position: relative; }
+                    .password-wrap input { width: 100%; padding-inline-end: 2.4rem; }
+                    .toggle-password {
+                      position: absolute; inset-inline-end: 0.5rem; top: 50%; transform: translateY(-50%);
+                      background: none; border: none; padding: 0.15rem; line-height: 0;
+                      color: rgba(255,255,255,0.45); cursor: pointer;
+                    }
+                    .toggle-password:hover { color: #fff; }
+                    .field-hint { font-size: 0.72rem; color: rgba(255,255,255,0.35); }
+    ```
+
+**Instructions — `src/app/admin/employees/secretaries/new/page.tsx`:**
+
+15. Apply steps 10–14 again. This file has **no `color` field**, so step 12's replacement body is:
+    ```
+                body: JSON.stringify({
+                    name: form.name, email: form.email, phone: form.phone,
+                    workingHours: form.workingHours, username: form.username,
+                    password: form.password, pictureUrl,
+                }),
+    ```
+    Everything else is identical — the `.field`, `.field-row` and `<style jsx>` structures in this file match the doctors one exactly.
+
+**Verification:**
+- `npm run build` passes.
+- `npx eslint src/app/admin/employees/doctors/page.tsx src/app/admin/employees/doctors/new/page.tsx src/app/admin/employees/secretaries/page.tsx src/app/admin/employees/secretaries/new/page.tsx` — no **new** errors against these four files. (`npm run lint` across the repo cannot pass; see the note at the bottom of this file. Do not run it and do not treat its output as a signal.)
+- `grep -rn "EYE_SVG\|EYE_OFF_SVG" src/` returns nothing — the placeholder names must not be in the committed code.
+- `grep -rn 'type="password"' src/app/admin/` returns nothing. Every admin password input is now conditional. `src/app/login/page.tsx` still has one and should — it is out of scope.
+- **The regression to prove, not assume — the two modals must still save successfully.** The error path is new code on the *only* path that saves a doctor or secretary edit. With the app running and logged in as admin, on `/admin/employees/doctors`: open **Edit** on a doctor, change the name only, leave both password boxes empty, Save. The modal must close and the row must show the new name. Repeat on `/admin/employees/secretaries`. If an empty-password edit is now blocked, step 5's `if (!editingDoctor || form.password)` guard was mistranscribed.
+- Then the negative cases, same two modals: a 4-character password in both boxes must show *"Password must be at least 8 characters"* and **not** close the modal; two different 8+ character values must show *"Passwords do not match"*; a matching 8+ character pair must save and close.
+- On both `/new` pages: submitting a 4-character password must show the existing red `.error-banner` above the form and must not navigate away; a mismatch must show *"Passwords do not match"*; a valid matching pair must create the account and redirect to the list.
+- Click the eye toggle on each of the four forms and confirm the typed text becomes readable in **both** the password and the repeat box, and that the icon swaps.
+
+**Done when:**
+- [ ] All four forms have a working reveal toggle and a repeat-password field
+- [ ] Both modals surface the API's error instead of closing silently, and stay open with the values intact
+- [ ] An edit that does not change the password still saves from both modals
+- [ ] The 8-character minimum is stated in the UI and enforced client-side with the server's own wording
+- [ ] `npm run build` passes; scoped eslint clean
+- [ ] Visual review: all four forms at 1920px and at 320px — the toggle button must not overlap the input's text, and the repeat field must not overflow the modal
+- [ ] Diff confined to the four Scope files
+
+---
+
+### TJ-009b — Re-authenticate the admin before changing an employee's password
+
+- **Status:** BACKLOG — pass deferred, deliberately. Do not execute against this ID.
+- **Why:** TJ-009 §6. The edit modals already offer *New Password (optional)* and `PUT` already hashes whatever arrives, so anyone holding a live admin session — or an unlocked machine at the front desk — can silently reset a doctor's credentials. The missing piece is the gate: the admin re-enters their **own** password, and the API verifies it against `session.user.id`'s hash with `bcrypt.compare` before touching `passwordHash`.
+- **Why it is not READY:** nothing here needs a product decision, so this is not `BLOCKED`. It is held because it rewrites `handleSave` and the password block in the same two modal files TJ-009a is rewriting. Dispatching both at once guarantees a conflict and makes each diff unreadable against its own task. **Run the pass and move this to READY once TJ-009a has merged to `master`** — the anchors it will need do not exist yet.
+
+---
+
+### TJ-009c — Archive view and re-enrolment for resigned employees
+
+- **Status:** BLOCKED — the button vocabulary has to be settled first. Do not execute against this ID.
+- **Why:** TJ-009 §7, less the hard delete. Resigned doctors sit mixed into the active list with a red badge, there is no archived view, and nothing re-enrols them — though re-enrolment needs **no API work at all**, since `PUT` already accepts `status` (`doctors/[id]/route.ts:64`, `secretaries/[id]/route.ts:61`) and `src/lib/auth.ts:36` will let the account sign in again the moment it reads `ACTIVE`. This is a UI-only change across the two list pages.
+- **The blocker, and it is one decision covering three things.** The doctors list labels its soft delete *Delete* (`doctors/page.tsx:153`) and the secretaries list labels the identical call *Resign* (`secretaries/page.tsx:135`); both `confirm()` dialogs say "This is a soft delete." One of those labels is lying, and TJ-009g may add a real delete alongside it, at which point *Delete* meaning "resign" becomes actively dangerous. Settle in one answer: **(a)** what the soft-delete button is called on both tabs, **(b)** what the archived view is called and whether it is a tab, a filter, or a toggle, and **(c)** what the reverse action is called. Also worth noting for whoever answers: the two lists already diverge in behaviour, not just wording — the secretaries page hides its button once the row is `RESIGNED` (`secretaries/page.tsx:134`), the doctors page leaves *Delete* clickable on an already-resigned doctor, where it is a silent no-op.
+
+---
+
+### TJ-009d — One calendar colour per doctor
+
+- **Status:** BLOCKED — needs a rule for resigned doctors and for palette exhaustion. Do not execute against this ID.
+- **Why:** TJ-009 §2, unchanged by this pass. `User.color` is a plain `String?` with no unique constraint, and both pickers offer all twelve swatches with no exclusion (`doctors/page.tsx:203-210`, `doctors/new/page.tsx:108-115`). Two doctors can hold the same colour, which makes the calendar unreadable at exactly the moment it matters.
+- **The blocker:** the `RESIGNED` doctor currently holds `#6ee7b7`. Does a resigned doctor keep their colour reserved, or does it return to the pool? And because `COLORS` has exactly twelve entries, an answer of "never reuse" means the thirteenth doctor cannot be created at all — so the same decision has to say what happens when the palette runs out. Note this now interacts with TJ-009c: if resigned doctors move to an archive view, "reserved for resigned staff" becomes much easier to live with.
+
+---
+
+### TJ-009e — Working hours as a selector
+
+- **Status:** BLOCKED — needs the storage shape decided. Do not execute against this ID.
+- **Why:** TJ-009 §3, unchanged by this pass. `User.workingHours` is `String?` and all four forms are bare text inputs; the live rows read literally `"9-7"`. Nothing can ever be computed from that — not a rota, not an availability check on the booking form.
+- **The blocker:** a from/to time pair answers the reported complaint and is a small change. Per-weekday hours is what a clinic rota actually needs and is a different storage shape entirely (and, being a schema change, inherits TJ-009f's migration problem). Ask before building — this is the one split where guessing wrong means writing the data twice.
+
+---
+
+### TJ-009f — Upload identification documents
+
+- **Status:** BLOCKED — needs the user's go-ahead for a schema change. Do not execute against this ID.
+- **Why:** TJ-009 §1, unchanged by this pass. There is no model for employee documents; `User` carries only `pictureUrl`. The storage half already works — `POST /api/upload` passes non-images through untouched and keeps the extension, and `patient-files` is already in `ALLOWED_FOLDERS` — so what is missing is a table and a UI.
+- **The blocker:** there is no `prisma/migrations/` directory, so any schema change here is `prisma db push` straight into the production database with no down path. That needs the user's explicit go-ahead, and it is worth pairing with the same question for TJ-011 §1 rather than asking twice. Related, and the reason this should not be rushed: nothing in the app ever deletes an uploaded file, and the client holds only the Supabase anon key — see the storage-leak note at the bottom of this file.
+
+---
+
+### TJ-009g — Hard delete a doctor
+
+- **Status:** BLOCKED — needs a decision on RESTRICT-ed children. Do not execute against this ID.
+- **Why:** TJ-009 §7's hard half. `DELETE /api/employees/doctors/[id]` sets `status: "RESIGNED"` (`doctors/[id]/route.ts:96-99`) while the button that calls it says *Delete*. Nothing in this application has ever removed a `User` row.
+- **The blocker:** `Reservation_doctorId_fkey` and `Note_doctorId_fkey` are both **RESTRICT**, so a doctor who has ever been booked cannot be deleted until someone decides whether those sessions are reassigned to another doctor, destroyed with the doctor, or whether the delete simply refuses with an explanation. That is a product decision and it is the same one TJ-011 §3 and TJ-012 need in their own shapes. Sequencing note: this must land **after** TJ-009c, because a real delete sitting next to a button already labelled *Delete* is how someone destroys a doctor while intending to resign them.
+
 ---
 
 ### TJ-010 — Employees / secretaries — reported issues
@@ -1577,9 +1966,9 @@ Corrected during this sitting: the first draft let the existing `if (newStatus =
 **Verified against `src/app/admin/employees/secretaries/page.tsx` and `src/app/api/employees/secretaries/[id]/route.ts`:**
 
 1. **Hard delete.** **Real** — `DELETE` sets `RESIGNED`, same as doctors. **Easier than the doctor case:** a secretary has *no* inbound foreign keys at all — no reservations, no notes, no profile — so the delete is genuinely unblocked. This is the one hard delete in the batch that can ship without a product decision first.
-2. **Working-hours selector.** **Real**, identical to TJ-009 §3.
-3. **Show password + repeat password.** **Real**, identical to TJ-009 §4–5.
-4. **Archive view for soft deletions.** **Real**, identical to TJ-009 §7.
+2. **Working-hours selector.** **Real**, identical to TJ-009 §3 → now **TJ-009e**, blocked on the storage shape.
+3. **Show password + repeat password.** **Real**, identical to TJ-009 §4–5 → **closed by TJ-009a**, which covers both secretary forms as well as both doctor ones. Nothing is left here; do not re-file it when TJ-010 is passed.
+4. **Archive view for soft deletions.** **Real**, identical to TJ-009 §7 → now **TJ-009c**, which covers both surfaces and carries the vocabulary decision below.
 5. **Re-enrol.** **Real**, and again **UI-only** — `PUT` already accepts `status`.
 6. **Doctors say "Delete" while secretaries say "Resign".** **Real, and worse than a wording mismatch.** Both buttons call the same soft-delete, but the doctors' one is labelled *Delete* (`doctors/page.tsx:153`) and the secretaries' *Resign* (`secretaries/page.tsx:135`). Whichever verb wins, one of the two labels is currently lying about what it does. The user described the secretary label as "archive"; it actually reads *Resign*. Settle the vocabulary across both tabs in the same task.
 7. **Identification documents.** **Real**, identical to TJ-009 §1 — same table, same blocker.
