@@ -30,8 +30,8 @@ Two things that bear repeating here, because this is the file both agents open:
 | TJ-009a | Reveal and confirm passwords on the employee forms | DONE — merged `234d800` | `feat/employee-password-fields` |
 | TJ-009b | Re-authenticate the admin before changing an employee's password | REVIEW — verified, unmerged | `feat/admin-reauth-password-change` |
 | TJ-009c | Archive view and re-enrolment for resigned employees | REVIEW — verified, unmerged | `feat/employee-archive-view` |
-| TJ-009d | One calendar colour per doctor | READY — dispatch 3rd, colour rules assumed | `feat/unique-doctor-colours` |
-| TJ-009e | Working hours as a selector | PLANNED — dispatch 4th, from/to pair assumed | `feat/working-hours-selector` |
+| TJ-009d | One calendar colour per doctor | REVIEW — verified, unmerged | `feat/unique-doctor-colours` |
+| TJ-009e | Working hours as a selector | READY — dispatch 4th, from/to pair assumed | `feat/working-hours-selector` |
 | TJ-009f | Upload identification documents | BLOCKED — planned, **not dispatched**: needs go-ahead for a production schema push | — |
 | TJ-009g | Hard delete a doctor | PLANNED — dispatch 5th, refuse-if-referenced assumed | `feat/hard-delete-doctor` |
 | TJ-010 | Employees / secretaries — reported issues | BACKLOG — needs a pass, splits further; its §3 is closed by TJ-009a | — |
@@ -2293,8 +2293,14 @@ function statusFor(filter: (typeof FILTERS)[number]) {
 
 ### TJ-009d — One calendar colour per doctor
 
-- **Status:** READY
-- **Branch:** `feat/unique-doctor-colours` — **cut from `feat/employee-archive-view`, not from `master`.** The chain is unmerged while the visual review is deferred; branching from `master` would drop TJ-009b and TJ-009c.
+- **Status:** REVIEW — statically verified on commit `5baacdf`; **unmerged**, awaiting the deferred runtime checks. One imprecision found in my own spec, recorded below and filed rather than patched.
+- **Branch:** `feat/unique-doctor-colours` — **cut from `feat/employee-archive-view`, not from `master`.**
+
+**Planner verification (static half):** 2026-08-15 — read the full `git diff feat/employee-archive-view..feat/unique-doctor-colours`. **4 files, 106 insertions, 18 deletions, one commit `5baacdf`, nothing outside Scope.** The line the task exists for is present and correct: `where: { role: "DOCTOR", status: "ACTIVE", color, id: { not: id } }` — exactly one hit, so an unrelated save on an existing doctor cannot be refused by their own colour. POST carries the same check without the self-exclusion, correctly, since a new doctor has no id to exclude. Re-ran `npm run build`: **exit 0**. eslint baselined against `feat/employee-archive-view` rather than `master` (the stacked-branch control): **2 problems on both sides — zero new.**
+
+**Spec imprecision found during verification — mine, not the executor's.** Both `takenColors` and `paletteExhausted` test `…filter(…).length >= COLORS.length`, which counts **doctors holding a colour**, not **distinct colours held**. If duplicates already exist in the data — which they can, since nothing prevented them before this task — twelve doctors sharing ten distinct colours would read as "exhausted", re-enable every swatch and show the sharing hint while two colours were in fact still free. **It fails open**, so the worst case is that the admin can pick a taken colour and gets the server's 409 instead of a disabled swatch: confusing for one click, never data corruption, and the uniqueness guarantee is unaffected because it is enforced server-side. Not worth reopening a verified diff on the TJ-008b precedent, and it can only trigger with ≥12 active doctors *and* pre-existing duplicates. **The fix, when something next touches this file: count `new Set(...).size`, not `.length`.**
+
+**Still outstanding:** the runtime checks, above all the self-exclusion one — open an existing doctor, change only the name, save, and confirm it is **not** rejected. That is the case `id: { not: id }` exists for and the only one that proves it works. The chain is unmerged while the visual review is deferred; branching from `master` would drop TJ-009b and TJ-009c.
 - **Why:** TJ-009 §2. `User.color` is a plain `String?` with no unique constraint, and both pickers offer all twelve swatches with no exclusion (`doctors/page.tsx` colour picker, `doctors/new/page.tsx:108-115`). Two doctors can share a colour, which makes the calendar unreadable at exactly the moment it matters — a busy day with both of them booked.
 
 **Planning pass:** 2026-08-15 — read both doctor form files, `src/app/api/employees/doctors/route.ts` (POST) and `.../doctors/[id]/route.ts` (PUT), and `prisma/schema.prisma:81`. Confirmed `color` is `String?` with no constraint and that neither endpoint validates it at all. Confirmed against the live database during the TJ-009a review that the two existing doctors hold `#6ee7b7` (RESIGNED) and `#fbbf24` (ACTIVE) — distinct, so nothing is broken today and this is prevention rather than repair.
@@ -2532,7 +2538,8 @@ function statusFor(filter: (typeof FILTERS)[number]) {
 
 ### TJ-009e — Working hours as a selector
 
-- **Status:** PLANNED — design settled, **anchors pinned at dispatch**. Dispatch fourth, branch `feat/working-hours-selector` cut from TJ-009d's branch.
+- **Status:** READY
+- **Branch:** `feat/working-hours-selector` — **cut from `feat/unique-doctor-colours`, not from `master`.** The chain is unmerged while the visual review is deferred.
 - **Why:** TJ-009 §3. `User.workingHours` is `String?` and all four forms are bare text inputs; the live rows read literally `"9-7"` — re-confirmed against the API during the TJ-009a review. Nothing can ever be computed from that: not a rota, not an availability check on the booking form, not a warning when a reservation is booked outside a doctor's hours.
 
 **Planning pass:** 2026-08-15 — read all four form files and `prisma/schema.prisma:78`. Confirmed the column is a free-text `String?` and that no code anywhere parses it: `grep` shows `workingHours` only ever being read into a form field or rendered into a table cell. So changing the *format* breaks nothing downstream — there is no consumer to break. That is the fact that makes this safe to do without a schema change.
@@ -2547,7 +2554,180 @@ Per-weekday hours is genuinely what a clinic rota needs, and it is *not* what th
 
 **Do not touch:** the schema, or any API route — the column and its type are unchanged and the endpoints already pass `workingHours` straight through.
 
-**Verification:** build; no new eslint problems; `grep` shows no bare working-hours `<input>` left without a `type="time"` sibling. **Runtime deferred** — record: a doctor whose stored value is `"9-7"` opens with empty selectors and the `Currently: 9-7` line; setting 09:00→17:00 stores exactly `09:00-17:00`; reopening round-trips it into the two controls; and clearing both inputs stores an empty value rather than the string `"-"`, which is the obvious way for this to go wrong.
+**Anchors verified mechanically 2026-08-15** against the tip of `feat/unique-doctor-colours`, `\r` stripped — each matches exactly once.
+
+**One new file, deliberately.** The parse/format pair is used by all four forms, and four hand-copied time parsers is exactly how formats drift apart. It goes in `src/lib/`, which already exists and already holds small pure helpers of this kind (`slugify.ts`, `permissions.ts`). This takes the task to five files; that is the right trade and is not a licence to spread further.
+
+**Instructions — create `src/lib/workingHours.ts`** with exactly this content:
+```ts
+// Working hours are stored in User.workingHours as a canonical "HH:MM-HH:MM"
+// 24-hour range, e.g. "09:00-17:00". The column is free text and predates this
+// format, so anything that does not parse is treated as legacy and preserved
+// rather than discarded.
+
+export type HourRange = { from: string; to: string };
+
+const CANONICAL = /^([01]\d|2[0-3]):([0-5]\d)-([01]\d|2[0-3]):([0-5]\d)$/;
+
+/** Returns the from/to pair, or null if the stored value is empty or legacy. */
+export function parseWorkingHours(stored: string | null | undefined): HourRange | null {
+    if (!stored) return null;
+    const m = CANONICAL.exec(stored.trim());
+    if (!m) return null;
+    return { from: `${m[1]}:${m[2]}`, to: `${m[3]}:${m[4]}` };
+}
+
+/**
+ * Builds the stored value from two <input type="time"> values. Returns "" when
+ * either side is missing — never a half-range like "09:00-", which would then
+ * fail to parse on the way back in.
+ */
+export function formatWorkingHours(from: string, to: string): string {
+    if (!from || !to) return "";
+    return `${from}-${to}`;
+}
+
+/** True when a stored value holds something we could not parse and must not lose. */
+export function isLegacyWorkingHours(stored: string | null | undefined): boolean {
+    return !!stored && parseWorkingHours(stored) === null;
+}
+```
+
+**The shared field shape.** Every form renders two `type="time"` inputs bound to local `hoursFrom` / `hoursTo` state, writing back through `formatWorkingHours` on every change. On open/load, seed them with `parseWorkingHours(stored)`. When `isLegacyWorkingHours(stored)` is true, render the raw value beneath so it is visible rather than silently dropped:
+```
+Currently: 9-7
+```
+
+**Instructions — `src/app/admin/employees/doctors/page.tsx`:**
+
+1. Add to the imports, directly below the `next/navigation` import:
+   `import { parseWorkingHours, formatWorkingHours, isLegacyWorkingHours } from "@/lib/workingHours";`
+2. Directly after the line `    const [filter, setFilter] = useState<(typeof FILTERS)[number]>("Active");`, add:
+```
+    const [hoursFrom, setHoursFrom] = useState("");
+    const [hoursTo, setHoursTo] = useState("");
+    const [legacyHours, setLegacyHours] = useState("");
+```
+3. In `openAdd`, directly after `        setFormError("");`, add:
+```
+        setHoursFrom("");
+        setHoursTo("");
+        setLegacyHours("");
+```
+4. In `openEdit`, directly after its `        setFormError("");` line, add:
+```
+        const parsed = parseWorkingHours(doc.workingHours);
+        setHoursFrom(parsed?.from ?? "");
+        setHoursTo(parsed?.to ?? "");
+        setLegacyHours(isLegacyWorkingHours(doc.workingHours) ? (doc.workingHours ?? "") : "");
+```
+   **`openAdd` is still unreachable dead code** (the header button routes to `/new`) but must stay consistent — see TJ-009a's note. Do not delete it.
+5. Replace the working-hours field:
+```
+                            <div className="form-group">
+                                <label>Working Hours</label>
+                                <input value={form.workingHours} onChange={(e) => setForm({ ...form, workingHours: e.target.value })} placeholder="e.g. 9:00 AM - 3:00 PM" />
+                            </div>
+```
+   with:
+```
+                            <div className="form-group">
+                                <label>Working Hours</label>
+                                <div className="hours-row">
+                                    <input
+                                        type="time"
+                                        aria-label="Start time"
+                                        value={hoursFrom}
+                                        onChange={(e) => {
+                                            setHoursFrom(e.target.value);
+                                            setForm({ ...form, workingHours: formatWorkingHours(e.target.value, hoursTo) });
+                                        }}
+                                    />
+                                    <span className="hours-sep">to</span>
+                                    <input
+                                        type="time"
+                                        aria-label="End time"
+                                        value={hoursTo}
+                                        onChange={(e) => {
+                                            setHoursTo(e.target.value);
+                                            setForm({ ...form, workingHours: formatWorkingHours(hoursFrom, e.target.value) });
+                                        }}
+                                    />
+                                </div>
+                                {legacyHours && <span className="field-hint">Currently: {legacyHours}</span>}
+                            </div>
+```
+6. In the `<style jsx>` block, directly after the line
+   `        .form-group input:focus { border-color: #6ee7b7; }`
+   add:
+```
+        .hours-row { display: flex; align-items: center; gap: 0.5rem; }
+        .hours-row input { flex: 1; min-width: 0; }
+        .hours-sep { font-size: 0.8rem; color: rgba(255,255,255,0.4); flex-shrink: 0; }
+```
+
+**Instructions — `src/app/admin/employees/secretaries/page.tsx`:**
+
+7. Apply steps 1–6 again, substituting `sec` for `doc` in step 4. Step 5's anchor is identical except the placeholder reads `"e.g. 9:00 AM - 5:00 PM"`. Step 6's anchor `        .form-group input:focus { border-color: #6ee7b7; }` is byte-identical in this file — verified.
+
+**Instructions — `src/app/admin/employees/doctors/new/page.tsx`:**
+
+8. Add the same import as step 1, directly below the `next/navigation` import.
+9. Directly after the line `    const [takenColors, setTakenColors] = useState<string[]>([]);`, add:
+```
+    const [hoursFrom, setHoursFrom] = useState("");
+    const [hoursTo, setHoursTo] = useState("");
+```
+   (A create form starts empty, so there is no legacy value to preserve here and no `legacyHours` state.)
+10. Replace the working-hours field:
+```
+                        <div className="field">
+                            <label htmlFor="hours">Working Hours</label>
+                            <input id="hours" value={form.workingHours} onChange={(e) => setForm({ ...form, workingHours: e.target.value })} placeholder="e.g. 9:00 AM – 3:00 PM" />
+                        </div>
+```
+    with:
+```
+                        <div className="field">
+                            <label htmlFor="hours">Working Hours</label>
+                            <div className="hours-row">
+                                <input
+                                    id="hours"
+                                    type="time"
+                                    aria-label="Start time"
+                                    value={hoursFrom}
+                                    onChange={(e) => {
+                                        setHoursFrom(e.target.value);
+                                        setForm({ ...form, workingHours: formatWorkingHours(e.target.value, hoursTo) });
+                                    }}
+                                />
+                                <span className="hours-sep">to</span>
+                                <input
+                                    type="time"
+                                    aria-label="End time"
+                                    value={hoursTo}
+                                    onChange={(e) => {
+                                        setHoursTo(e.target.value);
+                                        setForm({ ...form, workingHours: formatWorkingHours(hoursFrom, e.target.value) });
+                                    }}
+                                />
+                            </div>
+                        </div>
+```
+11. In the `<style jsx>` block, directly after the line
+    `                .field-row { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }`
+    add:
+```
+                .hours-row { display: flex; align-items: center; gap: 0.5rem; }
+                .hours-row input { flex: 1; min-width: 0; }
+                .hours-sep { font-size: 0.8rem; color: rgba(255,255,255,0.4); flex-shrink: 0; }
+```
+
+**Instructions — `src/app/admin/employees/secretaries/new/page.tsx`:**
+
+12. Apply steps 8–11 again. This file has **no** `takenColors` line, so step 9's block goes directly after `    const [showPassword, setShowPassword] = useState(false);` instead. Step 10's anchor has the placeholder `"e.g. 9:00 AM – 5:00 PM"`; note the en-dash `–` in both `/new` placeholders, which differs from the hyphen used in the two modals — match the file, do not normalise it.
+
+**Verification:** build; no new eslint problems (baseline against `feat/unique-doctor-colours`, **not** `master`); `grep -rn 'placeholder="e.g. 9:00' src/app/admin/employees/` returns nothing — all four free-text hour inputs are gone; `grep -c 'type="time"' ` across the four files totals 8. **Runtime deferred** — record: a doctor stored as `"9-7"` opens with empty selectors and a `Currently: 9-7` line; setting 09:00→17:00 stores exactly `09:00-17:00`; reopening round-trips it into the two controls; **filling only one side stores an empty string, not `"09:00-"`** — that is the obvious way for this to go wrong and `formatWorkingHours` exists to prevent it.
 
 **Done when:**
 - [ ] Working hours are picked, not typed, on all four forms
