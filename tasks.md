@@ -41,7 +41,8 @@ Two things that bear repeating here, because this is the file both agents open:
 | TJ-011 | Patients — reported issues | BACKLOG — needs a pass, splits further | — |
 | TJ-012 | Blog — hard delete a post | BACKLOG — needs a pass | — |
 | TJ-013 | Doctor profiles (public site) — hard delete | BACKLOG — needs a pass | — |
-| TJ-014 | Uploaded files are never removed from storage | BLOCKED — measured (7/7 objects orphaned); deleting needs a service-role key | `feat/purge-orphaned-uploads` |
+| TJ-014 | Uploaded files are never removed from storage | BLOCKED — measured (7/7 orphaned); split into 014a + purge | — |
+| TJ-014a | Give the app the ability to delete a storage object | READY | `feat/storage-delete-capability` |
 
 ---
 
@@ -3363,6 +3364,132 @@ The anon key **can list**, even though it cannot delete, so the inventory needed
 - [ ] A referenced object is never removed
 - [ ] The service-role key is server-only and provably absent from the client bundle
 - [ ] The existing orphans are inventoried, and cleared behind a re-checked pre-flight gate
+
+---
+
+### TJ-014a — Give the app the ability to delete a storage object
+
+- **Status:** READY
+- **Branch:** `feat/storage-delete-capability` — cut from `master`.
+- **Why:** the first and smallest slice of TJ-014: the capability itself, wired into exactly one caller (the employee-file delete) to prove it works. **It is deliberately buildable and shippable before the service-role key exists** — see the degradation rule below — so it does not sit blocked behind an environment change.
+
+**Planning pass:** 2026-08-15 — read `src/lib/supabase.ts`, `src/app/api/upload/route.ts`, `src/lib/prisma.ts` and `src/lib/auth.ts`. Confirmed with `grep -rn "lib/supabase" src/` that **`@/lib/supabase` is imported by exactly one file** — `api/upload/route.ts`, a server route — so adding a service-role client to that module cannot reach a browser bundle today. Confirmed `prisma.ts` and `auth.ts` both open with `import "server-only"`, which is the established guard here and which `supabase.ts` is currently missing. Confirmed the bucket is `uploads` and that `POST /api/upload` returns `path` (`folder/name.ext`) alongside the public `url`.
+
+**The degradation rule, and it is the point of the design.** `removeUpload` must **no-op with a warning when `SUPABASE_SERVICE_ROLE_KEY` is unset**, never throw. The app already has this shape: the Reviews section renders its unavailable state when `GOOGLE_PLACES_API_KEY` is missing rather than breaking the page. A delete handler that 500s on a host where the key was never configured would turn a storage leak into an outage.
+
+**Scope — touch only these:**
+- `src/lib/supabase.ts`
+- `src/lib/uploads.ts` (new)
+- `src/app/api/employees/files/[fileId]/route.ts`
+
+**Do not touch:** `api/upload/route.ts`, the four URL-storing replacement paths (that is TJ-014b), or `PatientFile` (it has no delete endpoint yet). Do not add the key to `.env` or to any committed file — it is supplied by the user out of band.
+
+**Instructions:**
+
+1. In `src/lib/supabase.ts`, replace the entire contents with:
+```ts
+import "server-only";
+import { createClient } from "@supabase/supabase-js";
+
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
+const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
+
+export const supabase = createClient(supabaseUrl, supabaseAnonKey);
+
+// The anon key cannot delete from storage. Deletion needs the service-role
+// key, which must never be NEXT_PUBLIC_ — it is a full read/write credential
+// for the project. This module is server-only, so it cannot reach a bundle.
+// When the key is absent the client is null and callers degrade to a no-op
+// rather than failing, so a host that has not configured it still works.
+const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+export const supabaseAdmin = serviceRoleKey
+    ? createClient(supabaseUrl, serviceRoleKey)
+    : null;
+```
+
+2. Create `src/lib/uploads.ts`:
+```ts
+import "server-only";
+import { supabaseAdmin } from "@/lib/supabase";
+
+const BUCKET = "uploads";
+const PUBLIC_MARKER = `/storage/v1/object/public/${BUCKET}/`;
+
+/**
+ * Callers store uploads inconsistently: the *File models keep the storage
+ * path, while pictureUrl / photo / coverImage keep the full public URL.
+ * Accept either and return the path, or null if it is neither.
+ */
+export function storagePathFrom(value: string | null | undefined): string | null {
+    if (!value) return null;
+    const i = value.indexOf(PUBLIC_MARKER);
+    if (i !== -1) return value.slice(i + PUBLIC_MARKER.length) || null;
+    if (value.startsWith("http://") || value.startsWith("https://")) return null;
+    return value;
+}
+
+/**
+ * Best-effort removal of a stored object. Never throws: a failure here must
+ * not turn a successful row deletion into a 500, and a host without the
+ * service-role key configured must keep working.
+ */
+export async function removeUpload(value: string | null | undefined): Promise<boolean> {
+    const path = storagePathFrom(value);
+    if (!path) return false;
+
+    if (!supabaseAdmin) {
+        console.warn(`[uploads] SUPABASE_SERVICE_ROLE_KEY unset — leaving ${path} in storage`);
+        return false;
+    }
+
+    const { error } = await supabaseAdmin.storage.from(BUCKET).remove([path]);
+    if (error) {
+        console.error(`[uploads] failed to remove ${path}: ${error.message}`);
+        return false;
+    }
+    return true;
+}
+```
+
+3. In `src/app/api/employees/files/[fileId]/route.ts`, add to the imports:
+   `import { removeUpload } from "@/lib/uploads";`
+
+4. In the same file, replace this block:
+```
+    // Removes the database row only. The object stays in Supabase Storage:
+    // src/lib/supabase.ts holds the anon key, which cannot delete, and no code
+    // path in this application has ever removed an uploaded object. This is a
+    // known leak, tracked in tasks.md, not an oversight in this handler.
+    await prisma.employeeFile.delete({ where: { id } });
+
+    return NextResponse.json({ message: "File removed" });
+```
+   with:
+```
+    // Remove the row first: if the storage removal fails or is unconfigured we
+    // want an orphaned object, not a row pointing at a file that is gone. The
+    // helper never throws, so a storage problem cannot fail this request.
+    await prisma.employeeFile.delete({ where: { id } });
+    const objectRemoved = await removeUpload(file.filePath);
+
+    return NextResponse.json({ message: "File removed", objectRemoved });
+```
+   **The ordering is deliberate and must not be flipped.** Deleting the object first and then failing to delete the row would leave a row referencing a file that no longer exists — a broken link in the UI, which is worse than a leaked byte. `objectRemoved` is returned so the caller and the reviewer can see which happened.
+
+**Verification:**
+- `npm run build` passes.
+- `npx eslint` on the three Scope files — no new problems.
+- `grep -rn "SUPABASE_SERVICE_ROLE_KEY" src/` shows it **only** in `src/lib/supabase.ts`, and **never** with a `NEXT_PUBLIC_` prefix.
+- After a build, `grep -rl "SUPABASE_SERVICE_ROLE_KEY" .next/static/ 2>/dev/null` returns **nothing** — the key's name must not appear in any client chunk.
+- **Runtime, for the planner:** with the key **unset**, deleting an employee file still returns 200 with `objectRemoved: false` and logs the warning — the degradation path. With the key **set**, the same delete returns `objectRemoved: true` and the object's public URL then returns **404** instead of 200. That flip from 200 to 404 is the whole task.
+
+**Done when:**
+- [ ] The app can remove a storage object
+- [ ] It degrades to a logged no-op when the key is unset, never a 500
+- [ ] The row is deleted before the object, so a failure leaks rather than breaks
+- [ ] The service-role key name appears in no client chunk
+- [ ] Diff confined to the three Scope files
 
 ---
 
