@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { useRouter } from "next/navigation";
 
 interface Doctor {
@@ -33,6 +33,12 @@ const COLORS = [
     "#f472b6", "#38bdf8", "#facc15", "#c084fc",
 ];
 
+const FILTERS = ["Active", "Archived"] as const;
+
+function statusFor(filter: (typeof FILTERS)[number]) {
+    return filter === "Archived" ? "RESIGNED" : "ACTIVE";
+}
+
 export default function DoctorsPage() {
     const router = useRouter();
     const [doctors, setDoctors] = useState<Doctor[]>([]);
@@ -46,6 +52,7 @@ export default function DoctorsPage() {
     });
     const [showPassword, setShowPassword] = useState(false);
     const [formError, setFormError] = useState("");
+    const [filter, setFilter] = useState<(typeof FILTERS)[number]>("Active");
 
     const fetchDoctors = useCallback(async () => {
         const res = await fetch("/api/employees/doctors");
@@ -55,6 +62,16 @@ export default function DoctorsPage() {
     }, []);
 
     useEffect(() => { fetchDoctors(); }, [fetchDoctors]);
+
+    const counts = useMemo(() => ({
+        Active: doctors.filter((d) => d.status === "ACTIVE").length,
+        Archived: doctors.filter((d) => d.status === "RESIGNED").length,
+    }), [doctors]);
+
+    const visible = useMemo(
+        () => doctors.filter((d) => d.status === statusFor(filter)),
+        [doctors, filter]
+    );
 
     const openAdd = () => {
         setEditingDoctor(null);
@@ -131,9 +148,18 @@ export default function DoctorsPage() {
         fetchDoctors();
     };
 
-    const handleDelete = async (id: string) => {
-        if (!confirm("Mark this doctor as resigned? This is a soft delete.")) return;
+    const handleResign = async (id: string) => {
+        if (!confirm("Resign this doctor? They move to Archived and can be re-enrolled later.")) return;
         await fetch(`/api/employees/doctors/${id}`, { method: "DELETE" });
+        fetchDoctors();
+    };
+
+    const handleReEnrol = async (id: string) => {
+        await fetch(`/api/employees/doctors/${id}`, {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ status: "ACTIVE" }),
+        });
         fetchDoctors();
     };
 
@@ -146,6 +172,18 @@ export default function DoctorsPage() {
             <div className="page-header">
                 <h1>Doctors</h1>
                 <button className="btn-primary" onClick={() => router.push("/admin/employees/doctors/new")}>+ Add Doctor</button>
+            </div>
+
+            <div className="filter-row">
+                {FILTERS.map((f) => (
+                    <button
+                        key={f}
+                        className={`chip ${filter === f ? "active" : ""}`}
+                        onClick={() => setFilter(f)}
+                    >
+                        {f} <span className="chip-count">{counts[f]}</span>
+                    </button>
+                ))}
             </div>
 
             <div className="table-container">
@@ -162,7 +200,7 @@ export default function DoctorsPage() {
                         </tr>
                     </thead>
                     <tbody>
-                        {doctors.map((doc) => (
+                        {visible.map((doc) => (
                             <tr key={doc.id}>
                                 <td>
                                     <span className={`status-badge ${doc.status === "ACTIVE" ? "active" : "resigned"}`}>
@@ -184,13 +222,19 @@ export default function DoctorsPage() {
                                 <td>
                                     <div className="action-buttons">
                                         <button className="btn-sm btn-edit" onClick={() => openEdit(doc)}>Edit</button>
-                                        <button className="btn-sm btn-delete" onClick={() => handleDelete(doc.id)}>Delete</button>
+                                        {doc.status === "ACTIVE" ? (
+                                            <button className="btn-sm btn-delete" onClick={() => handleResign(doc.id)}>Resign</button>
+                                        ) : (
+                                            <button className="btn-sm btn-edit" onClick={() => handleReEnrol(doc.id)}>Re-enrol</button>
+                                        )}
                                     </div>
                                 </td>
                             </tr>
                         ))}
-                        {doctors.length === 0 && (
-                            <tr><td colSpan={7} style={{ textAlign: "center", color: "rgba(255,255,255,0.4)" }}>No doctors found</td></tr>
+                        {visible.length === 0 && (
+                            <tr><td colSpan={7} style={{ textAlign: "center", color: "rgba(255,255,255,0.4)" }}>
+                                {filter === "Archived" ? "No archived doctors" : "No active doctors"}
+                            </td></tr>
                         )}
                     </tbody>
                 </table>
@@ -311,6 +355,17 @@ export default function DoctorsPage() {
           margin-bottom: 1.5rem;
         }
         .page-header h1 { font-size: 1.5rem; font-weight: 600; }
+        .filter-row { display: flex; gap: 0.5rem; flex-wrap: wrap; margin-bottom: 1.25rem; }
+        .chip {
+          background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1);
+          color: rgba(255,255,255,0.65); padding: 0.4rem 0.9rem; border-radius: 999px;
+          font-size: 0.8rem; font-weight: 600; cursor: pointer; font-family: inherit;
+          display: inline-flex; align-items: center; gap: 0.4rem; transition: all 0.15s;
+        }
+        .chip:hover { background: rgba(255,255,255,0.08); }
+        .chip.active { background: rgba(255,255,255,0.12); border-color: rgba(255,255,255,0.3); color: #fff; }
+        .chip-count { color: rgba(255,255,255,0.4); font-weight: 500; }
+        .chip.active .chip-count { color: rgba(255,255,255,0.7); }
         .btn-primary {
           background: linear-gradient(135deg, #059669, #10b981); color: #fff;
           border: none; border-radius: 10px; padding: 0.6rem 1.25rem;
