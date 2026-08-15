@@ -34,7 +34,7 @@ Two things that bear repeating here, because this is the file both agents open:
 | TJ-009e | Working hours as a selector | DONE — merged `423935d` | `feat/working-hours-selector` |
 | TJ-009h | New-doctor form defaults to a colour it will not accept | DONE — merged `f76e2e0` | `bugfix/default-doctor-colour` |
 | TJ-009f | Upload identification documents | SCHEMA DONE — merged `ade1a06`; split into f1 + f2 | `feat/employee-documents` |
-| TJ-009f1 | Employee document endpoints | READY | `feat/employee-file-api` |
+| TJ-009f1 | Employee document endpoints | DONE — merged `9b339a8`; runtime checks owed | `feat/employee-file-api` |
 | TJ-009f2 | Employee documents UI | PLANNED — placement decided (modal section) | — |
 | TJ-009g | Hard delete a doctor | DONE — merged `fe05f69`; both paths proven | `feat/hard-delete-doctor` |
 | TJ-010 | Employees / secretaries — reported issues | BACKLOG — needs a pass, splits further; its §3 is closed by TJ-009a | — |
@@ -2836,8 +2836,14 @@ Currently: 9-7
 
 ### TJ-009f1 — Employee document endpoints
 
-- **Status:** READY
+- **Status:** REVIEW — statically verified on commit `aba9acb`, merged to `master` as `9b339a8`. **Runtime checks still owed** (401/400/404 cases and a real upload→attach→list→delete round trip); merged ahead of them because nothing calls these endpoints yet, so an unexercised route is inert rather than risky.
 - **Branch:** `feat/employee-file-api` — cut from `master`.
+
+**Planner verification (static half):** 2026-08-15 — read all three files in full. **97 insertions, 1 deletion, exactly the three Scope files** measured against the real merge base `659a7be` rather than `master`'s tip, which had moved. Both new routes mirror `doctors/[id]/route.ts` in import order, guard phrasing and response shapes. All **three** handlers carry the ADMIN-only guard; `grep -c 'role !== "ADMIN"'` returns 2 for the two-handler file. Step 4's storage-leak comment is present **verbatim** above the delete call. `npm run build` exit 0 with both routes in the table; eslint **0 problems** across all three files. Merged; `master` rebuilds clean.
+
+**My task premise was wrong, and the executor caught it.** The brief asserted *"the client is already generated"*. It was not: I pushed the `EmployeeFile` schema and never re-ran `prisma generate`, so the local client at `src/generated/prisma/` still stopped at `PendingChange` and the build failed on `Property 'employeeFile' does not exist`. **My build after the schema merge passed only because nothing referenced the new model yet** — the staleness was invisible until the first line of code used it. The executor ran `npx prisma generate` (codegen only, no database interaction) and confirmed the directory is gitignored, so nothing entered the diff. Correct call. **The rule: a `db push` is only half the job — regenerate the client in the same breath, or the next task inherits a build failure that looks like its own.** Note this was local only; a fresh clone runs `prisma generate` via `postinstall`.
+
+**One small thing left alone, deliberately:** `POST` validates with `if (!userId || !fileName || !filePath || !fileType || !fileSize)`, so a **0-byte file would be rejected as a missing field**. An empty document is not worth storing, so the behaviour is defensible and the message is not misleading enough to warrant reopening a verified diff. Fold a `fileSize === undefined` check into TJ-009f2 if that surface ever allows one.
 - **Why:** `EmployeeFile` exists in the database (`ade1a06`) and nothing reads or writes it. This is the server half: list, attach and detach a document for any employee. No UI — that is TJ-009f2, and keeping them apart means the endpoints can be proven with real requests before any screen depends on them.
 
 **Planning pass:** see TJ-009f's block above — `upload/route.ts`, `supabase.ts`, `schema.prisma` and the whole employee route tree were read for it. Confirmed `EmployeeFile` is live and empty (`employeeFiles=0` at the time of the push). Confirmed `POST /api/upload` needs no change beyond one folder entry. Confirmed the route path below collides with nothing: `src/app/api/employees/` currently holds only the static `doctors/` and `secretaries/` segments.
