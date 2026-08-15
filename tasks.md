@@ -31,9 +31,9 @@ Two things that bear repeating here, because this is the file both agents open:
 | TJ-009b | Re-authenticate the admin before changing an employee's password | REVIEW — verified, unmerged | `feat/admin-reauth-password-change` |
 | TJ-009c | Archive view and re-enrolment for resigned employees | REVIEW — verified, unmerged | `feat/employee-archive-view` |
 | TJ-009d | One calendar colour per doctor | REVIEW — verified, unmerged | `feat/unique-doctor-colours` |
-| TJ-009e | Working hours as a selector | READY — dispatch 4th, from/to pair assumed | `feat/working-hours-selector` |
+| TJ-009e | Working hours as a selector | REVIEW — verified, unmerged | `feat/working-hours-selector` |
 | TJ-009f | Upload identification documents | BLOCKED — planned, **not dispatched**: needs go-ahead for a production schema push | — |
-| TJ-009g | Hard delete a doctor | PLANNED — dispatch 5th, refuse-if-referenced assumed | `feat/hard-delete-doctor` |
+| TJ-009g | Hard delete a doctor | READY — dispatch 5th, refuse-if-referenced assumed | `feat/hard-delete-doctor` |
 | TJ-010 | Employees / secretaries — reported issues | BACKLOG — needs a pass, splits further; its §3 is closed by TJ-009a | — |
 | TJ-011 | Patients — reported issues | BACKLOG — needs a pass, splits further | — |
 | TJ-012 | Blog — hard delete a post | BACKLOG — needs a pass | — |
@@ -2538,8 +2538,14 @@ function statusFor(filter: (typeof FILTERS)[number]) {
 
 ### TJ-009e — Working hours as a selector
 
-- **Status:** READY
+- **Status:** REVIEW — statically verified on commit `c50c134`; **unmerged**, awaiting the deferred runtime checks.
 - **Branch:** `feat/working-hours-selector` — **cut from `feat/unique-doctor-colours`, not from `master`.** The chain is unmerged while the visual review is deferred.
+
+**Planner verification (static half):** 2026-08-15 — read the full `git diff feat/unique-doctor-colours..feat/working-hours-selector`. **5 files, 159 insertions, 4 deletions, one commit `c50c134`, nothing outside Scope.** `src/lib/workingHours.ts` matches the specified content character for character, including the `CANONICAL` anchored regex and the `formatWorkingHours` guard that returns `""` rather than a half-range. Re-ran `npm run build`: **exit 0**. `grep` confirms no free-text hour placeholder survives anywhere under `src/app/admin/employees/`, and `type="time"` appears exactly **8** times — two per form, four forms. eslint baselined against `feat/unique-doctor-colours`: **4 problems on both sides, same rules, same files, line numbers shifted only — zero new.**
+
+**Spec error found and confirmed — mine.** Steps 8 and 12 told the executor to add "the same import as step 1" to the two `/new` pages, but a create form has no stored value to parse and no legacy value to preserve: those pages use **only** `formatWorkingHours`. So `parseWorkingHours` and `isLegacyWorkingHours` are imported and never used in both create pages. Verified by grepping each file for uses outside the import line — the two modals use all three, the two create pages use one. It is dead weight rather than a defect: no behaviour, no lint error under this config, and tree-shaken from the bundle. **Filed, not patched** — the executor followed the instruction exactly and amending a verified diff over an unused import is not worth breaking the diff/task correspondence. Fold the trim into the dead-code cleanup already noted under TJ-011, which is the task that will next touch these files.
+
+**Still outstanding:** the runtime checks — a doctor stored as `"9-7"` opening with empty selectors and a `Currently: 9-7` line; `09:00`→`17:00` storing exactly `09:00-17:00` and round-tripping; and **filling only one side storing `""` rather than `"09:00-"`**, which is the failure `formatWorkingHours` exists to prevent.
 - **Why:** TJ-009 §3. `User.workingHours` is `String?` and all four forms are bare text inputs; the live rows read literally `"9-7"` — re-confirmed against the API during the TJ-009a review. Nothing can ever be computed from that: not a rota, not an availability check on the booking form, not a warning when a reservation is booked outside a doctor's hours.
 
 **Planning pass:** 2026-08-15 — read all four form files and `prisma/schema.prisma:78`. Confirmed the column is a free-text `String?` and that no code anywhere parses it: `grep` shows `workingHours` only ever being read into a form field or rendered into a table cell. So changing the *format* breaks nothing downstream — there is no consumer to break. That is the fact that makes this safe to do without a schema change.
@@ -2755,7 +2761,8 @@ Currently: 9-7
 
 ### TJ-009g — Hard delete a doctor
 
-- **Status:** PLANNED — design settled, **anchors pinned at dispatch**. Dispatch last, branch `feat/hard-delete-doctor` cut from TJ-009e's branch. Must not land before TJ-009c.
+- **Status:** READY
+- **Branch:** `feat/hard-delete-doctor` — **cut from `feat/working-hours-selector`, not from `master`.** Last in the chain. TJ-009c is already in it, so the *Delete* label no longer means "resign" — that ordering was a precondition and it is satisfied.
 - **Why:** TJ-009 §7's hard half. `DELETE /api/employees/doctors/[id]` sets `status: "RESIGNED"` (`doctors/[id]/route.ts:96-99`) while the button that calls it says *Delete*. Nothing in this application has ever removed a `User` row.
 
 **Planning pass:** 2026-08-15 — read `prisma/schema.prisma` relations in full and both doctor endpoints. Confirmed the referential actions, which decide the whole shape of this task: `Reservation.doctor` (`schema.prisma:171`) and `Note.doctor` (`schema.prisma:202`) are both required relations with no `onDelete`, so Prisma applies **Restrict** — the database itself refuses to delete a doctor who has ever been booked or noted. `DoctorProfile.userId` is **optional** with no `onDelete`, so it defaults to **SetNull**: deleting a doctor silently unlinks their public profile rather than blocking, and leaves the profile alive and publishable. That last one is not in the original capture and is the trap in this task.
@@ -2770,7 +2777,192 @@ Currently: 9-7
 
 **Approach:** extend the existing `DELETE` with a `?hard=true` query parameter rather than adding a route, so the soft path stays exactly as it is. The handler counts `reservations` and `notes` and checks `doctorProfile` before touching anything, and returns **409** with the specific blocker — `{ error: "Cannot delete: this doctor has 12 reservations and 3 notes. Resign them instead." }`. Only a doctor clean on all three is removed with `prisma.user.delete`. In the UI the button lives on **Archived** rows only, is labelled **Delete permanently**, and requires a typed confirmation of the doctor's name — this is the one irreversible action in the admin area and a single `confirm()` is not enough friction for it.
 
-**Verification:** build; no new eslint problems. **Runtime deferred** — record, and note the negative cases are the important ones: a doctor with reservations returns 409 and is **still present** afterwards; a doctor with a linked profile returns 409; a clean doctor is removed and disappears from both filters; and `?hard=true` omitted still performs the old soft delete unchanged. Test the refusals against a doctor that actually has reservations — the live database has exactly one — rather than trusting the count query.
+**Anchors verified mechanically 2026-08-15** against the tip of `feat/working-hours-selector`, `\r` stripped — each matches exactly once.
+
+**Instructions — `src/app/api/employees/doctors/[id]/route.ts`:**
+
+1. Replace the entire `DELETE` handler — from the comment line `// DELETE /api/employees/doctors/[id] — soft delete (set status to RESIGNED)` through its closing `}` — with:
+```ts
+// DELETE /api/employees/doctors/[id]
+//   default        → soft delete (set status to RESIGNED)
+//   ?hard=true     → permanent removal, refused if the doctor is referenced
+export async function DELETE(
+    req: NextRequest,
+    { params }: { params: Promise<{ id: string }> }
+) {
+    const session = await auth();
+    if (!session || (session.user as { role: string }).role !== "ADMIN") {
+        return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    const { id } = await params;
+    const hard = req.nextUrl.searchParams.get("hard") === "true";
+
+    if (!hard) {
+        // Soft delete — set status to RESIGNED instead of permanent deletion
+        await prisma.user.update({
+            where: { id },
+            data: { status: "RESIGNED" },
+        });
+
+        return NextResponse.json({ message: "Doctor marked as resigned" });
+    }
+
+    // Hard delete. Reservations and notes are RESTRICT at the database level and
+    // are clinical records besides — they are never reassigned and never cascade
+    // away with the doctor. DoctorProfile.userId is SET NULL, which would leave a
+    // live public profile silently unlinked, so that is refused too rather than
+    // left to the default.
+    const doctor = await prisma.user.findFirst({
+        where: { id, role: "DOCTOR" },
+        select: {
+            name: true,
+            _count: { select: { reservations: true, notes: true } },
+            doctorProfile: { select: { id: true } },
+        },
+    });
+
+    if (!doctor) {
+        return NextResponse.json({ error: "Doctor not found" }, { status: 404 });
+    }
+
+    const blockers: string[] = [];
+    if (doctor._count.reservations > 0) {
+        blockers.push(`${doctor._count.reservations} reservation(s)`);
+    }
+    if (doctor._count.notes > 0) {
+        blockers.push(`${doctor._count.notes} note(s)`);
+    }
+    if (doctor.doctorProfile) {
+        blockers.push("a linked public profile");
+    }
+
+    if (blockers.length > 0) {
+        return NextResponse.json(
+            {
+                error: `Cannot delete ${doctor.name}: they have ${blockers.join(" and ")}. Resign them instead.`,
+            },
+            { status: 409 }
+        );
+    }
+
+    await prisma.user.delete({ where: { id } });
+
+    return NextResponse.json({ message: "Doctor deleted permanently" });
+}
+```
+   **Note the signature change:** the first parameter goes from `_req: NextRequest` to `req: NextRequest`, because the query string is now read. Leaving it underscored will not compile against its own use.
+
+**Instructions — `src/app/admin/employees/doctors/page.tsx`:**
+
+2. Directly after the line `    const [legacyHours, setLegacyHours] = useState("");`, add:
+```
+    const [deleteTarget, setDeleteTarget] = useState<Doctor | null>(null);
+    const [deleteConfirm, setDeleteConfirm] = useState("");
+    const [deleteError, setDeleteError] = useState("");
+    const [deleting, setDeleting] = useState(false);
+```
+3. Directly after the `handleReEnrol` function's closing `    };`, add:
+```
+
+    const openDelete = (doc: Doctor) => {
+        setDeleteTarget(doc);
+        setDeleteConfirm("");
+        setDeleteError("");
+    };
+
+    const handleHardDelete = async () => {
+        if (!deleteTarget) return;
+        setDeleting(true);
+        setDeleteError("");
+        const res = await fetch(`/api/employees/doctors/${deleteTarget.id}?hard=true`, {
+            method: "DELETE",
+        });
+        setDeleting(false);
+        if (!res.ok) {
+            const data = await res.json().catch(() => ({}));
+            setDeleteError(data.error || "Could not delete this doctor.");
+            return;
+        }
+        setDeleteTarget(null);
+        fetchDoctors();
+    };
+```
+4. Replace the action-buttons block:
+```
+                                    <div className="action-buttons">
+                                        <button className="btn-sm btn-edit" onClick={() => openEdit(doc)}>Edit</button>
+                                        {doc.status === "ACTIVE" ? (
+                                            <button className="btn-sm btn-delete" onClick={() => handleResign(doc.id)}>Resign</button>
+                                        ) : (
+                                            <button className="btn-sm btn-edit" onClick={() => handleReEnrol(doc.id)}>Re-enrol</button>
+                                        )}
+                                    </div>
+```
+   with:
+```
+                                    <div className="action-buttons">
+                                        <button className="btn-sm btn-edit" onClick={() => openEdit(doc)}>Edit</button>
+                                        {doc.status === "ACTIVE" ? (
+                                            <button className="btn-sm btn-delete" onClick={() => handleResign(doc.id)}>Resign</button>
+                                        ) : (
+                                            <>
+                                                <button className="btn-sm btn-edit" onClick={() => handleReEnrol(doc.id)}>Re-enrol</button>
+                                                <button className="btn-sm btn-delete" onClick={() => openDelete(doc)}>Delete permanently</button>
+                                            </>
+                                        )}
+                                    </div>
+```
+   **Delete permanently appears on Archived rows only.** A doctor must be resigned first, which makes the irreversible action a deliberate second step rather than a mis-click next to Edit.
+5. Directly after the closing `)}` of the existing edit-modal block — that is, immediately before the line `            <style jsx>{\`` — add the confirmation modal. It reuses the file's existing `.modal-overlay` / `.modal-card` / `.modal-actions` / `.error-msg` / `.form-group` classes, so it needs no new CSS beyond step 6:
+```
+            {deleteTarget && (
+                <div className="modal-overlay" onClick={() => setDeleteTarget(null)}>
+                    <div className="modal-card modal-narrow" onClick={(e) => e.stopPropagation()}>
+                        <h2>Delete {deleteTarget.name}?</h2>
+                        <p className="delete-warning">
+                            This permanently removes the account and cannot be undone. It is refused if
+                            this doctor has any reservations, notes, or a linked public profile.
+                        </p>
+                        {deleteError && <div className="error-msg" role="alert">{deleteError}</div>}
+                        <div className="form-group">
+                            <label>Type <strong>{deleteTarget.name}</strong> to confirm</label>
+                            <input
+                                value={deleteConfirm}
+                                onChange={(e) => setDeleteConfirm(e.target.value)}
+                                autoFocus
+                            />
+                        </div>
+                        <div className="modal-actions">
+                            <button className="btn-secondary" onClick={() => setDeleteTarget(null)}>Cancel</button>
+                            <button
+                                className="btn-danger"
+                                onClick={handleHardDelete}
+                                disabled={deleting || deleteConfirm !== deleteTarget.name}
+                            >
+                                {deleting ? "Deleting…" : "Delete permanently"}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+```
+6. In the `<style jsx>` block, directly after the line
+   `        .modal-actions { display: flex; justify-content: flex-end; gap: 0.75rem; margin-top: 1.5rem; }`
+   add:
+```
+        .modal-narrow { max-width: 420px; }
+        .delete-warning { font-size: 0.85rem; color: rgba(255,255,255,0.6); margin-bottom: 1rem; line-height: 1.5; }
+        .btn-danger {
+          background: #dc2626; color: #fff; border: none; border-radius: 10px;
+          padding: 0.6rem 1.25rem; font-size: 0.9rem; font-weight: 600;
+          cursor: pointer; font-family: inherit;
+        }
+        .btn-danger:hover:not(:disabled) { background: #b91c1c; }
+        .btn-danger:disabled { opacity: 0.5; cursor: not-allowed; }
+```
+
+**Verification:** build; no new eslint problems (baseline against `feat/working-hours-selector`, **not** `master`); `grep -n 'hard=true' src/app/admin/employees/doctors/page.tsx` returns exactly one hit; `grep -n '_count' src/app/api/employees/doctors/\[id\]/route.ts` returns one hit. **Runtime deferred** — record, and note **the negative cases are the important ones here**: a doctor with reservations returns 409 and is **still present afterwards**; a doctor with a linked profile returns 409; a clean doctor is removed and disappears from both filters; and a `DELETE` **without** `?hard=true` still performs the old soft delete unchanged. Test the refusal against a doctor that genuinely has reservations — the live database has exactly one — rather than trusting the count query. Confirm the confirm-button stays disabled until the typed name matches exactly.
 
 **Done when:**
 - [ ] A doctor with any reservation, note, or linked profile cannot be hard-deleted, and is told why
