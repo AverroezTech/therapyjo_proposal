@@ -51,7 +51,7 @@ Two things that bear repeating here, because this is the file both agents open:
 | TJ-013 | Doctor profiles (public site) — hard delete | BACKLOG — needs a pass | — |
 | TJ-014 | Uploaded files are never removed from storage | SPLIT — measured (7/7 orphaned); see TJ-014a … TJ-014d | — |
 | TJ-014a | Give the app the ability to delete a storage object | OPEN — merged `b248edb`; degradation half proven, **removal half waits on the key** | `feat/storage-delete-capability` |
-| TJ-014b | Remove the replaced picture on the four hazard-free paths | DONE — merged `MERGE_SHA`; runtime-proven on `/admin/doctors`, guard holds | `feat/remove-replaced-pictures` |
+| TJ-014b | Remove the replaced picture on the four hazard-free paths | DONE — merged `ff48a2e`; runtime-proven on `/admin/doctors`, guard holds | `feat/remove-replaced-pictures` |
 | TJ-014c | Linked translations share one cover image — guard before removing | BACKLOG — hazard proven in code, needs a pass to design the guard | — |
 | TJ-014d | Purge the existing orphans and prove the removal half | BLOCKED — **needs `SUPABASE_SERVICE_ROLE_KEY`** | — |
 
@@ -3527,7 +3527,7 @@ export async function removeUpload(value: string | null | undefined): Promise<bo
 
 ### TJ-014b — Remove the previous picture when one is replaced
 
-- **Status:** DONE — task commit `f94e71a`, merged to `master` as `MERGE_SHA`. Static checks re-run by the planner; **runtime verification performed live on 2026-08-16 in a real browser against a real Supabase-backed database, and all three cases passed.** Not pushed.
+- **Status:** DONE — task commit `f94e71a`, merged to `master` as `ff48a2e`. Static checks re-run by the planner; **runtime verification performed live on 2026-08-16 in a real browser against a real Supabase-backed database, and all three cases passed.** Not pushed.
 - **Branch:** `feat/remove-replaced-pictures` — cut from `master` at `8d1c349`.
 
 **Planner verification:** 2026-08-15 — read the full diff line by line: **4 files, 73 insertions, 2 deletions**, nothing outside Scope, `tasks.md` untouched. The executor implemented all six instructions verbatim, comments included. Re-ran every static check myself rather than accepting the report: `npm run build` exit **0**; `npx eslint` on the four Scope files exit **0**, no problems, matching the `master` baseline; `grep -rn "await removeUpload(" src/app/api/` returns **exactly 5** (1 on `master`, +4 here, one per Scope file); `SUPABASE_SERVICE_ROLE_KEY` still appears only in `src/lib/supabase.ts` and the `uploads.ts` warning string, with no `NEXT_PUBLIC_` form anywhere. **The executor's report was accurate in every particular.**
