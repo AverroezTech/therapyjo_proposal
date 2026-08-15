@@ -22,6 +22,7 @@ interface SecretaryForm {
     username: string;
     password: string;
     confirmPassword: string;
+    adminPassword: string;
 }
 
 export default function SecretariesPage() {
@@ -32,7 +33,7 @@ export default function SecretariesPage() {
     const [editing, setEditing] = useState<Secretary | null>(null);
     const [saving, setSaving] = useState(false);
     const [form, setForm] = useState<SecretaryForm>({
-        name: "", email: "", phone: "", workingHours: "", username: "", password: "", confirmPassword: "",
+        name: "", email: "", phone: "", workingHours: "", username: "", password: "", confirmPassword: "", adminPassword: "",
     });
     const [showPassword, setShowPassword] = useState(false);
     const [formError, setFormError] = useState("");
@@ -48,7 +49,7 @@ export default function SecretariesPage() {
 
     const openAdd = () => {
         setEditing(null);
-        setForm({ name: "", email: "", phone: "", workingHours: "", username: "", password: "", confirmPassword: "" });
+        setForm({ name: "", email: "", phone: "", workingHours: "", username: "", password: "", confirmPassword: "", adminPassword: "" });
         setShowPassword(false);
         setFormError("");
         setShowModal(true);
@@ -59,7 +60,7 @@ export default function SecretariesPage() {
         setForm({
             name: sec.name, email: sec.email || "", phone: sec.phone || "",
             workingHours: sec.workingHours || "", username: sec.username, password: "",
-            confirmPassword: "",
+            confirmPassword: "", adminPassword: "",
         });
         setShowPassword(false);
         setFormError("");
@@ -80,6 +81,11 @@ export default function SecretariesPage() {
             }
         }
 
+        if (editing && form.password && !form.adminPassword) {
+            setFormError("Enter your own password to confirm this change");
+            return;
+        }
+
         setSaving(true);
         const url = editing
             ? `/api/employees/secretaries/${editing.id}`
@@ -95,6 +101,7 @@ export default function SecretariesPage() {
             body.password = form.password;
         } else if (form.password) {
             body.password = form.password;
+            body.adminPassword = form.adminPassword;
         }
 
         const res = await fetch(url, {
@@ -240,6 +247,17 @@ export default function SecretariesPage() {
                                     onChange={(e) => setForm({ ...form, confirmPassword: e.target.value })}
                                 />
                             </div>
+                            {editing && form.password && (
+                                <div className="form-group">
+                                    <label>Your Password *</label>
+                                    <input
+                                        type="password"
+                                        value={form.adminPassword}
+                                        onChange={(e) => setForm({ ...form, adminPassword: e.target.value })}
+                                    />
+                                    <span className="field-hint">Confirm it is you before changing someone else&apos;s password.</span>
+                                </div>
+                            )}
                         </div>
 
                         <div className="modal-actions">

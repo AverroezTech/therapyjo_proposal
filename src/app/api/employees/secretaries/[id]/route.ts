@@ -50,7 +50,7 @@ export async function PUT(
 
     const { id } = await params;
     const body = await req.json();
-    const { name, email, phone, workingHours, password, pictureUrl, status } = body;
+    const { name, email, phone, workingHours, password, pictureUrl, status, adminPassword } = body;
 
     const updateData: Record<string, unknown> = {};
     if (name !== undefined) updateData.name = name;
@@ -66,6 +66,35 @@ export async function PUT(
                 { status: 400 }
             );
         }
+
+        // Re-authenticate the acting admin before overwriting someone else's
+        // credential. The id comes from the session, never from the body, and
+        // auth.ts re-reads the account on every session read — so this cannot
+        // be pointed at another user by tampering with the request.
+        if (!adminPassword) {
+            return NextResponse.json(
+                { error: "Enter your own password to confirm this change" },
+                { status: 400 }
+            );
+        }
+        const actingAdminId = (session.user as { id?: string }).id;
+        const actingAdmin = actingAdminId
+            ? await prisma.user.findUnique({
+                where: { id: actingAdminId },
+                select: { passwordHash: true },
+            })
+            : null;
+        if (!actingAdmin) {
+            return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+        }
+        const adminPasswordOk = await bcrypt.compare(adminPassword, actingAdmin.passwordHash);
+        if (!adminPasswordOk) {
+            return NextResponse.json(
+                { error: "Your password is incorrect" },
+                { status: 403 }
+            );
+        }
+
         updateData.passwordHash = await bcrypt.hash(password, 12);
     }
 
