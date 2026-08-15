@@ -28,12 +28,12 @@ Two things that bear repeating here, because this is the file both agents open:
 | TJ-008b | Allow a session's state to be reverted | DONE — merged `e5765b9` | `feat/revert-session-status` |
 | TJ-009 | Employees / doctors — reported issues | SPLIT — see TJ-009a … TJ-009g | — |
 | TJ-009a | Reveal and confirm passwords on the employee forms | DONE — merged `234d800` | `feat/employee-password-fields` |
-| TJ-009b | Re-authenticate the admin before changing an employee's password | BACKLOG — unblocked, TJ-009a has merged; needs a pass | — |
-| TJ-009c | Archive view and re-enrolment for resigned employees | BLOCKED — the Delete / Resign / Archive vocabulary must be settled first | — |
-| TJ-009d | One calendar colour per doctor | BLOCKED — needs a rule for resigned doctors' colours and for palette exhaustion | — |
-| TJ-009e | Working hours as a selector | BLOCKED — needs the storage shape decided (from/to pair vs per-weekday) | — |
-| TJ-009f | Upload identification documents | BLOCKED — schema change with no migration path; needs the user's go-ahead | — |
-| TJ-009g | Hard delete a doctor | BLOCKED — needs a decision on RESTRICT-ed reservations and notes | — |
+| TJ-009b | Re-authenticate the admin before changing an employee's password | READY — dispatch 1st | `feat/admin-reauth-password-change` |
+| TJ-009c | Archive view and re-enrolment for resigned employees | PLANNED — dispatch 2nd, vocabulary assumed | `feat/employee-archive-view` |
+| TJ-009d | One calendar colour per doctor | PLANNED — dispatch 3rd, colour rules assumed | `feat/unique-doctor-colours` |
+| TJ-009e | Working hours as a selector | PLANNED — dispatch 4th, from/to pair assumed | `feat/working-hours-selector` |
+| TJ-009f | Upload identification documents | BLOCKED — planned, **not dispatched**: needs go-ahead for a production schema push | — |
+| TJ-009g | Hard delete a doctor | PLANNED — dispatch 5th, refuse-if-referenced assumed | `feat/hard-delete-doctor` |
 | TJ-010 | Employees / secretaries — reported issues | BACKLOG — needs a pass, splits further; its §3 is closed by TJ-009a | — |
 | TJ-011 | Patients — reported issues | BACKLOG — needs a pass, splits further | — |
 | TJ-012 | Blog — hard delete a post | BACKLOG — needs a pass | — |
@@ -1583,6 +1583,10 @@ Corrected during this sitting: the first draft let the existing `if (newStatus =
 
 **The admin area is English-only.** `src/app/i18n/translations.ts` serves the public site; every string under `src/app/admin/` is hardcoded EN. No `ar` copy is required for any TJ-009 split — recorded here so no future pass goes looking for it.
 
+**Dispatch order and why it is serial, recorded 2026-08-15.** Five of the six remaining splits touch `admin/employees/doctors/page.tsx`, and four of them touch `secretaries/page.tsx` as well. **They cannot be dispatched in parallel** — they would rewrite each other's anchors and produce diffs that no longer match their tasks. The order is `TJ-009b → 009c → 009d → 009e → 009g`, each branch cut from the previous one because nothing can merge to `master` until the user calls for the visual review they have deferred. Consequence worth stating plainly: **only the task at the head of the chain can carry hard-pinned anchors.** The rest are `PLANNED` — design settled, decisions taken, scope and verification fixed — and their anchor strings are pinned against the real tree immediately before each is dispatched. A `PLANNED` task is not `READY` and must not be pulled by an executor.
+
+**Four product decisions were taken as stated assumptions rather than stalling the queue**, at the user's instruction to plan all of them. Each is flagged in its own task with the reasoning and is cheap to reverse — they are copy, a filter default, a validation rule and a storage format. The one decision **not** taken is TJ-009f's, because it is a schema push against a production database with no down path; that stays blocked and undispatched.
+
 **Splits and why each one falls where it does:** §4 and §5 are one concern (password entry) and need no decision → **TJ-009a, READY**. §6 needs no decision either but rewrites the same lines of the same two modals → **TJ-009b**, held until TJ-009a merges rather than dispatched into a guaranteed conflict. §7 splits in two: archive-view-plus-re-enrol is UI-only but cannot be specified until the button vocabulary is settled → **TJ-009c, BLOCKED**; hard delete is **TJ-009g, BLOCKED**. §2, §3 and §1 keep the blockers already named on them → **TJ-009d, TJ-009e, TJ-009f**.
 
 ---
@@ -1936,49 +1940,311 @@ Re-ran verification independently: `npm run build` **exit 0**, 49 static pages, 
 
 ### TJ-009b — Re-authenticate the admin before changing an employee's password
 
-- **Status:** BACKLOG — **now unblocked**: TJ-009a merged as `234d800` on 2026-08-15, so the anchors this task needs exist. Needs a planning pass before it can go READY. Do not execute against this ID yet.
-- **Why:** TJ-009 §6. The edit modals already offer *New Password (optional)* and `PUT` already hashes whatever arrives, so anyone holding a live admin session — or an unlocked machine at the front desk — can silently reset a doctor's credentials. The missing piece is the gate: the admin re-enters their **own** password, and the API verifies it against `session.user.id`'s hash with `bcrypt.compare` before touching `passwordHash`.
-- **Why it is not READY:** nothing here needs a product decision, so this is not `BLOCKED`. It is held because it rewrites `handleSave` and the password block in the same two modal files TJ-009a is rewriting. Dispatching both at once guarantees a conflict and makes each diff unreadable against its own task. **Run the pass and move this to READY once TJ-009a has merged to `master`** — the anchors it will need do not exist yet.
+- **Status:** READY
+- **Branch:** `feat/admin-reauth-password-change`
+- **Why:** TJ-009 §6. The edit modals already offer *New Password (optional)* and `PUT` already hashes whatever arrives, so anyone holding a live admin session — an unlocked machine at the front desk is the realistic case — can silently reset a doctor's or secretary's credentials and lock them out. The missing piece is the gate: the admin re-enters their **own** password, and the API verifies it with `bcrypt.compare` before `passwordHash` is touched.
+
+**Planning pass:** 2026-08-15 — read the post-merge `src/app/admin/employees/doctors/page.tsx` and `.../secretaries/page.tsx` (both as they stand after `234d800`), `src/app/api/employees/doctors/[id]/route.ts`, `.../secretaries/[id]/route.ts`, `src/lib/auth.ts`, `src/lib/auth.config.ts` and `prisma/schema.prisma`. Confirmed:
+
+- **`session.user.id` is populated and can be trusted.** `auth.config.ts:16` assigns `session.user.id = token.id` in the `session` callback, and `auth.ts:21-39` re-reads the account from the database on every server-side session read. So the route can look up the acting admin by id without trusting anything from the request body. This is the single fact the whole task depends on and it was verified rather than assumed.
+- **`User.passwordHash` is non-nullable** (`schema.prisma:73`), so there is no "admin has no password set" edge case to handle.
+- **Both `PUT` handlers already gate on `role === "ADMIN"`** and both hash with `bcrypt.hash(password, 12)` inside `if (password) { … }`. The new check goes inside that same block, so an edit that does not touch the password is completely unaffected — that is the regression to prove.
+- **Scope stays at four files.** `POST` (create) is deliberately **not** touched: creating a new account is not changing an existing person's credential, and requiring a re-auth there would be friction with no threat behind it.
+- Corrected a wording assumption from the original capture: the modal label is *New Password (optional)*, not *Change Password*, so the new field is introduced beneath the existing pair rather than replacing anything.
+
+**Anchors verified mechanically 2026-08-15** against the post-merge tree, `\r` stripped before comparing — every string below matches exactly once in its file.
+
+**Scope — touch only these:**
+- `src/app/admin/employees/doctors/page.tsx`
+- `src/app/admin/employees/secretaries/page.tsx`
+- `src/app/api/employees/doctors/[id]/route.ts`
+- `src/app/api/employees/secretaries/[id]/route.ts`
+
+**Do not touch:** the `POST` handlers or either `/new` page — creating an account stays as it is. Not `src/lib/auth.ts` or `auth.config.ts`. Do not add a reveal toggle to the admin's own password field (see step 5). Do not change the existing 8-character rule or either error string from TJ-009a.
+
+**Exact strings — use verbatim:**
+- Field label: `Your Password *`
+- Field hint: `Confirm it is you before changing someone else's password.`
+- Client-side, admin field left empty: `Enter your own password to confirm this change`
+- API, `adminPassword` missing: `Enter your own password to confirm this change`
+- API, `adminPassword` wrong: `Your password is incorrect`
+
+**Instructions — `src/app/admin/employees/doctors/page.tsx`:**
+
+1. In `interface DoctorForm`, add `adminPassword: string;` directly after `    confirmPassword: string;`.
+2. Add `adminPassword: ""` to all three form initialisers — the `useState<DoctorForm>` literal, the one in `openAdd`, and the one in `openEdit` — placing it directly after each `confirmPassword: ""`.
+3. In `handleSave`, replace this block:
+   ```
+        if (!editingDoctor || form.password) {
+            if (form.password.length < 8) {
+                setFormError("Password must be at least 8 characters");
+                return;
+            }
+            if (form.password !== form.confirmPassword) {
+                setFormError("Passwords do not match");
+                return;
+            }
+        }
+   ```
+   with:
+   ```
+        if (!editingDoctor || form.password) {
+            if (form.password.length < 8) {
+                setFormError("Password must be at least 8 characters");
+                return;
+            }
+            if (form.password !== form.confirmPassword) {
+                setFormError("Passwords do not match");
+                return;
+            }
+        }
+
+        if (editingDoctor && form.password && !form.adminPassword) {
+            setFormError("Enter your own password to confirm this change");
+            return;
+        }
+   ```
+   Note the guard is `editingDoctor && form.password` — the admin's own password is required **only** when changing an existing person's credential, never on create and never on a password-less edit.
+4. In the same function, replace:
+   ```
+        } else if (form.password) {
+            body.password = form.password;
+        }
+   ```
+   with:
+   ```
+        } else if (form.password) {
+            body.password = form.password;
+            body.adminPassword = form.adminPassword;
+        }
+   ```
+5. Immediately after the closing `</div>` of the *Repeat New Password* `form-group` (the one whose input is bound to `form.confirmPassword`), add this conditional group. It renders only while an actual password change is in progress, so ordinary edits never see it. It has **no reveal toggle on purpose** — revealing the employee's new password should not also reveal the admin's own:
+   ```
+                            {editingDoctor && form.password && (
+                                <div className="form-group">
+                                    <label>Your Password *</label>
+                                    <input
+                                        type="password"
+                                        value={form.adminPassword}
+                                        onChange={(e) => setForm({ ...form, adminPassword: e.target.value })}
+                                    />
+                                    <span className="field-hint">Confirm it is you before changing someone else&apos;s password.</span>
+                                </div>
+                            )}
+   ```
+
+**Instructions — `src/app/admin/employees/secretaries/page.tsx`:**
+
+6. Apply steps 1–5 again with `SecretaryForm` for `DoctorForm` and `editing` for `editingDoctor` throughout. The `handleSave` block in step 3 is identical except it opens `if (!editing || form.password) {`, and step 5's condition becomes `{editing && form.password && (`. There is no `color` key in this file's form object; do not add one.
+
+**Instructions — `src/app/api/employees/doctors/[id]/route.ts`:**
+
+7. In the `PUT` handler, replace:
+   `    const { name, email, phone, workingHours, password, color, pictureUrl, status } = body;`
+   with:
+   `    const { name, email, phone, workingHours, password, color, pictureUrl, status, adminPassword } = body;`
+8. Replace this block:
+   ```
+    if (password) {
+        if (password.length < 8) {
+            return NextResponse.json(
+                { error: "Password must be at least 8 characters" },
+                { status: 400 }
+            );
+        }
+        updateData.passwordHash = await bcrypt.hash(password, 12);
+    }
+   ```
+   with:
+   ```
+    if (password) {
+        if (password.length < 8) {
+            return NextResponse.json(
+                { error: "Password must be at least 8 characters" },
+                { status: 400 }
+            );
+        }
+
+        // Re-authenticate the acting admin before overwriting someone else's
+        // credential. The id comes from the session, never from the body, and
+        // auth.ts re-reads the account on every session read — so this cannot
+        // be pointed at another user by tampering with the request.
+        if (!adminPassword) {
+            return NextResponse.json(
+                { error: "Enter your own password to confirm this change" },
+                { status: 400 }
+            );
+        }
+        const actingAdminId = (session.user as { id?: string }).id;
+        const actingAdmin = actingAdminId
+            ? await prisma.user.findUnique({
+                where: { id: actingAdminId },
+                select: { passwordHash: true },
+            })
+            : null;
+        if (!actingAdmin) {
+            return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+        }
+        const adminPasswordOk = await bcrypt.compare(adminPassword, actingAdmin.passwordHash);
+        if (!adminPasswordOk) {
+            return NextResponse.json(
+                { error: "Your password is incorrect" },
+                { status: 403 }
+            );
+        }
+
+        updateData.passwordHash = await bcrypt.hash(password, 12);
+    }
+   ```
+
+**Instructions — `src/app/api/employees/secretaries/[id]/route.ts`:**
+
+9. Apply steps 7–8 again. This file's destructure line has no `color`, so it becomes:
+   `    const { name, email, phone, workingHours, password, pictureUrl, status, adminPassword } = body;`
+   The `if (password) { … }` block is otherwise byte-identical to the doctors one — verified 2026-08-15 — so paste the same replacement.
+
+**Verification:**
+- `npm run build` passes.
+- `npx eslint` on the four Scope files — no **new** problems. Establish the baseline the way TJ-009a's review did (restore the `master` versions, run, compare) rather than assuming; `master` currently reports 2 errors + 2 warnings across the two page files, all pre-existing.
+- `grep -n "adminPassword" src/app/api/employees/doctors/\[id\]/route.ts src/app/api/employees/secretaries/\[id\]/route.ts` shows the destructure and the guard in both.
+- `grep -rn "adminPassword" src/app/admin/employees/doctors/new/page.tsx src/app/admin/employees/secretaries/new/page.tsx` returns **nothing** — the create pages must be untouched.
+- **Runtime checks are deferred by the user and must NOT be run by the executor.** Record them here for the planner's later pass: (a) a name-only edit with no password still saves from both modals and never shows the new field; (b) typing a new password reveals the *Your Password* field; (c) submitting with the admin field empty is refused client-side with no network call; (d) a **wrong** admin password returns 403 *"Your password is incorrect"* and the modal stays open; (e) the correct admin password completes the change; (f) the negative case that actually proves the gate — a `PUT` sent with `password` but **no** `adminPassword` at all must return 400, not succeed.
+
+**Done when:**
+- [ ] The admin's own password is required for every password change on both employee surfaces
+- [ ] An edit that does not change the password is completely unaffected — no new field, no new requirement
+- [ ] Account creation is unchanged
+- [ ] The acting admin is identified from the session, never from the request body
+- [ ] `npm run build` passes; no new eslint problems
+- [ ] Diff confined to the four Scope files
 
 ---
 
 ### TJ-009c — Archive view and re-enrolment for resigned employees
 
-- **Status:** BLOCKED — the button vocabulary has to be settled first. Do not execute against this ID.
-- **Why:** TJ-009 §7, less the hard delete. Resigned doctors sit mixed into the active list with a red badge, there is no archived view, and nothing re-enrols them — though re-enrolment needs **no API work at all**, since `PUT` already accepts `status` (`doctors/[id]/route.ts:64`, `secretaries/[id]/route.ts:61`) and `src/lib/auth.ts:36` will let the account sign in again the moment it reads `ACTIVE`. This is a UI-only change across the two list pages.
-- **The blocker, and it is one decision covering three things.** The doctors list labels its soft delete *Delete* (`doctors/page.tsx:153`) and the secretaries list labels the identical call *Resign* (`secretaries/page.tsx:135`); both `confirm()` dialogs say "This is a soft delete." One of those labels is lying, and TJ-009g may add a real delete alongside it, at which point *Delete* meaning "resign" becomes actively dangerous. Settle in one answer: **(a)** what the soft-delete button is called on both tabs, **(b)** what the archived view is called and whether it is a tab, a filter, or a toggle, and **(c)** what the reverse action is called. Also worth noting for whoever answers: the two lists already diverge in behaviour, not just wording — the secretaries page hides its button once the row is `RESIGNED` (`secretaries/page.tsx:134`), the doctors page leaves *Delete* clickable on an already-resigned doctor, where it is a silent no-op.
+- **Status:** PLANNED — design settled, **anchors pinned at dispatch** (TJ-009b rewrites parts of both files first). Dispatch second, branch `feat/employee-archive-view` cut from TJ-009b's branch.
+- **Why:** TJ-009 §7, less the hard delete. Resigned staff sit mixed into the active list with a red badge, there is no archived view, and nothing re-enrols them — though re-enrolment needs **no API work at all**, since `PUT` already accepts `status` (`doctors/[id]/route.ts:64`, `secretaries/[id]/route.ts:61`) and `src/lib/auth.ts:36` lets the account sign in again the moment it reads `ACTIVE`. UI-only, across the two list pages.
+
+**Planning pass:** 2026-08-15 — read both employee list pages, both `[id]` routes, `src/lib/auth.ts`, and the two archive patterns the app already ships: `src/app/admin/blog/page.tsx:17-56` (in-page filter chips with counts, `FILTERS` + `statusFor` + a `useMemo` over the fetched rows) and `src/app/secretary/patients/archived/page.tsx` (a separate `/archived` route with a back link). Confirmed re-enrolment needs no endpoint work. Confirmed the two lists already diverge in *behaviour*, not just wording: `secretaries/page.tsx:134` hides its button once the row is `RESIGNED`, while the doctors list leaves *Delete* clickable on an already-resigned doctor where it is a silent no-op.
+
+**Decision taken (assumption — one string each to reverse).** The user has not answered the vocabulary question, so the pass takes the conservative reading rather than stalling the queue:
+- The soft-delete button is **"Resign"** on both tabs. It is the honest label — it sets `status: RESIGNED` — the secretaries page already says it, and it frees the word *Delete* for TJ-009g's real delete. Renaming the doctors button is the whole point: *Delete* currently lies.
+- The view is an in-page **"Active" / "Archived"** chip filter, following the blog pattern rather than the patients one. Two small lists, no pagination, no new route, and it keeps the change inside the two files already in Scope.
+- The reverse action is **"Re-enrol"**, the user's own word from the original report.
+- Default filter is **Active**, which is what fixes the reported complaint.
+
+**Scope — touch only these:** `src/app/admin/employees/doctors/page.tsx`, `src/app/admin/employees/secretaries/page.tsx`.
+
+**Do not touch:** any API route — this task adds no endpoint and changes no server behaviour. Do not touch the modal, the password fields, or anything TJ-009b introduced.
+
+**Approach:** mirror `admin/blog/page.tsx` — a `FILTERS = ["Active", "Archived"]` chip row with counts, a `useMemo`-derived visible list filtering on `status`, `Resign` shown only on `ACTIVE` rows, `Re-enrol` shown only on `RESIGNED` rows and calling the existing `PUT` with `{ status: "ACTIVE" }`. Reuse the existing `.chip` / `.chip-count` CSS from the blog page verbatim, and fix the doctors page to stop offering its button on already-resigned rows.
+
+**Verification:** build; no new eslint problems; `grep` shows no `>Delete<` left in either employee list. **Runtime checks deferred by the user** — record for the planner: resigning moves a row out of Active and into Archived without a reload; Re-enrol moves it back; the counts track; and the re-enrolled account can sign in again, which is the one check that proves the `status` round-trip actually reached the database.
+
+**Done when:**
+- [ ] Resigned staff are out of the default list and reachable under Archived
+- [ ] Re-enrol restores an account to ACTIVE from the UI alone
+- [ ] Both tabs use the same verb for the same action, and no button claims to delete
+- [ ] Diff confined to the two Scope files
 
 ---
 
 ### TJ-009d — One calendar colour per doctor
 
-- **Status:** BLOCKED — needs a rule for resigned doctors and for palette exhaustion. Do not execute against this ID.
-- **Why:** TJ-009 §2, unchanged by this pass. `User.color` is a plain `String?` with no unique constraint, and both pickers offer all twelve swatches with no exclusion (`doctors/page.tsx:203-210`, `doctors/new/page.tsx:108-115`). Two doctors can hold the same colour, which makes the calendar unreadable at exactly the moment it matters.
-- **The blocker:** the `RESIGNED` doctor currently holds `#6ee7b7`. Does a resigned doctor keep their colour reserved, or does it return to the pool? And because `COLORS` has exactly twelve entries, an answer of "never reuse" means the thirteenth doctor cannot be created at all — so the same decision has to say what happens when the palette runs out. Note this now interacts with TJ-009c: if resigned doctors move to an archive view, "reserved for resigned staff" becomes much easier to live with.
+- **Status:** PLANNED — design settled, **anchors pinned at dispatch**. Dispatch third, branch `feat/unique-doctor-colours` cut from TJ-009c's branch.
+- **Why:** TJ-009 §2. `User.color` is a plain `String?` with no unique constraint, and both pickers offer all twelve swatches with no exclusion (`doctors/page.tsx` colour picker, `doctors/new/page.tsx:108-115`). Two doctors can share a colour, which makes the calendar unreadable at exactly the moment it matters — a busy day with both of them booked.
+
+**Planning pass:** 2026-08-15 — read both doctor form files, `src/app/api/employees/doctors/route.ts` (POST) and `.../doctors/[id]/route.ts` (PUT), and `prisma/schema.prisma:81`. Confirmed `color` is `String?` with no constraint and that neither endpoint validates it at all. Confirmed against the live database during the TJ-009a review that the two existing doctors hold `#6ee7b7` (RESIGNED) and `#fbbf24` (ACTIVE) — distinct, so nothing is broken today and this is prevention rather than repair.
+
+**Decision taken (assumption).** Two rules, both chosen to fail open rather than block clinic work:
+- **A resigned doctor releases their colour.** They no longer appear on the calendar, so reserving a swatch for them buys nothing and costs one of twelve. Uniqueness is therefore enforced against `ACTIVE` doctors only. This pairs with TJ-009c: once resigned staff live in an archive view, the release is the obviously right reading.
+- **Palette exhaustion never blocks creation.** With twelve swatches and a thirteenth doctor, taken colours are shown disabled with the holder's name; if *every* colour is taken the picker re-enables all of them and shows a warning that the colour is shared, rather than making the doctor uncreatable. **Never let a cosmetic constraint stop an admin from adding staff** — that is the failure mode worth avoiding here.
+
+**Scope — touch only these:** `src/app/admin/employees/doctors/page.tsx`, `src/app/admin/employees/doctors/new/page.tsx`, `src/app/api/employees/doctors/route.ts`, `src/app/api/employees/doctors/[id]/route.ts`.
+
+**Do not touch:** the schema — this needs no migration and must not acquire one. No secretary file: secretaries have no `color`.
+
+**Approach:** the list page already holds every doctor in state, so the modal can exclude taken colours with no extra request. The `/new` page has no such list and must `GET /api/employees/doctors` to learn them — that endpoint already returns `color` and `status` for any signed-in user. Server-side, both POST and PUT reject a colour already held by a *different* `ACTIVE` doctor with **409** and `{ error: "That colour is already used by <name>" }`, so the rule survives a stale tab. The PUT check must exclude the doctor being edited, or saving a doctor without changing their colour would reject itself — **that is the regression to prove.**
+
+**Verification:** build; no new eslint problems. **Runtime deferred** — record: taken colours are unpickable in both forms; saving an unrelated field on an existing doctor does **not** trip the 409; a resigned doctor's colour is offered again; and a direct `POST` with a duplicate colour is refused even though the UI would not have allowed it.
+
+**Done when:**
+- [ ] No two ACTIVE doctors can hold the same colour, through the UI or the API
+- [ ] Editing a doctor without changing their colour still saves
+- [ ] A resigned doctor's colour returns to the pool
+- [ ] A full palette warns but never blocks creating a doctor
+- [ ] Diff confined to the four Scope files
 
 ---
 
 ### TJ-009e — Working hours as a selector
 
-- **Status:** BLOCKED — needs the storage shape decided. Do not execute against this ID.
-- **Why:** TJ-009 §3, unchanged by this pass. `User.workingHours` is `String?` and all four forms are bare text inputs; the live rows read literally `"9-7"`. Nothing can ever be computed from that — not a rota, not an availability check on the booking form.
-- **The blocker:** a from/to time pair answers the reported complaint and is a small change. Per-weekday hours is what a clinic rota actually needs and is a different storage shape entirely (and, being a schema change, inherits TJ-009f's migration problem). Ask before building — this is the one split where guessing wrong means writing the data twice.
+- **Status:** PLANNED — design settled, **anchors pinned at dispatch**. Dispatch fourth, branch `feat/working-hours-selector` cut from TJ-009d's branch.
+- **Why:** TJ-009 §3. `User.workingHours` is `String?` and all four forms are bare text inputs; the live rows read literally `"9-7"` — re-confirmed against the API during the TJ-009a review. Nothing can ever be computed from that: not a rota, not an availability check on the booking form, not a warning when a reservation is booked outside a doctor's hours.
+
+**Planning pass:** 2026-08-15 — read all four form files and `prisma/schema.prisma:78`. Confirmed the column is a free-text `String?` and that no code anywhere parses it: `grep` shows `workingHours` only ever being read into a form field or rendered into a table cell. So changing the *format* breaks nothing downstream — there is no consumer to break. That is the fact that makes this safe to do without a schema change.
+
+**Decision taken (assumption), and the reasoning matters here because the user flagged this one as the expensive guess.** Ship the **from/to time pair**, stored in the existing `workingHours String?` column in the canonical format `HH:MM-HH:MM` (24-hour, zero-padded, e.g. `09:00-17:00`), rendered with two native `<input type="time">` controls.
+
+Per-weekday hours is genuinely what a clinic rota needs, and it is *not* what this task builds. The reasons for taking the smaller step first: it needs **no schema change**, so it does not inherit TJ-009f's `prisma db push`-into-production blocker; it fixes the reported complaint completely; and it is strictly forward-compatible — a future per-weekday model can seed every weekday from the single pair and migrate cleanly, whereas free text like `"9-7"` can seed nothing. **If per-weekday is wanted instead, say so before this is dispatched** — that reverses the decision, and it is much cheaper to reverse now than after the data is written.
+
+**Legacy data must survive.** The three existing rows hold `"9-7"`, which is not parseable as `HH:MM-HH:MM`. The forms must not silently discard it: on load, a value that does not match the canonical pattern leaves both time inputs empty and shows the raw stored text beneath them as `Currently: 9-7`, so the admin can see what is there and replace it deliberately. The list column renders the stored string as-is either way.
+
+**Scope — touch only these:** all four employee form files (`doctors/page.tsx`, `doctors/new/page.tsx`, `secretaries/page.tsx`, `secretaries/new/page.tsx`).
+
+**Do not touch:** the schema, or any API route — the column and its type are unchanged and the endpoints already pass `workingHours` straight through.
+
+**Verification:** build; no new eslint problems; `grep` shows no bare working-hours `<input>` left without a `type="time"` sibling. **Runtime deferred** — record: a doctor whose stored value is `"9-7"` opens with empty selectors and the `Currently: 9-7` line; setting 09:00→17:00 stores exactly `09:00-17:00`; reopening round-trips it into the two controls; and clearing both inputs stores an empty value rather than the string `"-"`, which is the obvious way for this to go wrong.
+
+**Done when:**
+- [ ] Working hours are picked, not typed, on all four forms
+- [ ] The stored format is canonical `HH:MM-HH:MM` and round-trips
+- [ ] Legacy unparseable values are shown, not silently destroyed
+- [ ] No schema change, no migration
+- [ ] Diff confined to the four Scope files
 
 ---
 
 ### TJ-009f — Upload identification documents
 
-- **Status:** BLOCKED — needs the user's go-ahead for a schema change. Do not execute against this ID.
-- **Why:** TJ-009 §1, unchanged by this pass. There is no model for employee documents; `User` carries only `pictureUrl`. The storage half already works — `POST /api/upload` passes non-images through untouched and keeps the extension, and `patient-files` is already in `ALLOWED_FOLDERS` — so what is missing is a table and a UI.
-- **The blocker:** there is no `prisma/migrations/` directory, so any schema change here is `prisma db push` straight into the production database with no down path. That needs the user's explicit go-ahead, and it is worth pairing with the same question for TJ-011 §1 rather than asking twice. Related, and the reason this should not be rushed: nothing in the app ever deletes an uploaded file, and the client holds only the Supabase anon key — see the storage-leak note at the bottom of this file.
+- **Status:** BLOCKED — needs the user's explicit go-ahead for a schema change. **Planned but deliberately NOT dispatched.** Do not execute against this ID.
+- **Why:** TJ-009 §1. There is no model for employee documents; `User` carries only `pictureUrl` (`schema.prisma:79`). The storage half already works — `POST /api/upload` passes non-images through untouched and keeps the extension, and `patient-files` is already in `ALLOWED_FOLDERS` — so what is missing is a table and a UI.
+
+**Planning pass:** 2026-08-15 — read `prisma/schema.prisma` in full, `src/app/api/upload/route.ts`, and the `PatientFile` model that is the obvious template (`schema.prisma:112-122`: `fileName`, `filePath`, `fileType`, `fileSize`, `uploadedAt`, plus an `onDelete: Cascade` back to its owner). The design is therefore settled and small — an `EmployeeFile` model mirroring `PatientFile` with `userId String` and `user User @relation(..., onDelete: Cascade)`, a `POST`/`GET`/`DELETE` under `api/employees/[id]/files`, and a Files section on the employee edit surface.
+
+**Why this one is not being dispatched with the others.** Everything above is buildable today. The blocker is not design, it is the migration path: **there is no `prisma/migrations/` directory**, so the schema change reaches the live database only through `prisma db push`, which applies directly with no down migration and no review step. That is a hard-to-reverse action against a production database, and it is not mine to assume — the user's standing note that the *data* is disposable test data is not the same as authorising a *schema* push. The other five splits were planned under stated assumptions because a wrong assumption there costs a string or a re-edit; a wrong assumption here costs a database.
+
+**What is needed to unblock, in one answer:** go-ahead to run `prisma db push` against the live database for this model. Worth deciding once for both this and **TJ-011 §1** (patient file uploads), which needs no schema change at all and is the better first move — `PatientFile` already exists, so that task is pure endpoint-plus-button and proves the whole upload flow before any schema is touched.
+
+**Also relevant before this ships, and it is not a detail:** nothing in the app ever deletes an uploaded file and the client holds only the Supabase **anon** key, so every upload is permanently orphaned when replaced. Shipping employee documents multiplies an existing storage leak — see the note at the bottom of this file. Worth fixing the leak first, or at least filing it, rather than adding a second source of it.
 
 ---
 
 ### TJ-009g — Hard delete a doctor
 
-- **Status:** BLOCKED — needs a decision on RESTRICT-ed children. Do not execute against this ID.
+- **Status:** PLANNED — design settled, **anchors pinned at dispatch**. Dispatch last, branch `feat/hard-delete-doctor` cut from TJ-009e's branch. Must not land before TJ-009c.
 - **Why:** TJ-009 §7's hard half. `DELETE /api/employees/doctors/[id]` sets `status: "RESIGNED"` (`doctors/[id]/route.ts:96-99`) while the button that calls it says *Delete*. Nothing in this application has ever removed a `User` row.
-- **The blocker:** `Reservation_doctorId_fkey` and `Note_doctorId_fkey` are both **RESTRICT**, so a doctor who has ever been booked cannot be deleted until someone decides whether those sessions are reassigned to another doctor, destroyed with the doctor, or whether the delete simply refuses with an explanation. That is a product decision and it is the same one TJ-011 §3 and TJ-012 need in their own shapes. Sequencing note: this must land **after** TJ-009c, because a real delete sitting next to a button already labelled *Delete* is how someone destroys a doctor while intending to resign them.
+
+**Planning pass:** 2026-08-15 — read `prisma/schema.prisma` relations in full and both doctor endpoints. Confirmed the referential actions, which decide the whole shape of this task: `Reservation.doctor` (`schema.prisma:171`) and `Note.doctor` (`schema.prisma:202`) are both required relations with no `onDelete`, so Prisma applies **Restrict** — the database itself refuses to delete a doctor who has ever been booked or noted. `DoctorProfile.userId` is **optional** with no `onDelete`, so it defaults to **SetNull**: deleting a doctor silently unlinks their public profile rather than blocking, and leaves the profile alive and publishable. That last one is not in the original capture and is the trap in this task.
+
+**Decision taken (assumption) — the conservative reading, and the only one that cannot destroy clinical records.** A hard delete is offered **only** for a doctor with zero reservations and zero notes. Where either exists, the delete is refused with a count and an explanation, and the admin is pointed at Resign instead. Reservations are **never** reassigned and **never** cascade-deleted: a physiotherapy session is a clinical record, reassigning it would falsify who treated the patient, and deleting it would destroy history the clinic may be required to keep. If the user later wants reassignment, that is a separate decision and a separate task — this one is deliberately the safe subset, and it still solves the real case, which is removing a mistakenly-created account.
+
+**The `DoctorProfile` loose end must be handled explicitly, not left to the default.** A doctor eligible for hard delete may still have a linked public profile; `SetNull` would leave it orphaned on the public site. The delete therefore refuses if a linked `DoctorProfile` exists, naming it, and directs the admin to remove the profile first (TJ-013's territory).
+
+**Scope — touch only these:** `src/app/api/employees/doctors/[id]/route.ts`, `src/app/admin/employees/doctors/page.tsx`.
+
+**Do not touch:** the schema — the RESTRICT behaviour is load-bearing here and must not be relaxed to CASCADE to make the feature easier. No secretary file: TJ-010 §1 is the genuinely unblocked hard delete (a secretary has no inbound foreign keys at all) and is its own task.
+
+**Approach:** extend the existing `DELETE` with a `?hard=true` query parameter rather than adding a route, so the soft path stays exactly as it is. The handler counts `reservations` and `notes` and checks `doctorProfile` before touching anything, and returns **409** with the specific blocker — `{ error: "Cannot delete: this doctor has 12 reservations and 3 notes. Resign them instead." }`. Only a doctor clean on all three is removed with `prisma.user.delete`. In the UI the button lives on **Archived** rows only, is labelled **Delete permanently**, and requires a typed confirmation of the doctor's name — this is the one irreversible action in the admin area and a single `confirm()` is not enough friction for it.
+
+**Verification:** build; no new eslint problems. **Runtime deferred** — record, and note the negative cases are the important ones: a doctor with reservations returns 409 and is **still present** afterwards; a doctor with a linked profile returns 409; a clean doctor is removed and disappears from both filters; and `?hard=true` omitted still performs the old soft delete unchanged. Test the refusals against a doctor that actually has reservations — the live database has exactly one — rather than trusting the count query.
+
+**Done when:**
+- [ ] A doctor with any reservation, note, or linked profile cannot be hard-deleted, and is told why
+- [ ] A clean doctor can be, from the Archived view, behind a typed confirmation
+- [ ] The existing soft delete is byte-for-byte unchanged in behaviour
+- [ ] No clinical record is ever reassigned or destroyed
+- [ ] Diff confined to the two Scope files
 
 ---
 
