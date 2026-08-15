@@ -57,6 +57,10 @@ export default function DoctorsPage() {
     const [hoursFrom, setHoursFrom] = useState("");
     const [hoursTo, setHoursTo] = useState("");
     const [legacyHours, setLegacyHours] = useState("");
+    const [deleteTarget, setDeleteTarget] = useState<Doctor | null>(null);
+    const [deleteConfirm, setDeleteConfirm] = useState("");
+    const [deleteError, setDeleteError] = useState("");
+    const [deleting, setDeleting] = useState(false);
 
     const fetchDoctors = useCallback(async () => {
         const res = await fetch("/api/employees/doctors");
@@ -190,6 +194,29 @@ export default function DoctorsPage() {
         fetchDoctors();
     };
 
+    const openDelete = (doc: Doctor) => {
+        setDeleteTarget(doc);
+        setDeleteConfirm("");
+        setDeleteError("");
+    };
+
+    const handleHardDelete = async () => {
+        if (!deleteTarget) return;
+        setDeleting(true);
+        setDeleteError("");
+        const res = await fetch(`/api/employees/doctors/${deleteTarget.id}?hard=true`, {
+            method: "DELETE",
+        });
+        setDeleting(false);
+        if (!res.ok) {
+            const data = await res.json().catch(() => ({}));
+            setDeleteError(data.error || "Could not delete this doctor.");
+            return;
+        }
+        setDeleteTarget(null);
+        fetchDoctors();
+    };
+
     if (loading) {
         return <div style={{ color: "rgba(255,255,255,0.5)", padding: "2rem" }}>Loading...</div>;
     }
@@ -252,7 +279,10 @@ export default function DoctorsPage() {
                                         {doc.status === "ACTIVE" ? (
                                             <button className="btn-sm btn-delete" onClick={() => handleResign(doc.id)}>Resign</button>
                                         ) : (
-                                            <button className="btn-sm btn-edit" onClick={() => handleReEnrol(doc.id)}>Re-enrol</button>
+                                            <>
+                                                <button className="btn-sm btn-edit" onClick={() => handleReEnrol(doc.id)}>Re-enrol</button>
+                                                <button className="btn-sm btn-delete" onClick={() => openDelete(doc)}>Delete permanently</button>
+                                            </>
                                         )}
                                     </div>
                                 </td>
@@ -406,6 +436,37 @@ export default function DoctorsPage() {
                 </div>
             )}
 
+            {deleteTarget && (
+                <div className="modal-overlay" onClick={() => setDeleteTarget(null)}>
+                    <div className="modal-card modal-narrow" onClick={(e) => e.stopPropagation()}>
+                        <h2>Delete {deleteTarget.name}?</h2>
+                        <p className="delete-warning">
+                            This permanently removes the account and cannot be undone. It is refused if
+                            this doctor has any reservations, notes, or a linked public profile.
+                        </p>
+                        {deleteError && <div className="error-msg" role="alert">{deleteError}</div>}
+                        <div className="form-group">
+                            <label>Type <strong>{deleteTarget.name}</strong> to confirm</label>
+                            <input
+                                value={deleteConfirm}
+                                onChange={(e) => setDeleteConfirm(e.target.value)}
+                                autoFocus
+                            />
+                        </div>
+                        <div className="modal-actions">
+                            <button className="btn-secondary" onClick={() => setDeleteTarget(null)}>Cancel</button>
+                            <button
+                                className="btn-danger"
+                                onClick={handleHardDelete}
+                                disabled={deleting || deleteConfirm !== deleteTarget.name}
+                            >
+                                {deleting ? "Deleting…" : "Delete permanently"}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
             <style jsx>{`
         .page-header {
           display: flex; align-items: center; justify-content: space-between;
@@ -501,6 +562,15 @@ export default function DoctorsPage() {
         .color-swatch.selected { border-color: #fff; transform: scale(1.15); }
         .color-swatch:hover { transform: scale(1.1); }
         .modal-actions { display: flex; justify-content: flex-end; gap: 0.75rem; margin-top: 1.5rem; }
+        .modal-narrow { max-width: 420px; }
+        .delete-warning { font-size: 0.85rem; color: rgba(255,255,255,0.6); margin-bottom: 1rem; line-height: 1.5; }
+        .btn-danger {
+          background: #dc2626; color: #fff; border: none; border-radius: 10px;
+          padding: 0.6rem 1.25rem; font-size: 0.9rem; font-weight: 600;
+          cursor: pointer; font-family: inherit;
+        }
+        .btn-danger:hover:not(:disabled) { background: #b91c1c; }
+        .btn-danger:disabled { opacity: 0.5; cursor: not-allowed; }
         .error-msg {
           background: rgba(220,38,38,0.1); border: 1px solid rgba(220,38,38,0.2);
           color: #fca5a5; padding: 0.5rem 0.75rem; border-radius: var(--radius-sm, 2px);

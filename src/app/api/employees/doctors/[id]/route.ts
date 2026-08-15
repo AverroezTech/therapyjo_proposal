@@ -125,9 +125,11 @@ export async function PUT(
     return NextResponse.json({ id: doctor.id, name: doctor.name, message: "Doctor updated" });
 }
 
-// DELETE /api/employees/doctors/[id] — soft delete (set status to RESIGNED)
+// DELETE /api/employees/doctors/[id]
+//   default        → soft delete (set status to RESIGNED)
+//   ?hard=true     → permanent removal, refused if the doctor is referenced
 export async function DELETE(
-    _req: NextRequest,
+    req: NextRequest,
     { params }: { params: Promise<{ id: string }> }
 ) {
     const session = await auth();
@@ -136,12 +138,57 @@ export async function DELETE(
     }
 
     const { id } = await params;
+    const hard = req.nextUrl.searchParams.get("hard") === "true";
 
-    // Soft delete — set status to RESIGNED instead of permanent deletion
-    await prisma.user.update({
-        where: { id },
-        data: { status: "RESIGNED" },
+    if (!hard) {
+        // Soft delete — set status to RESIGNED instead of permanent deletion
+        await prisma.user.update({
+            where: { id },
+            data: { status: "RESIGNED" },
+        });
+
+        return NextResponse.json({ message: "Doctor marked as resigned" });
+    }
+
+    // Hard delete. Reservations and notes are RESTRICT at the database level and
+    // are clinical records besides — they are never reassigned and never cascade
+    // away with the doctor. DoctorProfile.userId is SET NULL, which would leave a
+    // live public profile silently unlinked, so that is refused too rather than
+    // left to the default.
+    const doctor = await prisma.user.findFirst({
+        where: { id, role: "DOCTOR" },
+        select: {
+            name: true,
+            _count: { select: { reservations: true, notes: true } },
+            doctorProfile: { select: { id: true } },
+        },
     });
 
-    return NextResponse.json({ message: "Doctor marked as resigned" });
+    if (!doctor) {
+        return NextResponse.json({ error: "Doctor not found" }, { status: 404 });
+    }
+
+    const blockers: string[] = [];
+    if (doctor._count.reservations > 0) {
+        blockers.push(`${doctor._count.reservations} reservation(s)`);
+    }
+    if (doctor._count.notes > 0) {
+        blockers.push(`${doctor._count.notes} note(s)`);
+    }
+    if (doctor.doctorProfile) {
+        blockers.push("a linked public profile");
+    }
+
+    if (blockers.length > 0) {
+        return NextResponse.json(
+            {
+                error: `Cannot delete ${doctor.name}: they have ${blockers.join(" and ")}. Resign them instead.`,
+            },
+            { status: 409 }
+        );
+    }
+
+    await prisma.user.delete({ where: { id } });
+
+    return NextResponse.json({ message: "Doctor deleted permanently" });
 }
