@@ -29,8 +29,8 @@ Two things that bear repeating here, because this is the file both agents open:
 | TJ-009 | Employees / doctors — reported issues | SPLIT — see TJ-009a … TJ-009g | — |
 | TJ-009a | Reveal and confirm passwords on the employee forms | DONE — merged `234d800` | `feat/employee-password-fields` |
 | TJ-009b | Re-authenticate the admin before changing an employee's password | REVIEW — verified, unmerged | `feat/admin-reauth-password-change` |
-| TJ-009c | Archive view and re-enrolment for resigned employees | READY — dispatch 2nd, vocabulary assumed | `feat/employee-archive-view` |
-| TJ-009d | One calendar colour per doctor | PLANNED — dispatch 3rd, colour rules assumed | `feat/unique-doctor-colours` |
+| TJ-009c | Archive view and re-enrolment for resigned employees | REVIEW — verified, unmerged | `feat/employee-archive-view` |
+| TJ-009d | One calendar colour per doctor | READY — dispatch 3rd, colour rules assumed | `feat/unique-doctor-colours` |
 | TJ-009e | Working hours as a selector | PLANNED — dispatch 4th, from/to pair assumed | `feat/working-hours-selector` |
 | TJ-009f | Upload identification documents | BLOCKED — planned, **not dispatched**: needs go-ahead for a production schema push | — |
 | TJ-009g | Hard delete a doctor | PLANNED — dispatch 5th, refuse-if-referenced assumed | `feat/hard-delete-doctor` |
@@ -2130,6 +2130,10 @@ Re-ran verification independently: `npm run build` **exit 0**, 49 static pages, 
 
 - **Status:** READY
 - **Branch:** `feat/employee-archive-view` — **cut from `feat/admin-reauth-password-change`, not from `master`.** That branch is unmerged (the visual review is deferred), so branching from `master` would silently drop TJ-009b's work.
+
+**Planner verification (static half):** 2026-08-15 — read the full `git diff feat/admin-reauth-password-change..feat/employee-archive-view`. **2 files, 121 insertions, 13 deletions, one commit `b75cb9f`, nothing outside Scope.** All 11 instructions applied verbatim. Checked the two places step 11 said this file diverges, because a blind repeat of steps 1–10 would have broken both: the secretaries `{sec.status === "ACTIVE" && (` guard was correctly converted to the `? :` form so archived rows now offer **Re-enrol** instead of nothing, and `colSpan={6}` was preserved rather than copied as `{7}` from the doctors file. Re-ran `npm run build`: **exit 0**. Both greps clean — `>Delete<` and `handleDelete` are gone from `src/app/admin/employees/` entirely, so the button that lied is no longer in the tree.
+
+**Still outstanding:** the runtime checks — a row moving between Active and Archived without a reload, the counts tracking, and above all **a re-enrolled account being able to sign in again**, which is the only check that proves the `status` round-trip reached the database rather than just the UI.
 - **Why:** TJ-009 §7, less the hard delete. Resigned staff sit mixed into the active list with a red badge, there is no archived view, and nothing re-enrols them — though re-enrolment needs **no API work at all**, since `PUT` already accepts `status` (`doctors/[id]/route.ts:64`, `secretaries/[id]/route.ts:61`) and `src/lib/auth.ts:36` lets the account sign in again the moment it reads `ACTIVE`. UI-only, across the two list pages.
 
 **Planning pass:** 2026-08-15 — read both employee list pages, both `[id]` routes, `src/lib/auth.ts`, and the two archive patterns the app already ships: `src/app/admin/blog/page.tsx:17-56` (in-page filter chips with counts, `FILTERS` + `statusFor` + a `useMemo` over the fetched rows) and `src/app/secretary/patients/archived/page.tsx` (a separate `/archived` route with a back link). Confirmed re-enrolment needs no endpoint work. Confirmed the two lists already diverge in *behaviour*, not just wording: `secretaries/page.tsx:134` hides its button once the row is `RESIGNED`, while the doctors list leaves *Delete* clickable on an already-resigned doctor where it is a silent no-op.
@@ -2289,7 +2293,8 @@ function statusFor(filter: (typeof FILTERS)[number]) {
 
 ### TJ-009d — One calendar colour per doctor
 
-- **Status:** PLANNED — design settled, **anchors pinned at dispatch**. Dispatch third, branch `feat/unique-doctor-colours` cut from TJ-009c's branch.
+- **Status:** READY
+- **Branch:** `feat/unique-doctor-colours` — **cut from `feat/employee-archive-view`, not from `master`.** The chain is unmerged while the visual review is deferred; branching from `master` would drop TJ-009b and TJ-009c.
 - **Why:** TJ-009 §2. `User.color` is a plain `String?` with no unique constraint, and both pickers offer all twelve swatches with no exclusion (`doctors/page.tsx` colour picker, `doctors/new/page.tsx:108-115`). Two doctors can share a colour, which makes the calendar unreadable at exactly the moment it matters — a busy day with both of them booked.
 
 **Planning pass:** 2026-08-15 — read both doctor form files, `src/app/api/employees/doctors/route.ts` (POST) and `.../doctors/[id]/route.ts` (PUT), and `prisma/schema.prisma:81`. Confirmed `color` is `String?` with no constraint and that neither endpoint validates it at all. Confirmed against the live database during the TJ-009a review that the two existing doctors hold `#6ee7b7` (RESIGNED) and `#fbbf24` (ACTIVE) — distinct, so nothing is broken today and this is prevention rather than repair.
@@ -2304,7 +2309,217 @@ function statusFor(filter: (typeof FILTERS)[number]) {
 
 **Approach:** the list page already holds every doctor in state, so the modal can exclude taken colours with no extra request. The `/new` page has no such list and must `GET /api/employees/doctors` to learn them — that endpoint already returns `color` and `status` for any signed-in user. Server-side, both POST and PUT reject a colour already held by a *different* `ACTIVE` doctor with **409** and `{ error: "That colour is already used by <name>" }`, so the rule survives a stale tab. The PUT check must exclude the doctor being edited, or saving a doctor without changing their colour would reject itself — **that is the regression to prove.**
 
-**Verification:** build; no new eslint problems. **Runtime deferred** — record: taken colours are unpickable in both forms; saving an unrelated field on an existing doctor does **not** trip the 409; a resigned doctor's colour is offered again; and a direct `POST` with a duplicate colour is refused even though the UI would not have allowed it.
+**Anchors verified mechanically 2026-08-15** against the tip of `feat/employee-archive-view`, `\r` stripped — each matches exactly once.
+
+**Shared literal — the 409 message.** Both endpoints return exactly:
+`{ error: "That colour is already used by " + holderName }` — build it with the holder's `name` read from the same query that detected the clash, so the admin is told *who* has it rather than just that it is taken.
+
+**Instructions — `src/app/admin/employees/doctors/page.tsx`:**
+
+1. Directly after the `visible` memo added by TJ-009c (the block ending `        [doctors, filter]\n    );`), add:
+```
+
+    // Colours held by ACTIVE doctors other than the one being edited. Resigned
+    // doctors release their colour — they are off the calendar, so reserving a
+    // swatch for them costs one of twelve and buys nothing.
+    const takenColors = useMemo(() => {
+        const t = doctors
+            .filter((d) => d.status === "ACTIVE" && d.id !== editingDoctor?.id && d.color)
+            .map((d) => d.color as string);
+        // Never let a full palette block the work — fall back to allowing reuse.
+        return t.length >= COLORS.length ? [] : t;
+    }, [doctors, editingDoctor]);
+
+    const paletteExhausted = useMemo(
+        () => doctors.filter((d) => d.status === "ACTIVE" && d.id !== editingDoctor?.id && d.color).length >= COLORS.length,
+        [doctors, editingDoctor]
+    );
+```
+2. Replace the colour picker block:
+```
+                        <div className="form-group">
+                            <label>Calendar Color</label>
+                            <div className="color-picker">
+                                {COLORS.map((c) => (
+                                    <button
+                                        key={c}
+                                        className={`color-swatch ${form.color === c ? "selected" : ""}`}
+                                        style={{ background: c }}
+                                        onClick={() => setForm({ ...form, color: c })}
+                                    />
+                                ))}
+                            </div>
+                        </div>
+```
+   with:
+```
+                        <div className="form-group">
+                            <label>Calendar Color</label>
+                            <div className="color-picker">
+                                {COLORS.map((c) => {
+                                    const taken = takenColors.includes(c);
+                                    return (
+                                        <button
+                                            key={c}
+                                            type="button"
+                                            disabled={taken}
+                                            title={taken ? "Already used by another doctor" : undefined}
+                                            className={`color-swatch ${form.color === c ? "selected" : ""}`}
+                                            style={{ background: c }}
+                                            onClick={() => setForm({ ...form, color: c })}
+                                        />
+                                    );
+                                })}
+                            </div>
+                            {paletteExhausted && (
+                                <span className="field-hint">Every colour is in use — this one will be shared with another doctor.</span>
+                            )}
+                        </div>
+```
+3. In the `<style jsx>` block, replace:
+```
+        .color-swatch {
+          width: 32px; height: 32px; border-radius: 8px; border: 2px solid transparent;
+          cursor: pointer; transition: transform 0.15s;
+        }
+```
+   with:
+```
+        .color-swatch {
+          width: 32px; height: 32px; border-radius: 8px; border: 2px solid transparent;
+          cursor: pointer; transition: transform 0.15s;
+        }
+        .color-swatch:disabled { opacity: 0.25; cursor: not-allowed; }
+        .color-swatch:disabled:hover { transform: none; }
+```
+
+**Instructions — `src/app/admin/employees/doctors/new/page.tsx`:**
+
+4. Replace `import { useState, useRef } from "react";` with:
+   `import { useState, useRef, useEffect, useMemo } from "react";`
+5. Directly after the line `    const [showPassword, setShowPassword] = useState(false);`, add:
+```
+    const [takenColors, setTakenColors] = useState<string[]>([]);
+
+    // This page has no doctor list of its own, so it asks for one. The endpoint
+    // already returns `color` and `status` to any signed-in user.
+    useEffect(() => {
+        (async () => {
+            const res = await fetch("/api/employees/doctors");
+            if (!res.ok) return;
+            const data: { status: string; color: string | null }[] = await res.json();
+            setTakenColors(
+                data.filter((d) => d.status === "ACTIVE" && d.color).map((d) => d.color as string)
+            );
+        })();
+    }, []);
+
+    const paletteExhausted = takenColors.length >= COLORS.length;
+    const blockedColors = useMemo(
+        () => (paletteExhausted ? [] : takenColors),
+        [paletteExhausted, takenColors]
+    );
+```
+6. Replace the colour picker block:
+```
+                        <div className="color-picker">
+                            {COLORS.map((c) => (
+                                <button
+                                    key={c}
+                                    className={`color-swatch ${form.color === c ? "selected" : ""}`}
+                                    style={{ background: c }}
+                                    onClick={() => setForm({ ...form, color: c })}
+                                />
+                            ))}
+                        </div>
+```
+   with:
+```
+                        <div className="color-picker">
+                            {COLORS.map((c) => {
+                                const taken = blockedColors.includes(c);
+                                return (
+                                    <button
+                                        key={c}
+                                        type="button"
+                                        disabled={taken}
+                                        title={taken ? "Already used by another doctor" : undefined}
+                                        className={`color-swatch ${form.color === c ? "selected" : ""}`}
+                                        style={{ background: c }}
+                                        onClick={() => setForm({ ...form, color: c })}
+                                    />
+                                );
+                            })}
+                        </div>
+                        {paletteExhausted && (
+                            <p className="upload-hint">Every colour is in use — this one will be shared.</p>
+                        )}
+```
+7. In the `<style jsx>` block, replace:
+```
+                .color-swatch {
+                    width: 100%; aspect-ratio: 1; border-radius: 8px; border: 2px solid transparent;
+                    cursor: pointer; transition: transform 0.15s;
+                }
+```
+   with:
+```
+                .color-swatch {
+                    width: 100%; aspect-ratio: 1; border-radius: 8px; border: 2px solid transparent;
+                    cursor: pointer; transition: transform 0.15s;
+                }
+                .color-swatch:disabled { opacity: 0.25; cursor: not-allowed; }
+                .color-swatch:disabled:hover { transform: none; }
+```
+   **Note:** the default colour is `COLORS[0]`, which may itself be taken. The server is the backstop — do not add logic that silently reassigns the default, because a silent reassignment is worse than a clear 409.
+
+**Instructions — `src/app/api/employees/doctors/route.ts` (POST):**
+
+8. Directly after the closing `}` of the `// Check if username is taken` block — that is, after the `if (existing) { … }` block and before `    const passwordHash = await bcrypt.hash(password, 12);` — add:
+```
+
+    // One calendar colour per ACTIVE doctor. Resigned doctors release theirs.
+    if (color) {
+        const clash = await prisma.user.findFirst({
+            where: { role: "DOCTOR", status: "ACTIVE", color },
+            select: { name: true },
+        });
+        if (clash) {
+            return NextResponse.json(
+                { error: `That colour is already used by ${clash.name}` },
+                { status: 409 }
+            );
+        }
+    }
+```
+
+**Instructions — `src/app/api/employees/doctors/[id]/route.ts` (PUT):**
+
+9. Replace the single line
+   `    if (color !== undefined) updateData.color = color;`
+   with:
+```
+    if (color !== undefined) {
+        // Exclude the doctor being edited, or saving any other field would
+        // reject the colour they already hold.
+        if (color) {
+            const clash = await prisma.user.findFirst({
+                where: { role: "DOCTOR", status: "ACTIVE", color, id: { not: id } },
+                select: { name: true },
+            });
+            if (clash) {
+                return NextResponse.json(
+                    { error: `That colour is already used by ${clash.name}` },
+                    { status: 409 }
+                );
+            }
+        }
+        updateData.color = color;
+    }
+```
+   **`id: { not: id }` is the whole task.** Without it, opening a doctor and saving a name change would be refused because their own colour "clashes" with themselves. That is the regression to prove.
+
+**Verification:** build; no new eslint problems (baseline against `feat/employee-archive-view`, **not** `master`); `grep -n "id: { not: id }" src/app/api/employees/doctors/\[id\]/route.ts` returns exactly one hit. **Runtime deferred** — record: taken colours are unpickable in both forms; **saving an unrelated field on an existing doctor does not trip the 409** (the self-exclusion case); a resigned doctor's colour is offered again; and a direct `POST` with a duplicate colour is refused even though the UI would not have allowed it.
 
 **Done when:**
 - [ ] No two ACTIVE doctors can hold the same colour, through the UI or the API
@@ -2439,6 +2654,7 @@ Per-weekday hours is genuinely what a clinic rota needs, and it is *not* what th
 
 Findings reported by the executor, or surfaced during a pass, that fall outside the scope of the task that turned them up. The planner triages these into tasks. **The executor does not write here** — it reports in conversation and the planner records.
 
+- **`tasks.md` lives on `master`, so editing it while a task branch is checked out silently loses work — and it looks like the edit simply vanished.** Hit while stacking TJ-009d on the TJ-009c chain: `tasks.md` was committed to `master`, then a task branch was checked out (which reverted the file to the branch's older copy, since the chain does not contain the `master` commit), then the next task's instructions were written onto that stale copy. Nothing warned; the file on disk just quietly lacked the previous two verification blocks, and the next `Edit` failed with "string not found" against text that unambiguously existed on `master`. **Recovering was easy only because the two edit sets were in different task sections** — copy the working file aside, `git checkout -- tasks.md` to clean the branch, return to `master`, and re-apply. The rule that avoids it entirely: **plan and pin anchors while on the task branch, but make every `tasks.md` edit on `master`.** Reading a branch's files and writing the planner's file are two different operations and must not be interleaved on one checkout. (Found while pinning TJ-009d.)
 - **A component's layout can be reviewed without ever logging in, by lifting its CSS and markup into a static harness — and it is worth doing even when the real page is reachable.** TJ-009a's visual review was locked behind an admin login, but both of its named layout risks were pure geometry. Copying the `<style jsx>` rules and the JSX verbatim into a plain HTML file, serving it over HTTP (the browser extension refuses `file://`), and loading it in iframes at 320px and 1440px answered both questions with real computed styles and real media queries. **The part that made it evidence rather than a guess was the control:** the same harness built from the `master` version of the component, measured in the same run. That is what turned "the modal overflows at 320px" from a blocker into a proven pre-existing condition — both sides overflowed by exactly 123px. A harness without a control only tells you the absolute number, which is the number you cannot interpret. Note the honest limit: this proves CSS geometry, not that the component renders with real data or that its handlers fire. (Found during the TJ-009a visual review.)
 - **The admin edit modals have never fitted a 320px screen, and it is the same root cause as the navbar note below.** `.form-grid` in both `employees/doctors/page.tsx` and `employees/secretaries/page.tsx` is a hard `grid-template-columns: 1fr 1fr` with no media query, so the card's content is 443px wide inside a 320px card — 123px clipped, with an inner horizontal scrollbar. Measured on `master`, so it predates the queue and TJ-009a neither caused nor worsened it. The `/new` pages do have a `@media (max-width: 640px)` block that collapses `.field-row`; the modals were simply never given one. **Fold this into the same task as the navbar overflow** — one 320px pass over the admin area, rather than a media query bolted onto whichever task happens to touch a modal next. (Found during the TJ-009a visual review.)
 - **`{formError && …}` is indented four spaces too deep in both modals, and it is my spec's fault, not the executor's.** TJ-009a step 6 quoted the line inside a numbered-list code block, so the list's own indent was carried into the literal and the executor applied it faithfully — which is exactly the behaviour to want from an executor. Whitespace only; JSX and output are unaffected. **Deliberately not amended during review**, on the TJ-008b precedent that quietly editing verified code is how a diff stops matching its task. TJ-009b rewrites this exact block, so fix it there. The transferable lesson for writing tasks: **a code literal nested inside a numbered list inherits the list indent — put anchor-sensitive blocks at the left margin, or state the exact column.** (Found during the TJ-009a verification.)
