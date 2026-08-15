@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
+import { removeUpload } from "@/lib/uploads";
 
 // GET /api/patients/[id] — single patient with intake + reservations
 export async function GET(
@@ -61,6 +62,18 @@ export async function PUT(
     const body = await req.json();
     const { name, phone1, phone2, pictureUrl } = body;
 
+    // Read the previous picture before the write — prisma.update returns the
+    // new row and the old URL is gone after it. Only when the picture is in
+    // play, so ordinary edits cost no extra query.
+    let previousPicture: string | null = null;
+    if (pictureUrl !== undefined) {
+        const before = await prisma.patient.findUnique({
+            where: { id: patientId },
+            select: { pictureUrl: true },
+        });
+        previousPicture = before?.pictureUrl ?? null;
+    }
+
     const patient = await prisma.patient.update({
         where: { id: patientId },
         data: {
@@ -70,6 +83,12 @@ export async function PUT(
             ...(pictureUrl !== undefined && { pictureUrl }),
         },
     });
+
+    // The form re-posts the current pictureUrl on every save, so the
+    // inequality check is what stops a rename from deleting a live photo.
+    if (previousPicture && previousPicture !== pictureUrl) {
+        await removeUpload(previousPicture);
+    }
 
     return NextResponse.json(patient);
 }

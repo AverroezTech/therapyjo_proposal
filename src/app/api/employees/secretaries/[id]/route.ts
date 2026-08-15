@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
+import { removeUpload } from "@/lib/uploads";
 import bcrypt from "bcryptjs";
 
 // GET /api/employees/secretaries/[id]
@@ -57,7 +58,19 @@ export async function PUT(
     if (email !== undefined) updateData.email = email;
     if (phone !== undefined) updateData.phone = phone;
     if (workingHours !== undefined) updateData.workingHours = workingHours;
-    if (pictureUrl !== undefined) updateData.pictureUrl = pictureUrl;
+    // prisma.update returns the new row, not the old one, so the previous
+    // picture has to be read before the write or it is unrecoverable. Read it
+    // only when the picture is actually in play, so that renames and phone
+    // edits cost no extra query.
+    let previousPicture: string | null = null;
+    if (pictureUrl !== undefined) {
+        const before = await prisma.user.findUnique({
+            where: { id },
+            select: { pictureUrl: true },
+        });
+        previousPicture = before?.pictureUrl ?? null;
+        updateData.pictureUrl = pictureUrl;
+    }
     if (status !== undefined) updateData.status = status;
     if (password) {
         if (password.length < 8) {
@@ -102,6 +115,15 @@ export async function PUT(
         where: { id },
         data: updateData,
     });
+
+    // Only after the row is safely updated, and only when the value genuinely
+    // changed. These forms re-post the current pictureUrl on every save, so
+    // without the inequality check an ordinary rename would delete the photo
+    // the row still points at. removeUpload never throws: a storage failure
+    // leaks an object and logs, it does not fail this request.
+    if (previousPicture && previousPicture !== pictureUrl) {
+        await removeUpload(previousPicture);
+    }
 
     return NextResponse.json({ id: secretary.id, name: secretary.name, message: "Secretary updated" });
 }
