@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect, useMemo } from "react";
 import { useRouter } from "next/navigation";
 
 const COLORS = [
@@ -22,6 +22,26 @@ export default function NewDoctorPage() {
     const [saving, setSaving] = useState(false);
     const [error, setError] = useState("");
     const [showPassword, setShowPassword] = useState(false);
+    const [takenColors, setTakenColors] = useState<string[]>([]);
+
+    // This page has no doctor list of its own, so it asks for one. The endpoint
+    // already returns `color` and `status` to any signed-in user.
+    useEffect(() => {
+        (async () => {
+            const res = await fetch("/api/employees/doctors");
+            if (!res.ok) return;
+            const data: { status: string; color: string | null }[] = await res.json();
+            setTakenColors(
+                data.filter((d) => d.status === "ACTIVE" && d.color).map((d) => d.color as string)
+            );
+        })();
+    }, []);
+
+    const paletteExhausted = takenColors.length >= COLORS.length;
+    const blockedColors = useMemo(
+        () => (paletteExhausted ? [] : takenColors),
+        [paletteExhausted, takenColors]
+    );
 
     const handlePictureChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
@@ -112,15 +132,24 @@ export default function NewDoctorPage() {
                     <div className="color-card">
                         <h3>Calendar Color</h3>
                         <div className="color-picker">
-                            {COLORS.map((c) => (
-                                <button
-                                    key={c}
-                                    className={`color-swatch ${form.color === c ? "selected" : ""}`}
-                                    style={{ background: c }}
-                                    onClick={() => setForm({ ...form, color: c })}
-                                />
-                            ))}
+                            {COLORS.map((c) => {
+                                const taken = blockedColors.includes(c);
+                                return (
+                                    <button
+                                        key={c}
+                                        type="button"
+                                        disabled={taken}
+                                        title={taken ? "Already used by another doctor" : undefined}
+                                        className={`color-swatch ${form.color === c ? "selected" : ""}`}
+                                        style={{ background: c }}
+                                        onClick={() => setForm({ ...form, color: c })}
+                                    />
+                                );
+                            })}
                         </div>
+                        {paletteExhausted && (
+                            <p className="upload-hint">Every colour is in use — this one will be shared.</p>
+                        )}
                     </div>
                 </div>
 
@@ -243,6 +272,8 @@ export default function NewDoctorPage() {
                     width: 100%; aspect-ratio: 1; border-radius: 8px; border: 2px solid transparent;
                     cursor: pointer; transition: transform 0.15s;
                 }
+                .color-swatch:disabled { opacity: 0.25; cursor: not-allowed; }
+                .color-swatch:disabled:hover { transform: none; }
                 .color-swatch.selected { border-color: #fff; transform: scale(1.12); }
                 .color-swatch:hover { transform: scale(1.08); }
 

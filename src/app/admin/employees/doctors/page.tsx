@@ -73,6 +73,22 @@ export default function DoctorsPage() {
         [doctors, filter]
     );
 
+    // Colours held by ACTIVE doctors other than the one being edited. Resigned
+    // doctors release their colour — they are off the calendar, so reserving a
+    // swatch for them costs one of twelve and buys nothing.
+    const takenColors = useMemo(() => {
+        const t = doctors
+            .filter((d) => d.status === "ACTIVE" && d.id !== editingDoctor?.id && d.color)
+            .map((d) => d.color as string);
+        // Never let a full palette block the work — fall back to allowing reuse.
+        return t.length >= COLORS.length ? [] : t;
+    }, [doctors, editingDoctor]);
+
+    const paletteExhausted = useMemo(
+        () => doctors.filter((d) => d.status === "ACTIVE" && d.id !== editingDoctor?.id && d.color).length >= COLORS.length,
+        [doctors, editingDoctor]
+    );
+
     const openAdd = () => {
         setEditingDoctor(null);
         setForm({ name: "", email: "", phone: "", workingHours: "", username: "", password: "", confirmPassword: "", adminPassword: "", color: COLORS[0] });
@@ -324,15 +340,24 @@ export default function DoctorsPage() {
                         <div className="form-group">
                             <label>Calendar Color</label>
                             <div className="color-picker">
-                                {COLORS.map((c) => (
-                                    <button
-                                        key={c}
-                                        className={`color-swatch ${form.color === c ? "selected" : ""}`}
-                                        style={{ background: c }}
-                                        onClick={() => setForm({ ...form, color: c })}
-                                    />
-                                ))}
+                                {COLORS.map((c) => {
+                                    const taken = takenColors.includes(c);
+                                    return (
+                                        <button
+                                            key={c}
+                                            type="button"
+                                            disabled={taken}
+                                            title={taken ? "Already used by another doctor" : undefined}
+                                            className={`color-swatch ${form.color === c ? "selected" : ""}`}
+                                            style={{ background: c }}
+                                            onClick={() => setForm({ ...form, color: c })}
+                                        />
+                                    );
+                                })}
                             </div>
+                            {paletteExhausted && (
+                                <span className="field-hint">Every colour is in use — this one will be shared with another doctor.</span>
+                            )}
                         </div>
 
                         <div className="modal-actions">
@@ -436,6 +461,8 @@ export default function DoctorsPage() {
           width: 32px; height: 32px; border-radius: 8px; border: 2px solid transparent;
           cursor: pointer; transition: transform 0.15s;
         }
+        .color-swatch:disabled { opacity: 0.25; cursor: not-allowed; }
+        .color-swatch:disabled:hover { transform: none; }
         .color-swatch.selected { border-color: #fff; transform: scale(1.15); }
         .color-swatch:hover { transform: scale(1.1); }
         .modal-actions { display: flex; justify-content: flex-end; gap: 0.75rem; margin-top: 1.5rem; }

@@ -63,6 +63,20 @@ export async function POST(req: NextRequest) {
         );
     }
 
+    // One calendar colour per ACTIVE doctor. Resigned doctors release theirs.
+    if (color) {
+        const clash = await prisma.user.findFirst({
+            where: { role: "DOCTOR", status: "ACTIVE", color },
+            select: { name: true },
+        });
+        if (clash) {
+            return NextResponse.json(
+                { error: `That colour is already used by ${clash.name}` },
+                { status: 409 }
+            );
+        }
+    }
+
     const passwordHash = await bcrypt.hash(password, 12);
 
     const doctor = await prisma.user.create({
