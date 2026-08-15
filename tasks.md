@@ -2757,7 +2757,43 @@ Currently: 9-7
 
 **Do not touch:** the modal in `doctors/page.tsx` — it edits an existing doctor whose colour is already theirs and is excluded from `takenColors`, so it has no equivalent bug. No API change: the server-side 409 is correct and stays as the backstop.
 
-**Instructions:** once `takenColors` has loaded, if the currently selected `form.color` is in `blockedColors`, move the selection to the first colour that is not. Do this in the same `useEffect` that fetches the doctor list, so it happens before the admin can interact, and only when the current selection is unavailable — never override a colour the admin has actively clicked. If every colour is taken, `blockedColors` is already `[]` and nothing moves.
+**Anchor verified mechanically 2026-08-15** against `master` — matches exactly once.
+
+**Instructions:**
+
+1. Replace this block:
+```
+            const data: { status: string; color: string | null }[] = await res.json();
+            setTakenColors(
+                data.filter((d) => d.status === "ACTIVE" && d.color).map((d) => d.color as string)
+            );
+```
+   with:
+```
+            const data: { status: string; color: string | null }[] = await res.json();
+            const taken = data
+                .filter((d) => d.status === "ACTIVE" && d.color)
+                .map((d) => d.color as string);
+            setTakenColors(taken);
+
+            // The form initialises to COLORS[0], which may already be taken —
+            // leaving it selected means an untouched submit is refused with a
+            // 409 naming a colour the admin never chose. Move to the first free
+            // swatch instead. This runs once on mount, before the admin can
+            // interact, and the functional update only replaces a colour that
+            // is actually unavailable — a deliberate pick is never overridden.
+            // When every colour is taken there is no free one to move to, so
+            // the selection stays and the server stays the backstop.
+            if (taken.length < COLORS.length) {
+                setForm((f) =>
+                    taken.includes(f.color)
+                        ? { ...f, color: COLORS.find((c) => !taken.includes(c)) as string }
+                        : f
+                );
+            }
+```
+
+**Why the functional `setForm((f) => …)` and not `setForm({ ...form, … })`:** the effect has `[]` deps and would close over the initial `form`, so the spread form would silently discard anything typed before the fetch resolved. This is the one place in the file where that distinction matters.
 
 **Verification:** build; no new eslint problems. **Runtime:** with `#6ee7b7` held by an ACTIVE doctor, open the form and confirm the selected swatch is not a disabled one; confirm creating a doctor without touching the colour succeeds; confirm that actively picking a colour still sticks.
 
