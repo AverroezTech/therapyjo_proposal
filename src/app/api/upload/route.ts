@@ -13,7 +13,7 @@ export async function POST(req: NextRequest) {
     const formData = await req.formData();
     const file = formData.get("file") as File | null;
     const requestedFolder = (formData.get("folder") as string) || "general";
-    const ALLOWED_FOLDERS = ["general", "doctors", "secretaries", "patients", "patient-files", "blog", "doctor-profiles"];
+    const ALLOWED_FOLDERS = ["general", "doctors", "secretaries", "patients", "patient-files", "employee-files", "blog", "doctor-profiles"];
     const folder = ALLOWED_FOLDERS.includes(requestedFolder) ? requestedFolder : "general";
 
     if (!file) {
