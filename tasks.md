@@ -51,7 +51,7 @@ Two things that bear repeating here, because this is the file both agents open:
 | TJ-013 | Doctor profiles (public site) — hard delete | BACKLOG — needs a pass | — |
 | TJ-014 | Uploaded files are never removed from storage | SPLIT — measured (7/7 orphaned); see TJ-014a … TJ-014d | — |
 | TJ-014a | Give the app the ability to delete a storage object | OPEN — merged `b248edb`; degradation half proven, **removal half waits on the key** | `feat/storage-delete-capability` |
-| TJ-014b | Remove the replaced picture on the four hazard-free paths | READY — no key needed; degrades to a logged no-op | `feat/remove-replaced-pictures` |
+| TJ-014b | Remove the replaced picture on the four hazard-free paths | VISUAL REVIEW — `f94e71a`, **unmerged**; static checks re-verified, one runtime check owed on `/admin/doctors` | `feat/remove-replaced-pictures` |
 | TJ-014c | Linked translations share one cover image — guard before removing | BACKLOG — hazard proven in code, needs a pass to design the guard | — |
 | TJ-014d | Purge the existing orphans and prove the removal half | BLOCKED — **needs `SUPABASE_SERVICE_ROLE_KEY`** | — |
 
@@ -3527,8 +3527,27 @@ export async function removeUpload(value: string | null | undefined): Promise<bo
 
 ### TJ-014b — Remove the previous picture when one is replaced
 
-- **Status:** READY
-- **Branch:** `feat/remove-replaced-pictures` — cut from current `master`.
+- **Status:** VISUAL REVIEW — task commit `f94e71a` on `feat/remove-replaced-pictures`, **unmerged**. Planner verification complete and independently re-run; the runtime check needs a logged-in admin session and is the user's to perform. **Not merged, per the rule that a task whose visual review has not happened does not merge on the strength of a green build.**
+- **Branch:** `feat/remove-replaced-pictures` — cut from `master` at `8d1c349`.
+
+**Planner verification:** 2026-08-15 — read the full diff line by line: **4 files, 73 insertions, 2 deletions**, nothing outside Scope, `tasks.md` untouched. The executor implemented all six instructions verbatim, comments included. Re-ran every static check myself rather than accepting the report: `npm run build` exit **0**; `npx eslint` on the four Scope files exit **0**, no problems, matching the `master` baseline; `grep -rn "await removeUpload(" src/app/api/` returns **exactly 5** (1 on `master`, +4 here, one per Scope file); `SUPABASE_SERVICE_ROLE_KEY` still appears only in `src/lib/supabase.ts` and the `uploads.ts` warning string, with no `NEXT_PUBLIC_` form anywhere. **The executor's report was accurate in every particular.**
+
+**A sixth mismatch, and this one is mine alone — the code is right and my rationale for it was wrong.** The planning pass asserted that "**every one of these forms posts `pictureUrl` back unchanged when the user edits any other field**." I inferred that from the API shape and never opened the client. Having now read all four calling surfaces:
+
+| Route | What the client actually PUTs | Removal reachable from the UI today? |
+|---|---|---|
+| `employees/doctors/[id]` | re-enrol only — `{ status: "ACTIVE" }` | **No** — `pictureUrl` is never sent |
+| `employees/secretaries/[id]` | re-enrol only — `{ status: "ACTIVE" }` | **No** — `pictureUrl` is never sent |
+| `patients/[id]` | `infoForm` = `{ name, phone1, phone2 }` | **No** — `pictureUrl` is never sent |
+| `doctor-profiles/[id]` | `{ ...form, photo: photoUrl }`, and `admin/doctors/page.tsx:93` sets `let photoUrl = editing?.photo \|\| null` | **Yes** |
+
+**So the claim is true for exactly one of the four routes — and it is the one that matters.** The doctor-profile modal re-posts the current photo on every save, so editing only a name would, without the inequality guard, delete the photo the profile still displays. The guard is load-bearing there and correct. On the other three the new code is correct but **dormant**: those pictures are set at creation and there is no edit surface that sends the field. `toggleHidden` sends `{ hidden }` alone and is correctly skipped by the `photo !== undefined` half of the guard.
+
+**Two consequences, and the second matters more than the first:**
+1. **The runtime plan I wrote is only meaningful on the doctor-profiles surface.** On the other three, "save without touching the picture → no `[uploads]` line" passes trivially because the field is never sent, proving nothing about the guard. Corrected runtime steps below.
+2. **TJ-014b closes less of feeder #1 than the task claimed.** Replacement is live only on `DoctorProfile.photo`. **The inventory independently corroborates this** — the orphans found were `doctor-profiles/*.webp` and `general/*` objects, with no employee or patient picture among them. The other three paths are pre-wired for an edit UI that does not exist yet, which is cheap and correct, but they are not fixing anything today. **Feeder #1 is now fully closed for the only column it was ever open on.**
+
+This is the same failure as the five before it: **an expectation written without deriving it from the code in the same pass.** The pattern is specifically claims about *callers* — I read the four routes carefully and did not read the four things that call them.
 - **Why:** Replacement is feeder #1 of the three that fill the bucket, and it is the one that fires most often: every time an admin swaps a doctor's, secretary's or patient's photo, or a doctor profile's photo, the previous object is abandoned with nothing left pointing at it. TJ-014a built `removeUpload` and wired it into exactly one caller. This wires it into the four replacement paths that carry **no sharing hazard**, which is all of them except blog cover images (see TJ-014c).
 - **It does not need `SUPABASE_SERVICE_ROLE_KEY`.** With the key absent every call no-ops and logs; the saves behave exactly as they do today. When the key lands, these four paths start cleaning up with no further code change. This is the standing rule at the top of the file applied literally.
 
@@ -3692,17 +3711,19 @@ import { removeUpload } from "@/lib/uploads";
 - `npx eslint` on the four Scope files — no new problems against baseline.
 - `grep -rn "await removeUpload(" src/app/api/` returns **exactly 5** — the four added here plus the employee-file delete from TJ-014a. It returns **1** on `master` today, so the delta is 4, one per Scope file. (Grep the *call* form, not the bare name: a bare `grep -rn "removeUpload"` matches the import line too and returns 10, not 5. Baseline measured on `master` before writing this check rather than predicted — the four earlier grep miscounts in this file were all predicted counts.)
 - `grep -rn "SUPABASE_SERVICE_ROLE_KEY" src/` still shows it only in `src/lib/supabase.ts` and the warning string in `src/lib/uploads.ts` — this task adds no new reference to it.
-- **Runtime, for the planner — the executor runs the four static checks above and stops there.** These need a logged-in admin session and a live upload; the executor reports them as not run rather than claiming them, exactly as it did on TJ-014a. **The negative case is the one that matters.** With the key still unset, on each of the four surfaces:
-  - **Save without touching the picture** (rename a doctor, change a phone) → 200, the picture still renders afterwards, and **no `[uploads]` line appears in the server log at all**. If a warning naming the current picture's path appears, the inequality guard is wrong and the code would be destroying live photos once the key lands. This is the check the task exists to pass.
-  - **Replace the picture** → 200, new image renders, and the log shows exactly one `[uploads] SUPABASE_SERVICE_ROLE_KEY unset — leaving <old path> in storage`, naming the **old** path, not the new one.
-- No visual regression: the four admin surfaces still save and still render their images.
+- **Runtime — corrected 2026-08-15 after reading the calling surfaces; supersedes the version dispatched to the executor.** The executor runs the four static checks above and stops; these need a logged-in admin session and a live upload. **Run them on `/admin/doctors` — the doctor-profile modal — because that is the only one of the four surfaces where the client actually sends the picture field.** With the key still unset:
+  - **Open a profile that has a photo, change only the name, save** → 200, the photo still renders, and **no `[uploads]` line appears in the server log at all.** This is the whole point of the task. The modal re-posts the current photo on every save (`let photoUrl = editing?.photo || null`), so if the inequality guard were wrong this save would delete a live photo the moment the key lands — and would already log a warning naming that photo's path today. **A warning here is a failure.**
+  - **Replace the photo, save** → 200, the new image renders, and the log shows exactly one `[uploads] SUPABASE_SERVICE_ROLE_KEY unset — leaving doctor-profiles/<old file> in storage`, naming the **old** path, not the new one.
+  - **Toggle a profile's hidden flag** → no `[uploads]` line; that request sends `{ hidden }` with no `photo`, and the `photo !== undefined` half of the guard must skip it.
+  - The employee and patient surfaces have **no edit form that sends the picture field**, so there is nothing to exercise there and a clean log on them proves nothing. Do not record them as passing checks.
+- No visual regression: the doctor-profiles admin surface still saves and still renders its images.
 
 **Done when:**
-- [ ] All four replacement paths remove the previous object
-- [ ] A save that does not change the picture removes nothing — proven, not assumed
-- [ ] It degrades to a logged no-op with the key unset, never a 500
-- [ ] Blog cover images are untouched, and TJ-014c holds the reason
-- [ ] Diff confined to the four Scope files
+- [x] All four replacement paths remove the previous object — code in place on all four; **live on `doctor-profiles` only**, the other three dormant until an edit UI sends the field
+- [ ] A save that does not change the picture removes nothing — **owed, and it is the one check that must be run on `/admin/doctors`**, not assumed
+- [x] It degrades to a logged no-op with the key unset, never a 500 — inherited from TJ-014a's `removeUpload`, which never throws; proven live there
+- [x] Blog cover images are untouched, and TJ-014c holds the reason
+- [x] Diff confined to the four Scope files — 4 files, 73 insertions, 2 deletions, verified
 
 ---
 
