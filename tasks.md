@@ -41,6 +41,7 @@ Two things that bear repeating here, because this is the file both agents open:
 | TJ-011 | Patients — reported issues | BACKLOG — needs a pass, splits further | — |
 | TJ-012 | Blog — hard delete a post | BACKLOG — needs a pass | — |
 | TJ-013 | Doctor profiles (public site) — hard delete | BACKLOG — needs a pass | — |
+| TJ-014 | Uploaded files are never removed from storage | BLOCKED — needs a Supabase service-role key | `feat/purge-orphaned-uploads` |
 
 ---
 
@@ -3253,6 +3254,65 @@ Both required typing a password, which is out of bounds for me, so the user ran 
 ### Database left exactly as found
 
 Both doctors back to `"9-7"`, `Test Delete` RESIGNED on `#6ee7b7`, `Test Delete2` ACTIVE on `#fbbf24`, one secretary RESIGNED. Every test mutation — a re-enrol, a resign, two colour changes and two working-hours writes — was reverted and then re-read to confirm. No account was created and none was deleted.
+
+---
+
+### TJ-014 — Uploaded files are never removed from storage
+
+- **Status:** BLOCKED — needs a Supabase **service-role key** in the environment. The analysis is complete and the design is settled; the app simply cannot delete an object with the key it currently holds.
+- **Branch:** `feat/purge-orphaned-uploads` (assigned; do not cut it until the blocker clears)
+- **Why:** **Every file this application has ever uploaded is still in Supabase Storage, and always will be.** Replace a doctor's photo and the old one stays. Replace a patient's and the old one stays. Delete a `PatientFile` or an `EmployeeFile` row and the row goes while the object stays. This is not a slow degradation to watch — it is unbounded growth in a bucket nobody prunes, on a clinic account, with patient documents in it.
+
+**Planning pass:** 2026-08-15 — read `src/lib/supabase.ts`, `src/app/api/upload/route.ts`, and every column in `prisma/schema.prisma` that stores an uploaded asset. Verified with `git grep` across all of `src/` that **nothing anywhere calls a storage `remove` or `delete`** — the leak is not a bug in one handler, it is a capability the application has never had.
+
+**The mechanism, and why it cannot be fixed by editing a handler.** `src/lib/supabase.ts` builds its client from `NEXT_PUBLIC_SUPABASE_ANON_KEY`. That key is `NEXT_PUBLIC_`, so it is compiled into the browser bundle by design, and an anon key is not permitted to delete from a bucket. **There is no code change that makes the current client able to delete.** Deletion needs a second, server-only client built from a service-role key.
+
+**Six columns hold uploaded assets** (`schema.prisma`):
+
+| column | line | what it holds |
+|---|---|---|
+| `User.pictureUrl` | 79 | employee photo — **public URL** |
+| `Patient.pictureUrl` | 116 | patient photo — **public URL** |
+| `PatientFile.filePath` | 101 | **storage path** |
+| `EmployeeFile.filePath` | 134 | **storage path** |
+| `BlogPost.coverImage` | 235 | cover image — **public URL** |
+| `DoctorProfile.photo` | 254 | profile photo — **public URL** |
+
+**The inconsistency in that table is the trap.** `POST /api/upload` returns both `url` and `path` (`upload/route.ts:69-70`), and the callers picked different ones: the `*File` models store the path, everything else stores the public URL (e.g. `doctors/new/page.tsx:97` assigns `data.url`). A delete needs the **path**, so four of the six columns require the path to be parsed back out of the URL by stripping the public-object prefix. Any implementation that assumes one shape will silently no-op on the other four.
+
+**Known orphans already on record:** three doctor-profile photos from the 2026-08-15 cleanup (`uploads/doctor-profiles/1786660147390-i6plxtpvr5.webp`, `…198903-44015a1rher.webp`, `…217456-if1l8fdlm5d.webp`), plus every photo ever replaced. The true count is unknown and **measuring it is part of this task, not a precondition for it**.
+
+**Three feeders, all live:**
+1. **Replacement** — any form that sets a new `pictureUrl` / `photo` / `coverImage` abandons the previous object.
+2. **Row deletion** — `PatientFile` and `EmployeeFile` rows can be removed (or cascade with their owner) while their objects stay. TJ-009f1 documents this in its own DELETE handler rather than hiding it.
+3. **Hard delete** — TJ-009g removes a `User` outright; `EmployeeFile` rows cascade, their objects do not. Proven live on 2026-08-15, the first hard delete this app ever performed.
+
+**What is needed to unblock, and it is one thing:** a Supabase **service-role key** added to the environment as `SUPABASE_SERVICE_ROLE_KEY`. Two hard constraints on it:
+- **It must not be prefixed `NEXT_PUBLIC_`.** That prefix ships the value to every browser, and a service-role key in a bundle is a full read/write compromise of the project's data.
+- It belongs only in `.env` (gitignored) and in the host's environment variables. Note the standing entry below: `GOOGLE_PLACES_API_KEY` already has to be set host-side after a deploy, so this is the second such item and they should be set together.
+
+**Scope when unblocked — expected to be four files:**
+- `src/lib/supabase.ts` — add a separate `supabaseAdmin` export, `import "server-only"` at the top so it can never be pulled into a client bundle, built from the service-role key.
+- A small helper — path-from-URL derivation plus a `removeUpload(pathOrUrl)` that tolerates both shapes and never throws into the caller's request.
+- The `PatientFile` / `EmployeeFile` delete paths.
+- The replacement paths for the four URL-storing columns.
+
+**Sequencing:** this should land **before** TJ-009f2 and TJ-011 §1, which each add a new upload surface. Adding two more feeders to an unpruned bucket and fixing it afterwards is strictly more work than fixing it first.
+
+**Do this in two stages, and measure before deleting.** A one-off inventory — list every object in `uploads/`, list every path referenced by the six columns, and diff — tells you the real size of the problem and produces the delete list. **Do not delete from that list without re-reading it at the moment of deletion**, the same pre-flight gate that the 2026-08-15 cleanup and TJ-006 both used: prove the object is unreferenced *now*, not when the list was written.
+
+**Verification when it is built:**
+- Uploading a replacement removes the previous object, confirmed by a storage listing rather than by the UI.
+- Deleting a `PatientFile` / `EmployeeFile` row removes its object.
+- **The negative case that matters:** an object still referenced by any row is **never** removed. Assert this deliberately — a purge that is slightly too eager destroys patient documents, which is far worse than the leak it fixes.
+- No service-role key appears in any client bundle: `grep -r "SERVICE_ROLE" .next/static/` returns nothing.
+
+**Done when:**
+- [ ] The app can delete a storage object at all
+- [ ] Replacement and row-deletion both remove the old object
+- [ ] A referenced object is never removed
+- [ ] The service-role key is server-only and provably absent from the client bundle
+- [ ] The existing orphans are inventoried, and cleared behind a re-checked pre-flight gate
 
 ---
 
