@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { useRouter } from "next/navigation";
 
 interface Secretary {
@@ -25,6 +25,12 @@ interface SecretaryForm {
     adminPassword: string;
 }
 
+const FILTERS = ["Active", "Archived"] as const;
+
+function statusFor(filter: (typeof FILTERS)[number]) {
+    return filter === "Archived" ? "RESIGNED" : "ACTIVE";
+}
+
 export default function SecretariesPage() {
     const router = useRouter();
     const [secretaries, setSecretaries] = useState<Secretary[]>([]);
@@ -37,6 +43,7 @@ export default function SecretariesPage() {
     });
     const [showPassword, setShowPassword] = useState(false);
     const [formError, setFormError] = useState("");
+    const [filter, setFilter] = useState<(typeof FILTERS)[number]>("Active");
 
     const fetchSecretaries = useCallback(async () => {
         const res = await fetch("/api/employees/secretaries");
@@ -46,6 +53,16 @@ export default function SecretariesPage() {
     }, []);
 
     useEffect(() => { fetchSecretaries(); }, [fetchSecretaries]);
+
+    const counts = useMemo(() => ({
+        Active: secretaries.filter((sec) => sec.status === "ACTIVE").length,
+        Archived: secretaries.filter((sec) => sec.status === "RESIGNED").length,
+    }), [secretaries]);
+
+    const visible = useMemo(
+        () => secretaries.filter((sec) => sec.status === statusFor(filter)),
+        [secretaries, filter]
+    );
 
     const openAdd = () => {
         setEditing(null);
@@ -123,8 +140,17 @@ export default function SecretariesPage() {
     };
 
     const handleResign = async (id: string) => {
-        if (!confirm("Mark this secretary as resigned? This is a soft delete.")) return;
+        if (!confirm("Resign this secretary? They move to Archived and can be re-enrolled later.")) return;
         await fetch(`/api/employees/secretaries/${id}`, { method: "DELETE" });
+        fetchSecretaries();
+    };
+
+    const handleReEnrol = async (id: string) => {
+        await fetch(`/api/employees/secretaries/${id}`, {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ status: "ACTIVE" }),
+        });
         fetchSecretaries();
     };
 
@@ -137,6 +163,18 @@ export default function SecretariesPage() {
             <div className="page-header">
                 <h1>Secretaries</h1>
                 <button className="btn-primary" onClick={() => router.push("/admin/employees/secretaries/new")}>+ Add Secretary</button>
+            </div>
+
+            <div className="filter-row">
+                {FILTERS.map((f) => (
+                    <button
+                        key={f}
+                        className={`chip ${filter === f ? "active" : ""}`}
+                        onClick={() => setFilter(f)}
+                    >
+                        {f} <span className="chip-count">{counts[f]}</span>
+                    </button>
+                ))}
             </div>
 
             <div className="table-container">
@@ -152,7 +190,7 @@ export default function SecretariesPage() {
                         </tr>
                     </thead>
                     <tbody>
-                        {secretaries.map((sec) => (
+                        {visible.map((sec) => (
                             <tr key={sec.id}>
                                 <td>
                                     <span className={`status-badge ${sec.status === "ACTIVE" ? "active" : "resigned"}`}>
@@ -166,15 +204,19 @@ export default function SecretariesPage() {
                                 <td>
                                     <div className="action-buttons">
                                         <button className="btn-sm btn-edit" onClick={() => openEdit(sec)}>Edit</button>
-                                        {sec.status === "ACTIVE" && (
+                                        {sec.status === "ACTIVE" ? (
                                             <button className="btn-sm btn-delete" onClick={() => handleResign(sec.id)}>Resign</button>
+                                        ) : (
+                                            <button className="btn-sm btn-edit" onClick={() => handleReEnrol(sec.id)}>Re-enrol</button>
                                         )}
                                     </div>
                                 </td>
                             </tr>
                         ))}
-                        {secretaries.length === 0 && (
-                            <tr><td colSpan={6} style={{ textAlign: "center", color: "rgba(255,255,255,0.4)" }}>No secretaries found</td></tr>
+                        {visible.length === 0 && (
+                            <tr><td colSpan={6} style={{ textAlign: "center", color: "rgba(255,255,255,0.4)" }}>
+                                {filter === "Archived" ? "No archived secretaries" : "No active secretaries"}
+                            </td></tr>
                         )}
                     </tbody>
                 </table>
@@ -277,6 +319,17 @@ export default function SecretariesPage() {
             <style jsx>{`
         .page-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 1.5rem; }
         .page-header h1 { font-size: 1.5rem; font-weight: 600; }
+        .filter-row { display: flex; gap: 0.5rem; flex-wrap: wrap; margin-bottom: 1.25rem; }
+        .chip {
+          background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1);
+          color: rgba(255,255,255,0.65); padding: 0.4rem 0.9rem; border-radius: 999px;
+          font-size: 0.8rem; font-weight: 600; cursor: pointer; font-family: inherit;
+          display: inline-flex; align-items: center; gap: 0.4rem; transition: all 0.15s;
+        }
+        .chip:hover { background: rgba(255,255,255,0.08); }
+        .chip.active { background: rgba(255,255,255,0.12); border-color: rgba(255,255,255,0.3); color: #fff; }
+        .chip-count { color: rgba(255,255,255,0.4); font-weight: 500; }
+        .chip.active .chip-count { color: rgba(255,255,255,0.7); }
         .btn-primary {
           background: linear-gradient(135deg, #059669, #10b981); color: #fff;
           border: none; border-radius: 10px; padding: 0.6rem 1.25rem;
