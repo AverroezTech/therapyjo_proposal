@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
+import { removeUpload } from "@/lib/uploads";
 import { canManageContent } from "@/lib/permissions";
 
 async function requireContentManager() {
@@ -49,6 +50,13 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
             archived: archived !== undefined ? Boolean(archived) : existing.archived,
         },
     });
+
+    // existing was already fetched for the 404 check above, so the previous
+    // photo is in hand at no extra cost. Same inequality guard as the other
+    // three: this form re-posts the current photo on every save.
+    if (existing.photo && photo !== undefined && photo !== existing.photo) {
+        await removeUpload(existing.photo);
+    }
 
     return NextResponse.json(profile);
 }
