@@ -32,7 +32,8 @@ Two things that bear repeating here, because this is the file both agents open:
 | TJ-009c | Archive view and re-enrolment for resigned employees | DONE — merged `2724893` | `feat/employee-archive-view` |
 | TJ-009d | One calendar colour per doctor | DONE — merged `4e6587e` | `feat/unique-doctor-colours` |
 | TJ-009e | Working hours as a selector | DONE — merged `423935d` | `feat/working-hours-selector` |
-| TJ-009f | Upload identification documents | BLOCKED — planned, **not dispatched**: needs go-ahead for a production schema push | — |
+| TJ-009h | New-doctor form defaults to a colour it will not accept | READY | `bugfix/default-doctor-colour` |
+| TJ-009f | Upload identification documents | SCHEMA DONE — merged `ade1a06`; endpoints + UI still to build | `feat/employee-documents` |
 | TJ-009g | Hard delete a doctor | DONE — merged `fe05f69` (success path still unproven) | `feat/hard-delete-doctor` |
 | TJ-010 | Employees / secretaries — reported issues | BACKLOG — needs a pass, splits further; its §3 is closed by TJ-009a | — |
 | TJ-011 | Patients — reported issues | BACKLOG — needs a pass, splits further | — |
@@ -2744,9 +2745,36 @@ Currently: 9-7
 
 ---
 
+### TJ-009h — The new-doctor form defaults to a colour it will not accept
+
+- **Status:** READY — small, self-contained, no decision needed.
+- **Branch:** `bugfix/default-doctor-colour`
+- **Why:** TJ-009d added server-side colour uniqueness but left `/admin/employees/doctors/new` initialising `color: COLORS[0]`. When `COLORS[0]` (`#6ee7b7`) is already held by an ACTIVE doctor, the form opens with that swatch **selected and simultaneously disabled**, and pressing *Create Doctor* without touching the colour sends a value the server refuses with 409 — naming a colour the admin never chose. **Proven in the browser 2026-08-15**, not inferred: `selectedIndex=0`, `selectedColour=#6ee7b7`, `selectedIsDisabled=true`, `disabledIndexes=[0, 2]`.
+
+**Planning pass:** 2026-08-15 — found during the TJ-009 visual review while checking why a doctor the user created had not appeared. **That turned out to be unrelated** — the user had not pressed Create — and the misattribution is worth recording: the defect was proven independently by reading the form's own state, which is why it survived the correction. The TJ-009d pass explicitly predicted this ("the default colour is `COLORS[0]`, which may itself be taken. The server is the backstop") and chose to leave it, reasoning that a silent reassignment is worse than a clear 409. **Half of that reasoning was wrong:** the 409 is not clear, because it names a colour the admin never picked. The distinction that matters is between *overriding a deliberate choice* — still wrong — and *choosing a sane initial default before the user has chosen anything*, which is just correct behaviour.
+
+**Scope — touch only this:** `src/app/admin/employees/doctors/new/page.tsx`.
+
+**Do not touch:** the modal in `doctors/page.tsx` — it edits an existing doctor whose colour is already theirs and is excluded from `takenColors`, so it has no equivalent bug. No API change: the server-side 409 is correct and stays as the backstop.
+
+**Instructions:** once `takenColors` has loaded, if the currently selected `form.color` is in `blockedColors`, move the selection to the first colour that is not. Do this in the same `useEffect` that fetches the doctor list, so it happens before the admin can interact, and only when the current selection is unavailable — never override a colour the admin has actively clicked. If every colour is taken, `blockedColors` is already `[]` and nothing moves.
+
+**Verification:** build; no new eslint problems. **Runtime:** with `#6ee7b7` held by an ACTIVE doctor, open the form and confirm the selected swatch is not a disabled one; confirm creating a doctor without touching the colour succeeds; confirm that actively picking a colour still sticks.
+
+**Done when:**
+- [ ] The form never opens with a disabled swatch selected
+- [ ] Creating a doctor without touching the colour succeeds
+- [ ] An actively chosen colour is never silently changed
+
+---
+
 ### TJ-009f — Upload identification documents
 
-- **Status:** BLOCKED — needs the user's explicit go-ahead for a schema change. **Planned but deliberately NOT dispatched.** Do not execute against this ID.
+- **Status:** SCHEMA DONE — the user authorised the push on 2026-08-15 conditional on no conflicts or errors; both were checked before applying. `EmployeeFile` is live in the database and merged to `master` as `ade1a06`. **The endpoints and UI are still to build** — this ID stays open until they do.
+
+**Schema push, 2026-08-15 — what was checked and in what order.** The condition attached to the authorisation was *no conflicts or errors*, so it was verified rather than hoped for. **First, drift, before editing anything:** `prisma migrate diff --from-config-datasource --to-schema` returned *"This is an empty migration"*, proving the live database was already an exact match for `schema.prisma` — had it drifted, a `db push` could have silently reconciled the difference in ways nobody chose. **Second, the generated SQL was read before it was applied:** one `CREATE TABLE "EmployeeFile"` and one `ADD CONSTRAINT` on that same new table. **No `DROP`, and no `ALTER` against any existing table.** Run without `--accept-data-loss`, so the command would refuse rather than destroy if it disagreed. **Afterwards:** the drift check is empty again, and every list endpoint still returns its rows — doctors 2, secretaries 1, patients 3, blog 7, doctor profiles 0, reservations 8 on 2026-08-15. Nothing was lost.
+
+**The table is inert until the feature lands**, which is the right order: an additive table that nothing reads costs nothing, whereas code shipped against a missing table is broken on arrival.
 - **Why:** TJ-009 §1. There is no model for employee documents; `User` carries only `pictureUrl` (`schema.prisma:79`). The storage half already works — `POST /api/upload` passes non-images through untouched and keeps the extension, and `patient-files` is already in `ALLOWED_FOLDERS` — so what is missing is a table and a UI.
 
 **Planning pass:** 2026-08-15 — read `prisma/schema.prisma` in full, `src/app/api/upload/route.ts`, and the `PatientFile` model that is the obvious template (`schema.prisma:112-122`: `fileName`, `filePath`, `fileType`, `fileSize`, `uploadedAt`, plus an `onDelete: Cascade` back to its owner). The design is therefore settled and small — an `EmployeeFile` model mirroring `PatientFile` with `userId String` and `user User @relation(..., onDelete: Cascade)`, a `POST`/`GET`/`DELETE` under `api/employees/[id]/files`, and a Files section on the employee edit surface.
