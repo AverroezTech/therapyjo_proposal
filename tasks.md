@@ -41,9 +41,9 @@ Two things that bear repeating here, because this is the file both agents open:
 | TJ-009d | One calendar colour per doctor | DONE — merged `4e6587e` | `feat/unique-doctor-colours` |
 | TJ-009e | Working hours as a selector | DONE — merged `423935d` | `feat/working-hours-selector` |
 | TJ-009h | New-doctor form defaults to a colour it will not accept | DONE — merged `f76e2e0` | `bugfix/default-doctor-colour` |
-| TJ-009f | Upload identification documents | SCHEMA DONE — merged `ade1a06`; split into f1 + f2 | `feat/employee-documents` |
+| TJ-009f | Upload identification documents | DONE — schema `ade1a06`, endpoints `9b339a8`, UI `cd9b015`; all three parts shipped | `feat/employee-documents` |
 | TJ-009f1 | Employee document endpoints | DONE — merged `9b339a8`; fully verified | `feat/employee-file-api` |
-| TJ-009f2 | Employee documents UI | VISUAL REVIEW — `47d3447`, verified, **needs a browser + a user sign-in** | `feat/employee-documents-ui` |
+| TJ-009f2 | Employee documents UI | DONE — merged `cd9b015`; round trip proven live on both modals | `feat/employee-documents-ui` |
 | TJ-009g | Hard delete a doctor | DONE — merged `fe05f69`; both paths proven | `feat/hard-delete-doctor` |
 | TJ-010 | Employees / secretaries — reported issues | BACKLOG — needs a pass, splits further; its §3 is closed by TJ-009a | — |
 | TJ-011 | Patients — reported issues | BACKLOG — needs a pass, splits further | — |
@@ -2835,7 +2835,7 @@ Currently: 9-7
 
 ### TJ-009f — Upload identification documents
 
-- **Status:** SCHEMA DONE — the user authorised the push on 2026-08-15 conditional on no conflicts or errors; both were checked before applying. `EmployeeFile` is live in the database and merged to `master` as `ade1a06`. **The endpoints and UI are still to build** — this ID stays open until they do.
+- **Status:** DONE — **closed 2026-08-17, all three parts shipped.** Schema merged as `ade1a06` (the user authorised the push on 2026-08-15 conditional on no conflicts or errors; both were checked before applying, and `EmployeeFile` is live in the database). Endpoints are **TJ-009f1**, merged `9b339a8`. UI is **TJ-009f2**, merged `cd9b015` and runtime-proven on both employee modals. Nothing further executes against this ID.
 
 **Schema push, 2026-08-15 — what was checked and in what order.** The condition attached to the authorisation was *no conflicts or errors*, so it was verified rather than hoped for. **First, drift, before editing anything:** `prisma migrate diff --from-config-datasource --to-schema` returned *"This is an empty migration"*, proving the live database was already an exact match for `schema.prisma` — had it drifted, a `db push` could have silently reconciled the difference in ways nobody chose. **Second, the generated SQL was read before it was applied:** one `CREATE TABLE "EmployeeFile"` and one `ADD CONSTRAINT` on that same new table. **No `DROP`, and no `ALTER` against any existing table.** Run without `--accept-data-loss`, so the command would refuse rather than destroy if it disagreed. **Afterwards:** the drift check is empty again, and every list endpoint still returns its rows — doctors 2, secretaries 1, patients 3, blog 7, doctor profiles 0, reservations 8 on 2026-08-15. Nothing was lost.
 
@@ -2944,7 +2944,7 @@ Round trip with a real non-image file: upload **200** landing in `employee-files
 
 ### TJ-009f2 — Employee documents UI
 
-- **Status:** VISUAL REVIEW — task commit `47d3447` on `feat/employee-documents-ui`, parent `5c654b9`. Planner verification complete (below); **unmerged, and it must stay unmerged until the browser review is done** — this is a UI task and the protocol forbids merging on a green build alone.
+- **Status:** DONE — task commit `47d3447` plus fix commit `0aa5194`, merged to `master` as `cd9b015` with `--no-ff`. **Runtime-verified on 2026-08-17 in a real browser against the live Supabase-backed database, on both modals, through the full upload → list → open → remove round trip.** One defect found at visual review — the planner's own helper literal — fixed on the branch before merge. Not pushed at the time of writing; see the push note below.
 - **Branch:** `feat/employee-documents-ui`
 
 **Planner verification: 2026-08-17 — passed.** Read the diff rather than trusting the report. `git diff --name-status master..HEAD`: exactly **3** entries — two `M` plus one `A` (`src/lib/storageUrl.ts`), **341 insertions, 0 deletions**. Nothing is removed anywhere, which is the shape this task should have: it only adds a section. Every Do-not-touch path is absent from the diff.
@@ -2954,6 +2954,30 @@ Re-ran every check myself on the branch: `npm run build` exit **0**; `npx tsc --
 **The behaviour behind the corrected check, proven rather than inferred:** `handleRemoveDoc` never calls `.json()` on the DELETE response *at all*, in either file — the body is never parsed, so `res.ok` is structurally the only signal it can act on. That is stronger than the original grep would have shown even if it had been written correctly.
 
 **One thing the executor got right that is worth keeping.** It stopped before committing because Verification contradicted Instructions, and specifically declined to quietly reword the mandated comment to make its own check pass. Rewording would have made the branch green and deleted the comment that exists to stop a future developer surfacing `objectRemoved` — the check would have destroyed the thing it was protecting. Flagging a bad literal beats satisfying it.
+
+**Visual review: 2026-08-17 — PASSED, after one defect was found and fixed.** Against a **production** build on port 3100, with the served-bytes rule applied first: `.next/BUILD_ID` (`ZhwIW5uWlbFZJDtk-XvaI`, then `9DR_EL7EtyjlL6BpgvXcE` after the fix rebuild) found in the served HTML, and the old id confirmed absent after the restart, so the bytes reviewed were the build under test. **The user supplied the credential this time** rather than signing in themselves, which is what made an unattended review possible at all — the seeded `admin`/`admin123` in `prisma/seed.ts:28` is still rejected by the live database.
+
+Evidence, on the `Test Delete` doctor and the one archived secretary:
+
+| What was checked | Doctors modal | Secretaries modal |
+|---|---|---|
+| Documents section renders in Edit | yes | yes |
+| Empty state `No documents yet` | yes | yes |
+| PDF upload → row with `📄` | yes | yes |
+| PNG upload → row with `🖼` | yes | not repeated |
+| Link resolves | **200** | **200** |
+| Remove → row gone, no error shown | yes | yes |
+
+**The two findings that only a runtime check could produce:**
+
+1. **`fileType` came back as `image/webp` for a file named `tj-test-scan.png`.** That is the direct proof that the metadata is taken from `/api/upload`'s response rather than the picked file's `file.type` — pass item 4's trap, avoided. `fileSize` behaved as documented too: **193 bytes exact** for the PDF (byte-for-byte storage) and **1416 bytes** for the PNG, the pre-conversion figure, since the stored WebP differs.
+2. **On removal the row disappeared with no error while the storage object still returned 200.** This is pass item 5 observed live rather than argued: the removal succeeded, the object survived because `SUPABASE_SERVICE_ROLE_KEY` is unset, and the UI correctly stayed silent. **Had it surfaced `objectRemoved`, every removal on this machine would have reported a failure that did not happen.**
+
+**The defect, which was the planner's and not the executor's.** `NEXT_PUBLIC_SUPABASE_URL` in `.env` **ends with a trailing slash**, and the helper literal in Instructions step 1 assumed it did not. Every generated link came out as `https://<project>.supabase.co//storage/v1/object/public/uploads/…` with a doubled slash. Checked rather than assumed: Supabase's CDN normalises it and **both forms return 200**, so nothing was broken — but the URL was correct only by the CDN's goodwill. Fixed in `0aa5194` by stripping trailing slashes from the base, re-verified in the browser at a single slash and 200. **Generalises: a literal built from an env var is untested until something renders it; `.env` values carry trailing slashes and the template that consumes them usually assumes they do not.**
+
+**Recorded rather than fixed — the Add path of both modals is unreachable from the UI.** `+ Add Doctor` and `+ Add Secretary` route to the `/new` pages (`doctors/page.tsx:228`, `secretaries/page.tsx:176`), so `openAdd` is dead code on both pages and the `{editingDoctor && …}` guard cannot be exercised through the interface. The guard is still correct and was verified statically; the dead `openAdd` predates this task and is not its problem. Filed in Notes for the planner.
+
+**Test data cleaned up:** both employees are back to zero documents. **Three storage objects were orphaned in the process** and are added to TJ-014d's purge inventory — two `employee-files/…` objects from the doctors modal and one from the secretaries modal, plus one more from the post-fix re-check. That is the degradation working as designed, not a leak introduced here.
 - **Why:** the endpoints from f1 with nothing calling them.
 - **Placement — decided by the user 2026-08-15: option (a), a *Documents* section inside the existing edit modal.** The alternative was a new `/admin/employees/doctors/[id]` and `/admin/employees/secretaries/[id]` pair mirroring `admin/patients/[id]`. (a) keeps the task inside two files and reflects that a clinic with a handful of staff does not need a detail page per employee.
 
@@ -4079,6 +4103,8 @@ import { removeUpload } from "@/lib/uploads";
   1. **The runtime proof TJ-014a never got.** Delete an employee file with the key set: the response must return `objectRemoved: true` and the object's public URL must flip from **HTTP 200 to 404**. Until that is observed, the app has never actually removed a storage object and nobody should claim it can.
   2. **The existing orphans** — inventoried above at 7, **now 9 objects of which 8 are orphaned.** Two were added by TJ-014b's runtime verification on 2026-08-16: `doctor-profiles/1786827542816-fd5ty9u6sqb.webp` (orphaned — its removal was correctly attempted and no-opped for want of the key) and `doctor-profiles/1786827700210-awg4o66008.webp` (still referenced by the archived fixture row `cmsuuzgns0000p49p1v4kfrbd`). **Delete that row and both objects as part of this purge.** Like `employee-files/1786824800278-qatraogyrqh.pdf` from the TJ-009f1 review, these are leaks created by proving the leak — acceptable only because this purge task exists to collect them.
 
+  **Four more added by TJ-009f2's visual review on 2026-08-17, all orphaned, all under `employee-files/`:** `1786991529255-ygxdcih8dmf.pdf` and `1786991565099-6fy0b5a0nz9.webp` (doctors modal), one `.pdf` from the secretaries modal, and `1786991888319-xlxjb82np2.pdf` from the post-fix re-check. Every one had its row deleted through the UI and its object left behind, which is exactly the degradation working as designed. **Running count is therefore 13 objects, 12 orphaned** — but do not act on that number: the pre-flight gate below requires re-deriving the list at deletion time, and it exists precisely because counts written here go stale.
+
 **The pre-flight gate is mandatory and it is not a formality.** The delete list in the inventory above was written on 2026-08-15 and **must be re-derived at the moment of deletion** — re-list the bucket, re-read all six referencing columns, diff again, and delete only what is still unreferenced *then*. TJ-006 and the 2026-08-15 cleanup both used this gate. By the time the key arrives, TJ-014b will have shipped and may itself have removed some of these objects; the list will be stale by construction.
 
 **When the key lands, in this order:** TJ-014a's owed proof first (it is one delete and it validates the whole mechanism), then the purge. If the first fails, do not run the second.
@@ -4175,6 +4201,10 @@ Confirmed `src/generated/prisma` is already in `.gitignore` (last line), so that
 ## Notes for the planner
 
 Findings reported by the executor, or surfaced during a pass, that fall outside the scope of the task that turned them up. The planner triages these into tasks. **The executor does not write here** — it reports in conversation and the planner records.
+
+- **`openAdd` is dead code on both employee list pages, so their modals' Add mode is unreachable.** `+ Add Doctor` (`admin/employees/doctors/page.tsx:228`) and `+ Add Secretary` (`.../secretaries/page.tsx:176`) both `router.push` to the `/new` pages, so the only way either modal opens is through `openEdit`. The function, its full form reset, and the modal's `{editingDoctor ? "Edit Doctor" : "Add Doctor"}` title branch are all unreachable from the interface. Harmless today and TJ-009f2's edit-only guard is correct regardless, but it means **any "does it behave correctly in Add mode?" check on these two modals can only ever be made statically** — there is no way to reach that state in a browser. Worth either deleting `openAdd` or wiring the button to it; deleting is probably right, since the `/new` pages are the richer forms. (Found during the TJ-009f2 visual review, 2026-08-17.)
+- **A literal assembled from an env var is untested until something renders it.** TJ-009f2's `publicUploadUrl()` was written assuming `NEXT_PUBLIC_SUPABASE_URL` carries no trailing slash. It does, so every document link shipped with a doubled slash — through a planning pass, an executor's implementation, a build, a typecheck, a lint run and a planner diff review, none of which can see a string that is only assembled at runtime. The browser showed it in the first second. **Supabase's CDN happened to normalise it (both forms 200), which is the worse outcome: a wrong URL that works is one nobody reports.** Normalise the base rather than assuming its shape, and treat "renders a URL built from config" as requiring a runtime look. (Found during the TJ-009f2 visual review, 2026-08-17.)
+- **A screenshot of a page with `backdrop-filter: blur()` can time out the CDP capture.** `Page.captureScreenshot` died after 30s on `/admin/employees/doctors` with the modal open — the same modal the review needed to inspect. The page was entirely healthy: `javascript_tool` queries against the DOM answered instantly before and after. Third variant of the same trap already recorded twice below (throttled rAF, stale server): **the check failed, not the thing being checked.** When a screenshot times out on a blurred overlay, query the DOM for the assertions instead of concluding the page is broken — and note that this costs the visual review its actual *visual* component, so state plainly that the evidence was DOM-derived rather than seen. (Found during the TJ-009f2 visual review, 2026-08-17.)
 
 - **Three task status lines had drifted out of sync with the Queue table, two of them still reading `READY` on merged work.** Found 2026-08-15 while checking that TJ-014b was genuinely the topmost `READY` task before dispatching it. TJ-009b read `REVIEW — unmerged` (merged as `ffd55a7`), TJ-009c read `READY` (merged as `2724893`), TJ-009h read `READY` (merged as `f76e2e0`). All three verified against `git log` and corrected in place. **This was not cosmetic:** the executor rule is "pull the topmost `READY` task," and TJ-009c sits ~1,400 lines above TJ-014b — an executor dispatched without a named task would have pulled merged work and rebuilt it from a branch note that no longer applied. **Cause: at merge time the Queue table was updated and the task body was not.** The table and the body are two records of the same fact and only one was being maintained. **Fix going forward — a merge is not recorded until both are updated**, and check `grep -n "^- \*\*Status:\*\* READY" tasks.md` before every dispatch; it should list only the task being handed off.
 
