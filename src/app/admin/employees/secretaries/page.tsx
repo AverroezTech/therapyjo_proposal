@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { parseWorkingHours, formatWorkingHours, isLegacyWorkingHours } from "@/lib/workingHours";
+import { publicUploadUrl } from "@/lib/storageUrl";
 
 interface Secretary {
     id: string;
@@ -24,6 +25,15 @@ interface SecretaryForm {
     password: string;
     confirmPassword: string;
     adminPassword: string;
+}
+
+interface EmployeeDoc {
+    id: number;
+    fileName: string;
+    filePath: string;
+    fileType: string;
+    fileSize: number;
+    uploadedAt: string;
 }
 
 const FILTERS = ["Active", "Archived"] as const;
@@ -48,6 +58,11 @@ export default function SecretariesPage() {
     const [hoursFrom, setHoursFrom] = useState("");
     const [hoursTo, setHoursTo] = useState("");
     const [legacyHours, setLegacyHours] = useState("");
+    const [docs, setDocs] = useState<EmployeeDoc[]>([]);
+    const [docsLoading, setDocsLoading] = useState(false);
+    const [uploadingName, setUploadingName] = useState("");
+    const [removingId, setRemovingId] = useState<number | null>(null);
+    const [docError, setDocError] = useState("");
 
     const fetchSecretaries = useCallback(async () => {
         const res = await fetch("/api/employees/secretaries");
@@ -57,6 +72,20 @@ export default function SecretariesPage() {
     }, []);
 
     useEffect(() => { fetchSecretaries(); }, [fetchSecretaries]);
+
+    const loadDocs = useCallback(async (userId: string) => {
+        setDocsLoading(true);
+        setDocError("");
+        const res = await fetch(`/api/employees/files?userId=${userId}`);
+        if (!res.ok) {
+            setDocs([]);
+            setDocsLoading(false);
+            setDocError("Could not load documents.");
+            return;
+        }
+        setDocs(await res.json());
+        setDocsLoading(false);
+    }, []);
 
     const counts = useMemo(() => ({
         Active: secretaries.filter((sec) => sec.status === "ACTIVE").length,
@@ -76,6 +105,9 @@ export default function SecretariesPage() {
         setHoursFrom("");
         setHoursTo("");
         setLegacyHours("");
+        setDocs([]);
+        setDocError("");
+        setUploadingName("");
         setShowModal(true);
     };
 
@@ -92,6 +124,10 @@ export default function SecretariesPage() {
         setHoursFrom(parsed?.from ?? "");
         setHoursTo(parsed?.to ?? "");
         setLegacyHours(isLegacyWorkingHours(sec.workingHours) ? (sec.workingHours ?? "") : "");
+        setDocs([]);
+        setDocError("");
+        setUploadingName("");
+        loadDocs(sec.id);
         setShowModal(true);
     };
 
@@ -148,6 +184,64 @@ export default function SecretariesPage() {
 
         setShowModal(false);
         fetchSecretaries();
+    };
+
+    const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file || !editing) return;
+        e.target.value = "";   // let the same file be picked again after a failure
+        setDocError("");
+        setUploadingName(file.name);
+
+        const fd = new FormData();
+        fd.append("file", file);
+        fd.append("folder", "employee-files");
+        const up = await fetch("/api/upload", { method: "POST", body: fd });
+        if (!up.ok) {
+            setUploadingName("");
+            setDocError("Upload failed.");
+            return;
+        }
+        const { path, contentType } = await up.json();
+
+        // fileType comes from the response, not the picked file: /api/upload
+        // re-encodes images to WebP, so file.type would be a lie. fileSize is
+        // the size as picked — the endpoint does not report the stored length,
+        // so it is exact for documents and approximate for a re-encoded image.
+        const res = await fetch("/api/employees/files", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+                userId: editing.id,
+                fileName: file.name,
+                filePath: path,
+                fileType: contentType,
+                fileSize: file.size,
+            }),
+        });
+        setUploadingName("");
+        if (!res.ok) {
+            setDocError("Could not attach the document.");
+            return;
+        }
+        loadDocs(editing.id);
+    };
+
+    const handleRemoveDoc = async (docId: number) => {
+        if (!editing) return;
+        setDocError("");
+        setRemovingId(docId);
+        // res.ok is the only success signal. The response also carries
+        // objectRemoved, which is false whenever SUPABASE_SERVICE_ROLE_KEY is
+        // unset — the row is still gone, so surfacing it would report a
+        // failure that did not happen. Do not read it.
+        const res = await fetch(`/api/employees/files/${docId}`, { method: "DELETE" });
+        setRemovingId(null);
+        if (!res.ok) {
+            setDocError("Could not remove the document.");
+            return;
+        }
+        loadDocs(editing.id);
     };
 
     const handleResign = async (id: string) => {
@@ -334,6 +428,57 @@ export default function SecretariesPage() {
                             )}
                         </div>
 
+                        {editing && (
+                            <div className="form-group doc-section">
+                                <label>Documents</label>
+                                {docError && <div className="error-msg" role="alert">{docError}</div>}
+                                <input
+                                    type="file"
+                                    className="doc-input"
+                                    aria-label="Upload a document"
+                                    disabled={!!uploadingName}
+                                    onChange={handleUpload}
+                                />
+                                {docsLoading ? (
+                                    <span className="field-hint">Loading documents…</span>
+                                ) : (
+                                    <ul className="doc-list">
+                                        {uploadingName && (
+                                            <li className="doc-row uploading">
+                                                <span className="doc-icon">⏳</span>
+                                                <span className="doc-name">Uploading {uploadingName}…</span>
+                                            </li>
+                                        )}
+                                        {docs.map((d) => (
+                                            <li key={d.id} className="doc-row">
+                                                <span className="doc-icon">{d.fileType.includes("image") ? "🖼" : "📄"}</span>
+                                                <a
+                                                    className="doc-name"
+                                                    href={publicUploadUrl(d.filePath)}
+                                                    target="_blank"
+                                                    rel="noreferrer"
+                                                >
+                                                    {d.fileName}
+                                                </a>
+                                                <button
+                                                    type="button"
+                                                    className="btn-sm btn-delete"
+                                                    disabled={removingId === d.id}
+                                                    onClick={() => handleRemoveDoc(d.id)}
+                                                >
+                                                    {removingId === d.id ? "Removing…" : "Remove"}
+                                                </button>
+                                            </li>
+                                        ))}
+                                        {docs.length === 0 && !uploadingName && (
+                                            <li className="doc-empty">No documents yet</li>
+                                        )}
+                                    </ul>
+                                )}
+                                <span className="field-hint">Documents are saved immediately — they do not wait for Save.</span>
+                            </div>
+                        )}
+
                         <div className="modal-actions">
                             <button className="btn-secondary" onClick={() => setShowModal(false)}>Cancel</button>
                             <button
@@ -438,6 +583,26 @@ export default function SecretariesPage() {
           color: rgba(255,255,255,0.45); cursor: pointer;
         }
         .toggle-password:hover { color: #fff; }
+        .doc-section { margin-top: 1.25rem; }
+        .doc-input { font-size: 0.82rem; color: rgba(255,255,255,0.6); }
+        .doc-list {
+          list-style: none; display: flex; flex-direction: column;
+          gap: 0.4rem; margin: 0.5rem 0 0.5rem; padding: 0;
+        }
+        .doc-row {
+          display: flex; align-items: center; gap: 0.6rem;
+          background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.06);
+          border-radius: 8px; padding: 0.5rem 0.7rem;
+        }
+        .doc-icon { flex-shrink: 0; }
+        .doc-name {
+          flex: 1; min-width: 0; font-size: 0.82rem; color: #fff;
+          overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+          text-decoration: none;
+        }
+        a.doc-name:hover { text-decoration: underline; }
+        .doc-row.uploading .doc-name { color: rgba(255,255,255,0.5); }
+        .doc-empty { font-size: 0.8rem; color: rgba(255,255,255,0.35); padding: 0.25rem 0; }
         .field-hint { font-size: 0.72rem; color: rgba(255,255,255,0.35); }
       `}</style>
         </div>
