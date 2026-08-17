@@ -43,7 +43,7 @@ Two things that bear repeating here, because this is the file both agents open:
 | TJ-009h | New-doctor form defaults to a colour it will not accept | DONE — merged `f76e2e0` | `bugfix/default-doctor-colour` |
 | TJ-009f | Upload identification documents | SCHEMA DONE — merged `ade1a06`; split into f1 + f2 | `feat/employee-documents` |
 | TJ-009f1 | Employee document endpoints | DONE — merged `9b339a8`; fully verified | `feat/employee-file-api` |
-| TJ-009f2 | Employee documents UI | READY — planning pass 2026-08-17 | `feat/employee-documents-ui` |
+| TJ-009f2 | Employee documents UI | VISUAL REVIEW — `47d3447`, verified, **needs a browser + a user sign-in** | `feat/employee-documents-ui` |
 | TJ-009g | Hard delete a doctor | DONE — merged `fe05f69`; both paths proven | `feat/hard-delete-doctor` |
 | TJ-010 | Employees / secretaries — reported issues | BACKLOG — needs a pass, splits further; its §3 is closed by TJ-009a | — |
 | TJ-011 | Patients — reported issues | BACKLOG — needs a pass, splits further | — |
@@ -2944,8 +2944,16 @@ Round trip with a real non-image file: upload **200** landing in `employee-files
 
 ### TJ-009f2 — Employee documents UI
 
-- **Status:** READY — planning pass run 2026-08-17, anchors pinned against `9d97dd1`…`7801504` (`master` at `7801504`).
+- **Status:** VISUAL REVIEW — task commit `47d3447` on `feat/employee-documents-ui`, parent `5c654b9`. Planner verification complete (below); **unmerged, and it must stay unmerged until the browser review is done** — this is a UI task and the protocol forbids merging on a green build alone.
 - **Branch:** `feat/employee-documents-ui`
+
+**Planner verification: 2026-08-17 — passed.** Read the diff rather than trusting the report. `git diff --name-status master..HEAD`: exactly **3** entries — two `M` plus one `A` (`src/lib/storageUrl.ts`), **341 insertions, 0 deletions**. Nothing is removed anywhere, which is the shape this task should have: it only adds a section. Every Do-not-touch path is absent from the diff.
+
+Re-ran every check myself on the branch: `npm run build` exit **0**; `npx tsc --noEmit` exit **0** — the check that would catch a `server-only` import reaching a client component; `npx eslint` over all three files reports **exactly 2 problems**, both `react-hooks/set-state-in-effect`, one per page file, matching the recorded baseline, with `storageUrl.ts` contributing **0** on its own. `grep -rn "server-only" src/app/admin/employees/` → **0**. `grep -c "editingDoctor" .../secretaries/page.tsx` → **0**, so the copy between the two files did not drag the wrong state name across. Both Documents blocks sit inside the edit-only guard — `doctors/page.tsx:519` and `secretaries/page.tsx:431`.
+
+**The behaviour behind the corrected check, proven rather than inferred:** `handleRemoveDoc` never calls `.json()` on the DELETE response *at all*, in either file — the body is never parsed, so `res.ok` is structurally the only signal it can act on. That is stronger than the original grep would have shown even if it had been written correctly.
+
+**One thing the executor got right that is worth keeping.** It stopped before committing because Verification contradicted Instructions, and specifically declined to quietly reword the mandated comment to make its own check pass. Rewording would have made the branch green and deleted the comment that exists to stop a future developer surfacing `objectRemoved` — the check would have destroyed the thing it was protecting. Flagging a bad literal beats satisfying it.
 - **Why:** the endpoints from f1 with nothing calling them.
 - **Placement — decided by the user 2026-08-15: option (a), a *Documents* section inside the existing edit modal.** The alternative was a new `/admin/employees/doctors/[id]` and `/admin/employees/secretaries/[id]` pair mirroring `admin/patients/[id]`. (a) keeps the task inside two files and reflects that a clinic with a handful of staff does not need a detail page per employee.
 
@@ -3219,7 +3227,11 @@ Round trip with a real non-image file: upload **200** landing in `employee-files
 - `npx tsc --noEmit` — exit **0**. This is the check that catches a `server-only` import sneaking in.
 - `npx eslint src/lib/storageUrl.ts src/app/admin/employees/doctors/page.tsx src/app/admin/employees/secretaries/page.tsx` — **exactly 2 problems, both `react-hooks/set-state-in-effect`, one per page file**, unchanged from the baseline above. A third is task-generated: fix it. `storageUrl.ts` must contribute **0**. **Do not run `npm run lint`** — `master` fails it with 77 pre-existing problems and it can only produce a false failure.
 - `grep -rn "server-only" src/app/admin/employees/` returns **zero** hits.
-- `grep -c "objectRemoved" src/app/admin/employees/doctors/page.tsx src/app/admin/employees/secretaries/page.tsx` returns **0** for both — the regression from pass item 5.
+- **No *non-comment* mention of `objectRemoved`** in either page — the regression from pass item 5. The explanatory comment step 7 mandates contains the word deliberately, so the check must exclude comment lines:
+  ```sh
+  grep -rn "objectRemoved" src/app/admin/employees/ | grep -vcE "^[^:]+:[0-9]+: *//"
+  ```
+  returns **0**. **Corrected 2026-08-17** — this step originally asserted `grep -c "objectRemoved"` returns `0`, which Instructions step 7 makes impossible: it requires a comment naming the field. The executor hit the contradiction, refused to reword the mandated comment to dodge its own verification, and reported it instead of explaining it away. That was exactly right, and it is the second time this file has shipped a grep with a wider blast radius than the sentence describing it (see TJ-005a). **The lesson generalises: when a task mandates a comment that names the thing being banned, any grep for that name must exclude comments, or the check tests the prose instead of the code.**
 - `grep -n "editingDoctor" src/app/admin/employees/secretaries/page.tsx` returns **zero** hits, and `grep -c "editing" src/app/admin/employees/doctors/page.tsx` finds no bare `editing` that is not part of `editingDoctor` — the two files use different state names and a copy-paste between them is the likeliest single mistake in this task.
 - `git status --short` shows exactly **3** entries: one `A` (`src/lib/storageUrl.ts`) and two `M`. A fourth means something outside Scope was touched — stop and report.
 - Read your own diff and confirm the Documents block is inside the `{editingDoctor && (` / `{editing && (` guard in each file. If it renders during Add, every upload 400s.
