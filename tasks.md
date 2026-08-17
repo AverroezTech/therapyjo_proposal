@@ -28,7 +28,9 @@ Two things that bear repeating here, because this is the file both agents open:
 | TJ-003 | Replace placeholder Google Maps embed | DONE — merged `cd6ee17` | `content/real-maps-embed` |
 | TJ-004 | Source Google Reviews from a real API | DONE — merged `643c558` | `feat/google-reviews-api` |
 | TJ-005a | Name the content-management capability | DONE — merged `bc5dd2b` | `refactor/content-capability-helper` |
-| TJ-005b | Grant content management per user | BACKLOG — boundary decided 2026-08-17; needs its own planning pass | — |
+| TJ-005b | Grant content management per user | SPLIT — passed 2026-08-18; see TJ-005b1, TJ-005b2 | — |
+| TJ-005b1 | Make the content grant real at the boundary | READY | `feat/content-grant-boundary` |
+| TJ-005b2 | Grant and revoke the flag from the admin UI | BACKLOG — needs its own pass; sits behind TJ-005b1 | — |
 | TJ-006 | Remove duplicate root icon files | DONE — merged `15b6942` | `chore/remove-icon-duplicates` |
 | TJ-007 | End a resigned employee's session immediately | DONE — merged `a1af675` | `bugfix/revoke-session-on-resign` |
 | TJ-008 | Dashboard / reservations — reported issues | SPLIT — see TJ-008a, TJ-008b | — |
@@ -778,7 +780,7 @@ Every content page loads and consumes its data: `/admin/blog` renders the table 
 
 ### TJ-005b — Grant content management per user
 
-- **Status:** BACKLOG — **the blocker is cleared; the planning pass is not run.** All three questions below were answered by the user on 2026-08-17 (recorded under *The decision*). This task must not be executed until a `**Planning pass:**` block appears here.
+- **Status:** SPLIT — planning pass run 2026-08-18. The work is now **TJ-005b1** (the boundary: column, token, helper, middleware) and **TJ-005b2** (the admin toggle and the nav). Do not execute against this ID. The decision record below is kept in full because both children depend on it.
 - **Branch:** assigned at the planning pass
 - **Why:** TJ-005a names the capability but leaves it derived from the role, so granting a clinic manager access still means editing the helper and redeploying — the exact code change the handoff set out to avoid. This task makes the grant real: a per-user override, honoured at the middleware, exposed in the admin UI. Split out of TJ-005.
 
@@ -805,6 +807,215 @@ Also to settle before this is `READY`, both consequences of facts the pass estab
 **What the planning pass still owes, none of it a decision:** the exact allowlist constant and its placement in `auth.config.ts`; the `src/types/next-auth.d.ts` extension for both `Session["user"]` and `JWT`; the `jwt`/`session` callback changes in `auth.config.ts`; the nav-hiding condition in `admin/layout.tsx`; the toggle's placement in the employee edit modal — **which is the surface TJ-009f2 is already crowding, and the two must be looked at together before either is squeezed in**; and the column name. It will also exceed the four-file rule and should be split at the pass: the boundary (schema, JWT, middleware) is one concern, the admin toggle and nav another.
 
 **One trap the pass must not walk into.** `canManageContent()` currently takes `Session["user"]` and returns `user?.role === "ADMIN"`. Once the override exists, the same helper must be readable from `authorized()`, which receives a **JWT token**, not a session user. Either the helper grows a second overload or the flag is normalised onto both shapes — decide it explicitly rather than letting the executor discover it, because the failure mode is a helper that silently returns `false` for the token shape and locks every content manager out.
+
+**Planning pass:** 2026-08-18 — read `src/lib/auth.config.ts`, `src/lib/auth.ts`, `src/lib/permissions.ts`, `src/types/next-auth.d.ts`, `src/middleware.ts`, `src/app/admin/layout.tsx`, `prisma/schema.prisma`, all eight `canManageContent` call sites, and — because two of the open questions were about the library rather than about this app — `node_modules/next-auth/lib/index.js`, `node_modules/next-auth/lib/index.d.ts`, `node_modules/@auth/core/types.d.ts` and `node_modules/@auth/core/jwt.d.ts`. **The task splits in two, as predicted:** TJ-005b1 carries the boundary, TJ-005b2 the admin toggle and the nav.
+
+Four things this pass settled, the first of which corrects the paragraph above:
+
+1. **The trap recorded above is wrong, and following it would have been wasted work.** `authorized()` does **not** receive a JWT. `next-auth/lib/index.js:129-133` calls `getSession(request.headers, config)` and hands the parsed result to the callback as `auth`; `lib/index.d.ts:42-46` types it `auth: Session | null`. The `session` callback has already run by then — which is exactly why `auth.config.ts:55` can read `auth?.user.role` today, and why role gating demonstrably works. So `canManageContent()` keeps its single `Session["user"]` signature and is called from `authorized()` unchanged. No overload, no normalising onto two shapes. **The lesson is smaller than the correction: this was a claim about a library, and the library was sitting in `node_modules` waiting to be read.**
+2. **Two `jwt` callbacks have to be edited, not one, and missing the second is silent.** `src/middleware.ts:5` builds its NextAuth instance from `authConfig` alone, so the middleware runs `auth.config.ts`'s `jwt`. `auth.ts:10-21` spreads `...authConfig.callbacks` and then **overrides** `jwt`, so every server-side `auth()` runs `auth.ts`'s instead. Set the claim in only one and either the middleware boundary or the eight API handlers sees `undefined` — with no error anywhere to say so.
+3. **`src/lib/permissions.ts` is Edge-safe, so `auth.config.ts` may import it.** Its only import is `import type { Session }`, which erases at compile time and never reaches the Edge bundle. That is what lets one helper serve both the middleware boundary and the API handlers, instead of the rule being written out twice and drifting.
+4. **The `next-auth/jwt` augmentation in `src/types/next-auth.d.ts` stays untouched.** The planner note of 2026-08-15 established it is inert, and `@auth/core/jwt.d.ts:88` shows why that does not matter: `JWT extends Record<string, unknown>`, so claims assign freely and read back as `unknown`. The repo's existing cast idiom — `token.role as string` — is the correct shape, and TJ-005b1 uses it rather than trying to make a dead augmentation work.
+
+**Database state, checked live before this was written.** `npx prisma migrate diff --from-config-datasource --to-schema prisma/schema.prisma --script` returned `-- This is an empty migration.` — **no drift**; the live Supabase database matches `prisma/schema.prisma` exactly. The pre-authorised `prisma db push` may therefore run, and adding this column is the only thing it should do. One correction to the wording above: the column is **`Boolean @default(false)`, NOT NULL**, not "nullable-with-default". It is still additive and backfilled by the default, and non-null is the better shape because it removes a tri-state nobody would ever want to reason about.
+
+**Baselines measured on `master` on 2026-08-18, not predicted:** `npm run build` exits 0; `npm run lint` reports **55 problems (41 errors, 14 warnings)**; `npx eslint` over the four TypeScript files TJ-005b1 touches prints **nothing at all**; `grep -c 'role !== "ADMIN"' src/lib/auth.config.ts` is **3**.
+
+**What TJ-005b1 deliberately does not do, and why that is safe.** Nothing can set the flag to `true` until TJ-005b2 ships the toggle, so the merged boundary is **inert in production** — which is the point of splitting here: the security-shaped half lands, is reviewed on its own, and changes nobody's access on the way in. Two consequences follow into b2 rather than being rediscovered there: a content-only holder is still routed to `/secretary` at sign-in, because `auth.config.ts:33-39` dispatches on role alone, so the grant has no discoverable entry point yet; and `admin/layout.tsx` will show them Dashboard / Employees / Patients / Notes links that bounce to `/unauthorized`. Both are cosmetic against a boundary that holds, and neither is a reason to hold b1 back.
+
+**Why TJ-005b1 touches five files and is still one concern.** Column, type, helper, middleware config and server config are the single path one flag travels from the database to the gate; splitting it further would ship a half-wired flag whose failure mode is silence. The four-file rule says "roughly", and this is the shape that fails loudly or not at all.
+
+---
+
+### TJ-005b1 — Make the content grant real at the boundary
+
+- **Status:** READY
+- **Branch:** `feat/content-grant-boundary`
+- **Why:** TJ-005a named the capability but left it derived from the role, so granting a clinic manager access still means editing a helper and redeploying — the exact code change the handoff set out to avoid. This makes the grant storable and enforced: a `User.canManageContent` column, carried into the token at sign-in, honoured by the one helper all eight content endpoints already call, and used to split the `/admin` prefix so that a content grant admits its holder to Blog, Doctors and Approvals **and nothing else**. Patient records, clinical intake, SOAP notes and staff accounts stay `ADMIN`-only. Split out of TJ-005b at its planning pass.
+
+**Planning pass:** 2026-08-18 — recorded in full under **TJ-005b** above: the files read, the JWT-shape claim corrected against `node_modules`, the two-`jwt`-callback trap named, schema drift checked live against Supabase, and every baseline measured rather than predicted.
+
+**Scope — touch only these:**
+- `prisma/schema.prisma` — the `User` model only
+- `src/types/next-auth.d.ts`
+- `src/lib/permissions.ts`
+- `src/lib/auth.config.ts`
+- `src/lib/auth.ts`
+
+**Do not touch:** the `interface JWT` block at the bottom of `src/types/next-auth.d.ts` — it is inert (planner note, 2026-08-15) and adding to it would be cargo cult. The eight API handlers that already call `canManageContent` — they inherit the new rule for free, and editing them is how this task doubles in size. `src/app/admin/layout.tsx`, both employee list pages and both employee edit modals — that is **TJ-005b2**. The `/secretary` and `/doctor` gates in `authorized()`. Any other model in `prisma/schema.prisma`. Do not run `npx prisma format`. Do not add a dependency; nothing here needs one.
+
+**A note on line endings before you start:** every file in this tree is CRLF. Match the anchors below **one line at a time** — a multi-line match will fail for reasons that have nothing to do with your edit.
+
+**Instructions**
+
+Do these in order. **Step 2 writes to the live production database**, and it must happen before any code that reads the new column runs: a missing column is invisible to the build and fatal at login.
+
+**Step 1 — `prisma/schema.prisma`: add the column.**
+
+Inside `model User`, find this line (two leading spaces):
+
+```
+  color          String?          // hex color for calendar (doctors only)
+```
+
+Insert this as a new line immediately after it — two leading spaces, then the field name, one space, `Boolean`, then **eight** spaces before `@default(false)`:
+
+```
+  canManageContent Boolean        @default(false) // may manage Blog, public Doctor profiles, Approvals
+```
+
+The field name is one character wider than the model's aligned name column. That is expected and correct. **Do not re-align the other fields, and do not run `npx prisma format`** — the diff for this file must be exactly one added line.
+
+**Step 2 — push the column to the database.**
+
+Run `npx prisma db push`.
+
+This is a production write against the live Supabase database and it is **pre-authorised by the user**, recorded under TJ-005b on the same terms as the TJ-009f schema push of 2026-08-15. The planning pass confirmed on 2026-08-18 that there is no drift, so adding this one column is the only change it should make. `db push` regenerates the Prisma client in the same run, and `src/generated/prisma` is gitignored, so nothing from it enters your commit.
+
+**Paste the full output of this command into your report.** If it reports anything beyond adding `canManageContent` — another alteration, a data-loss warning, a prompt to reset — **stop and ask**. Do not accept a reset.
+
+**Step 3 — `src/types/next-auth.d.ts`: declare the claim on the session user.**
+
+There are two identical `role:` lines in this file. You want the one indented **twelve** spaces, inside `interface Session`; the one indented eight spaces inside `interface JWT` must not be touched. Find:
+
+```
+            role: "ADMIN" | "DOCTOR" | "SECRETARY";
+```
+
+Insert immediately after it, indented twelve spaces:
+
+```
+            canManageContent: boolean;
+```
+
+**Step 4 — `src/lib/permissions.ts`: honour the override.**
+
+Replace the line ` * without a code change at every call site. Today it derives from the role;` with:
+
+```
+ * without a code change at every call site. ADMIN always holds it; anyone else
+```
+
+Replace the line ` * a per-user override is TJ-005b.` with:
+
+```
+ * holds it only if their User.canManageContent column is set (TJ-005b1).
+```
+
+Replace the line `    return user?.role === "ADMIN";` with these two lines, each indented four spaces:
+
+```
+    if (!user) return false;
+    return user.role === "ADMIN" || user.canManageContent === true;
+```
+
+**Step 5 — `src/lib/auth.config.ts`: carry the claim and split the prefix.**
+
+**5a.** After the line `import type { NextAuthConfig } from "next-auth";`, insert:
+
+```
+import { canManageContent } from "@/lib/permissions";
+```
+
+This import is Edge-safe: `permissions.ts` imports only `import type { Session }`, which erases at compile time.
+
+**5b.** Immediately **before** the line `export const authConfig: NextAuthConfig = {`, insert these six lines (flush left, followed by one blank line):
+
+```
+// Paths under /admin that a content grant admits its holder to. Every other
+// /admin path is ADMIN-only, and the direction of that default is the point:
+// a page added under /admin in future is closed because it is absent from
+// this list, not because someone remembered to exclude it. (TJ-005b1)
+const CONTENT_PATHS = ["/admin/blog", "/admin/doctors", "/admin/approvals"];
+```
+
+**5c.** In the `jwt` callback, after the line `                token.role = (user as { role: string }).role;`, insert this line indented sixteen spaces:
+
+```
+                token.canManageContent = (user as { canManageContent?: boolean }).canManageContent === true;
+```
+
+**5d.** In the `session` callback, after the line `                (session.user as { role: string }).role = token.role as string;`, insert this line indented sixteen spaces:
+
+```
+                (session.user as { canManageContent: boolean }).canManageContent = token.canManageContent === true;
+```
+
+**5e.** In `authorized()`, replace the single line `            if (pathname.startsWith("/admin") && role !== "ADMIN") {` with this block. The `if` line at the end is the same statement with a new condition — the two lines that follow it in the file (the `Response.redirect` and its closing brace) stay exactly as they are:
+
+```
+            // A content grant reaches the content pages and nothing else. Match
+            // whole segments rather than bare prefixes, so /admin/employees/doctors
+            // and any /admin/doctorsX path stay ADMIN-only.
+            const isContentPath = CONTENT_PATHS.some(
+                (p) => pathname === p || pathname.startsWith(p + "/")
+            );
+            const mayEnterAdmin =
+                role === "ADMIN" || (isContentPath && canManageContent(auth?.user));
+
+            if (pathname.startsWith("/admin") && !mayEnterAdmin) {
+```
+
+`auth?.user` is the right argument here and no cast is needed: the pass confirmed against `next-auth/lib/index.d.ts:42-46` that this callback receives `auth: Session | null`, not a JWT.
+
+**Step 6 — `src/lib/auth.ts`: the server-side half.**
+
+`auth.ts` spreads `...authConfig.callbacks` and then **overrides** `jwt`, so the edit you made in 5c does not reach any server-side `auth()` call. Both of these are required.
+
+**6a.** In `authorize()`, after the line `                    role: user.role,`, insert this line indented twenty spaces:
+
+```
+                    canManageContent: user.canManageContent,
+```
+
+`authorize()` reads the row with `findUnique` and no `select`, so the new column is already on `user` once step 2 has run. Returning a field that is not on next-auth's `User` type is the established shape here — `role` is returned the same way and compiles today.
+
+**6b.** In the `jwt` callback, after the line `                token.role = (user as { role: string }).role;`, insert this line indented sixteen spaces — it is the same line you added in 5c:
+
+```
+                token.canManageContent = (user as { canManageContent?: boolean }).canManageContent === true;
+```
+
+**Verification** — run all of these and paste the output. Every number below was measured on `master` on 2026-08-18, not guessed.
+
+- `npx prisma migrate diff --from-config-datasource --to-schema prisma/schema.prisma --script` prints `-- This is an empty migration.` It printed exactly that on `master` before the column existed; if it prints SQL now, the schema and the database disagree and step 2 did not do what it claimed.
+- `npm run build` passes. Green on `master` today, so any failure is yours.
+- `npx eslint src/lib/auth.config.ts src/lib/auth.ts src/lib/permissions.ts src/types/next-auth.d.ts` prints nothing at all. That is what it printed on `master`.
+- `npm run lint` still reports `55 problems (41 errors, 14 warnings)`. This is the guard against introducing a finding somewhere outside the four files above.
+- `grep -c 'role !== "ADMIN"' src/lib/auth.config.ts` returns **2**, down from the 3 on `master`. The two survivors are the `/secretary` and `/doctor` gates and they must be untouched — this is the check that catches a slip that loosens the wrong gate.
+- `grep -n "canManageContent" src/lib/auth.ts` returns **two** lines, one in `authorize()` and one in `jwt`. One line means the silent half of this task is missing.
+- `git diff --stat` lists exactly the five files in Scope and nothing else. `src/generated/prisma` is gitignored and must not appear.
+- `git status` is clean after the commit.
+
+**Runtime proof is the planner's, not yours.** Nothing can set this flag to `true` yet, so there is no way for you to exercise the grant end to end and you should not invent one. Do not write a script that flips the column in the live database. The planner will grant the flag to a test account at visual review and assert the boundary from a real session.
+
+**Done when:**
+- [ ] `User.canManageContent` exists in `schema.prisma` and in the live database, and `migrate diff` comes back empty
+- [ ] The claim is written in **both** `jwt` callbacks and read in `session`
+- [ ] `canManageContent()` returns true for `ADMIN` and for a flagged non-admin, false for everyone else, and takes no cast at either call site
+- [ ] `CONTENT_PATHS` admits only whole-segment matches on the three content prefixes
+- [ ] The `/secretary` and `/doctor` gates are byte-for-byte unchanged
+- [ ] Build green; the four files lint clean; `npm run lint` still 55
+- [ ] Only the five Scope files appear in the diff
+- [ ] Planner has proven at runtime: a flagged secretary reaches `/admin/blog` and is bounced from `/admin/patients` and `/admin/employees/doctors`; an unflagged secretary is bounced from all three; an ADMIN is unaffected everywhere
+
+**Stop and ask** if `prisma db push` proposes anything other than adding this one column, if any anchor above does not match exactly once, or if a verification step fails for a reason these instructions do not anticipate. Do not explain a failing check away.
+
+---
+
+### TJ-005b2 — Grant and revoke the flag from the admin UI
+
+- **Status:** BACKLOG — no planning pass. Do not execute against this ID. It also cannot start before TJ-005b1 merges: until the column and the claim exist there is nothing to toggle.
+- **Why:** TJ-005b1 makes the grant enforceable but leaves it unreachable — no screen can set it, and a content-only holder has no way in even once someone sets it by hand. This task closes both halves: an ADMIN-only toggle on the employee edit screens, and the nav treatment that keeps the clinical surfaces out of a content holder's sight.
+- **Fixed by the user's decision of 2026-08-17, not open for the pass to revisit:** `ADMIN` only may grant it, from the employee edit screens; the toggle states that it **takes effect at next sign-in**; and hiding nav items is a second line of defence, **never the boundary** — the boundary is `authorized()` and TJ-005b1 already shipped it.
+
+**What its planning pass owes:**
+1. **Where the toggle goes in the employee edit modals** — and this is the reason the pass is not run yet. That surface is already crowded by TJ-009f2's documents section, and the standing planner note records that `.form-grid` in both modals has never fitted a 320px screen. The toggle's placement and that overflow have to be looked at in the same sitting, or this squeezes a control into a layout that is already broken.
+2. **Which route accepts the field.** Both `PUT /api/employees/doctors/[id]` and `.../secretaries/[id]` build `updateData` from named body fields; adding one more is mechanical, but the pass must pin how a non-ADMIN caller is refused and confirm the existing `role !== "ADMIN"` guard is enough.
+3. **Whether a doctor may hold it at all,** or only a secretary. The user's decision says "from the employee edit screens", which are both surfaces; confirm that is intended rather than assumed.
+4. **The nav condition in `src/app/admin/layout.tsx`,** which reads the session through `useSession()` — so it depends on TJ-005b1's `session` callback and on `Session["user"].canManageContent` being declared. Dashboard, Employees, Patients and Notes hide; Blog, Doctors and Approvals stay.
+5. **Where a content-only holder lands at sign-in.** `auth.config.ts:33-39` dispatches on role alone, so a flagged secretary is still sent to `/secretary`. Decide whether that changes, and note it is the one item here that touches the file TJ-005b1 edited.
+6. **The helper text, EN only** — the admin UI is not translated. Confirm rather than assume.
 
 ---
 
@@ -4207,6 +4418,10 @@ Confirmed `src/generated/prisma` is already in `.gitignore` (last line), so that
 ## Notes for the planner
 
 Findings reported by the executor, or surfaced during a pass, that fall outside the scope of the task that turned them up. The planner triages these into tasks. **The executor does not write here** — it reports in conversation and the planner records.
+
+- **A claim about how a library behaves is not a pass finding until `node_modules` has been read.** TJ-005b carried, for a day, the confident warning that `authorized()` “receives a **JWT token**, not a session user” and that `canManageContent()` would therefore need a second overload or a flag normalised onto two shapes. It is simply false: `next-auth/lib/index.js:129-133` builds that argument with `getSession()`, and `lib/index.d.ts:42-46` types it `auth: Session | null`. What makes it worth recording is that the counter-evidence was already on screen — `auth.config.ts:55` reads `auth?.user.role` today and role gating demonstrably works, which it could not if the argument were a raw token. The claim contradicted observable behaviour and survived anyway, because a planning pass writes in a confident voice and that voice is not itself evidence. **A vendored dependency is source you can read, and reading it cost about two minutes.** (Found during the TJ-005b pass, 2026-08-18.)
+
+- **`auth.ts` overrides `auth.config.ts`'s `jwt` callback, so every token claim has to be written in two places.** `src/middleware.ts:5` constructs its NextAuth instance from `authConfig` alone, so the middleware runs the config's `jwt`; `auth.ts:10-21` spreads `...authConfig.callbacks` and then declares its own `jwt`, which wins for every server-side `auth()`. Set a claim in only one and it is present at the middleware boundary and absent in the API handlers, or the reverse. Nothing throws — the claim reads back `undefined` and the authorisation check quietly returns the wrong answer for half the app. This shape predates the queue and will catch the next auth task too. (Found during the TJ-005b pass, 2026-08-18.)
 
 - **A Verification bullet that predicts a tool's *output* must be run once before it is written down.** This happened twice in one session, in TJ-009f2 and TJ-015, and both times the code under test was correct while the check was not. In f2 the planner asserted `grep -c "objectRemoved"` returns 0 while the same task's Instructions mandated a comment containing that word. In TJ-015 the planner asserted `npx eslint "<all-ignored glob>"` reports `0 problems`, an output shape ESLint 9's flat-config CLI cannot emit at all. **Everything else in a planning pass can be derived by reading code; this one class cannot.** The distinction worth holding: a check on the *code* (does this string appear, does this file exist) is safe to write from a read, but a check on a *tool's rendering of a result* — an exact problem count, an exit code, a message shape — is a prediction about software the pass has not run, and belongs in the same category as a runtime claim. **Run it on `master` during the pass and paste what it actually said.** Twice the executor stopped rather than accepting "close enough", which is the only reason either was caught before it trained the next executor to explain failures away. (Found during TJ-009f2 and TJ-015, 2026-08-17.)
 - **`openAdd` is dead code on both employee list pages, so their modals' Add mode is unreachable.** `+ Add Doctor` (`admin/employees/doctors/page.tsx:228`) and `+ Add Secretary` (`.../secretaries/page.tsx:176`) both `router.push` to the `/new` pages, so the only way either modal opens is through `openEdit`. The function, its full form reset, and the modal's `{editingDoctor ? "Edit Doctor" : "Add Doctor"}` title branch are all unreachable from the interface. Harmless today and TJ-009f2's edit-only guard is correct regardless, but it means **any "does it behave correctly in Add mode?" check on these two modals can only ever be made statically** — there is no way to reach that state in a browser. Worth either deleting `openAdd` or wiring the button to it; deleting is probably right, since the `/new` pages are the richer forms. (Found during the TJ-009f2 visual review, 2026-08-17.)
