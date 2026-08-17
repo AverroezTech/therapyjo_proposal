@@ -28,7 +28,7 @@ Two things that bear repeating here, because this is the file both agents open:
 | TJ-003 | Replace placeholder Google Maps embed | DONE — merged `cd6ee17` | `content/real-maps-embed` |
 | TJ-004 | Source Google Reviews from a real API | DONE — merged `643c558` | `feat/google-reviews-api` |
 | TJ-005a | Name the content-management capability | DONE — merged `bc5dd2b` | `refactor/content-capability-helper` |
-| TJ-005b | Grant content management per user | BLOCKED — needs a decision on the admin-area access boundary | — |
+| TJ-005b | Grant content management per user | BACKLOG — boundary decided 2026-08-17; needs its own planning pass | — |
 | TJ-006 | Remove duplicate root icon files | DONE — merged `15b6942` | `chore/remove-icon-duplicates` |
 | TJ-007 | End a resigned employee's session immediately | DONE — merged `a1af675` | `bugfix/revoke-session-on-resign` |
 | TJ-008 | Dashboard / reservations — reported issues | SPLIT — see TJ-008a, TJ-008b | — |
@@ -43,7 +43,7 @@ Two things that bear repeating here, because this is the file both agents open:
 | TJ-009h | New-doctor form defaults to a colour it will not accept | DONE — merged `f76e2e0` | `bugfix/default-doctor-colour` |
 | TJ-009f | Upload identification documents | SCHEMA DONE — merged `ade1a06`; split into f1 + f2 | `feat/employee-documents` |
 | TJ-009f1 | Employee document endpoints | DONE — merged `9b339a8`; fully verified | `feat/employee-file-api` |
-| TJ-009f2 | Employee documents UI | PLANNED — placement decided (modal section) | — |
+| TJ-009f2 | Employee documents UI | READY — planning pass 2026-08-17 | `feat/employee-documents-ui` |
 | TJ-009g | Hard delete a doctor | DONE — merged `fe05f69`; both paths proven | `feat/hard-delete-doctor` |
 | TJ-010 | Employees / secretaries — reported issues | BACKLOG — needs a pass, splits further; its §3 is closed by TJ-009a | — |
 | TJ-011 | Patients — reported issues | BACKLOG — needs a pass, splits further | — |
@@ -54,12 +54,14 @@ Two things that bear repeating here, because this is the file both agents open:
 | TJ-014b | Remove the replaced picture on the four hazard-free paths | DONE — merged `ff48a2e`; runtime-proven on `/admin/doctors`, guard holds | `feat/remove-replaced-pictures` |
 | TJ-014c | Linked translations share one cover image — guard before removing | BACKLOG — hazard proven in code, needs a pass to design the guard | — |
 | TJ-014d | Purge the existing orphans and prove the removal half | BLOCKED — **needs `SUPABASE_SERVICE_ROLE_KEY`** | — |
+| TJ-015 | Scope ESLint to hand-written app code | READY — planning pass 2026-08-17 | `chore/scope-eslint-to-app-code` |
+| TJ-016 | The patients Files tab is dead UI | BACKLOG — found during TJ-009f2's pass; needs a pass | — |
 
 ---
 
 ### TJ-001 — Sync the Project Profile with the shipped app
 
-- **Status:** DONE — commit `3156a9a` on `docs/sync-project-profile`, unmerged
+- **Status:** DONE — commit `3156a9a` on `docs/sync-project-profile`, merged to `master` as `84aaa1c`. **Status line corrected 2026-08-17** — it still read `unmerged` long after the merge landed and the branch was deleted.
 - **Branch:** `docs/sync-project-profile`
 
 **Planner verification:** 2026-08-14 — read the full `git diff master..docs/sync-project-profile` rather than relying on the executor's report. Confirmed only `Claude_Instructions.md` changed (11 insertions, 4 deletions), and that the diff hunk opens at line 273 while the `## Project Profile` heading sits at line 267 — so every changed line falls inside Scope and nothing above the heading, including the new protocol section, was touched. Re-ran `npm run build` independently: exit 0. Working tree clean. All five instruction steps applied verbatim; the fields step 6 said to preserve are intact. One false alarm checked and cleared: the executor's report rendered the services line as `Dry Needling &amp; Acupuncture`, but `cat -A` confirms the file holds a literal `&` — the entity was an artifact of the report, not the commit.
@@ -118,7 +120,7 @@ Two things that bear repeating here, because this is the file both agents open:
 
 ### TJ-002 — Remove unreferenced root assets
 
-- **Status:** DONE — commit `07f31eb` on `chore/prune-root-assets`, unmerged
+- **Status:** DONE — commit `07f31eb` on `chore/prune-root-assets`, merged to `master` as `26cd5b5`. **Status line corrected 2026-08-17** — it still read `unmerged` long after the merge landed and the branch was deleted.
 - **Branch:** `chore/prune-root-assets`
 
 **Planner verification:** 2026-08-14 — read `git diff --name-status master..chore/prune-root-assets` directly: exactly three `D` entries, zero additions, zero modifications. Confirmed the surviving lookalikes are on disk on the branch — `public/hero.mp4`, `public/logo.jpg`, and 18 files in `public/icons/`. Confirmed `master` is an ancestor of the branch and the branch carries a single commit, so no history was rewritten. Re-ran `npm run build` on the branch myself: exit 0.
@@ -621,7 +623,7 @@ Four files, one concern, no dependency change.
 
 ### TJ-005 — Move content gating to a role capability
 
-- **Status:** SPLIT — superseded by **TJ-005a** (READY) and **TJ-005b** (BLOCKED), both below. Kept for the survey, the user decision, and the pass that produced the split. Nothing executes against this ID.
+- **Status:** SPLIT — superseded by **TJ-005a** (DONE) and **TJ-005b** (BACKLOG, boundary decided 2026-08-17), both below. Kept for the survey, the user decision, and the pass that produced the split. Nothing executes against this ID.
 - **Branch:** none — see the two successors
 - **Why:** The design handoff specifies that Blog, Doctors, and Approvals are gated by a permission (`canManageContent`) attached to a role, *"so the client can grant a manager access without a code change"* — and explicitly not by a check against one named user. The schema has a flat `Role` enum (`ADMIN` / `DOCTOR` / `SECRETARY`) with no capability layer. Behaviour today is probably correct; the coupling is the problem.
 
@@ -776,11 +778,11 @@ Every content page loads and consumes its data: `/admin/blog` renders the table 
 
 ### TJ-005b — Grant content management per user
 
-- **Status:** BLOCKED — needs a decision on the admin-area access boundary
-- **Branch:** assigned once unblocked
+- **Status:** BACKLOG — **the blocker is cleared; the planning pass is not run.** All three questions below were answered by the user on 2026-08-17 (recorded under *The decision*). This task must not be executed until a `**Planning pass:**` block appears here.
+- **Branch:** assigned at the planning pass
 - **Why:** TJ-005a names the capability but leaves it derived from the role, so granting a clinic manager access still means editing the helper and redeploying — the exact code change the handoff set out to avoid. This task makes the grant real: a per-user override, honoured at the middleware, exposed in the admin UI. Split out of TJ-005.
 
-**The blocker — a product decision with a security edge, for the user:**
+**The blocker — a product decision with a security edge, for the user. Answered 2026-08-17; kept in full because the answer only makes sense against the question:**
 
 `/admin` is one path prefix guarding two very different things. Blog, Doctors, and Approvals are public marketing content. `/admin/patients`, `/admin/employees`, and `/admin/notes` are patient records, clinical intake, SOAP notes, and staff accounts. Right now one rule covers both: `role === "ADMIN"`.
 
@@ -791,6 +793,18 @@ The moment a secretary can hold `canManageContent`, that rule has to split, or g
 3. **Is the eight-hour lag acceptable?** A grant lands in the JWT at sign-in, so it does not reach a user already logged in until they sign out and back in (session `maxAge` is 8h). The workable alternative — bumping a session version, or forcing re-auth on change — is real work and should be decided, not defaulted into.
 
 Also to settle before this is `READY`, both consequences of facts the pass established rather than open questions: applying the column means running `prisma db push` against the **live Supabase database** (there is no migrations directory), which is a production write and needs the user's go-ahead in its own right; and `src/types/next-auth.d.ts` must be extended for both `Session["user"]` and `JWT`, or the flag will not typecheck anywhere it is read.
+
+**The decision — user, 2026-08-17.** All three questions answered. The task is unblocked and now waits only on its own planning pass.
+
+1. **Yes, a content grant admits its holder to `/admin` — but the gate is an explicit allowlist, not a set of exceptions.** `authorized()` in `src/lib/auth.config.ts` splits the `/admin` prefix into exactly two cases: a path matching one of `/admin/blog`, `/admin/doctors`, `/admin/approvals` admits `ADMIN || canManageContent`; **every other `/admin` path admits `ADMIN` only.** The direction of the default is the whole point — a page added under `/admin` in future is ADMIN-only because it is absent from the list, not because someone remembered to exclude it. A future content surface has to be added deliberately. The separate `/content` route tree was considered and rejected as a much larger move for the same boundary. `src/app/admin/layout.tsx` must hide Dashboard, Employees, Patients and Notes from a content-only holder, per the handoff's "no trace" requirement — and that is a second line of defence, never the boundary itself, which is `authorized()`.
+2. **`ADMIN` only may grant it**, from the employee edit screens.
+3. **The up-to-eight-hour propagation lag is accepted**, with the toggle stating "takes effect at next sign-in." The session-version mechanism was considered and rejected as disproportionate; signing out and back in is the documented workaround.
+
+**And the production write is pre-authorised**, on the same terms as the TJ-009f schema push of 2026-08-15: `prisma db push` may run once the pass has confirmed no drift and no errors, with the state reported before and after. The column is additive and nullable-with-default, so it does not rewrite existing rows.
+
+**What the planning pass still owes, none of it a decision:** the exact allowlist constant and its placement in `auth.config.ts`; the `src/types/next-auth.d.ts` extension for both `Session["user"]` and `JWT`; the `jwt`/`session` callback changes in `auth.config.ts`; the nav-hiding condition in `admin/layout.tsx`; the toggle's placement in the employee edit modal — **which is the surface TJ-009f2 is already crowding, and the two must be looked at together before either is squeezed in**; and the column name. It will also exceed the four-file rule and should be split at the pass: the boundary (schema, JWT, middleware) is one concern, the admin toggle and nav another.
+
+**One trap the pass must not walk into.** `canManageContent()` currently takes `Session["user"]` and returns `user?.role === "ADMIN"`. Once the override exists, the same helper must be readable from `authorized()`, which receives a **JWT token**, not a session user. Either the helper grows a second overload or the flag is normalised onto both shapes — decide it explicitly rather than letting the executor discover it, because the failure mode is a helper that silently returns `false` for the token shape and locks every content manager out.
 
 ---
 
@@ -995,7 +1009,7 @@ So "add a hard delete" is never a one-line `prisma.x.delete()`. Each of TJ-011, 
 
 ### TJ-008 — Dashboard / reservations — reported issues
 
-- **Status:** SPLIT — superseded by **TJ-008a** and **TJ-008b**, both `READY`. Nothing executes against this ID.
+- **Status:** SPLIT — superseded by **TJ-008a** and **TJ-008b**, both `DONE` and merged. Nothing executes against this ID.
 - **Why:** Two issues were reported against the reservation flow. They share a surface but not a concern, and the protocol caps a task at one concern, so they were passed separately.
 
 **Reported and verified:**
@@ -2930,7 +2944,8 @@ Round trip with a real non-image file: upload **200** landing in `employee-files
 
 ### TJ-009f2 — Employee documents UI
 
-- **Status:** PLANNED — anchors pinned once TJ-009f1 lands.
+- **Status:** READY — planning pass run 2026-08-17, anchors pinned against `9d97dd1`…`7801504` (`master` at `7801504`).
+- **Branch:** `feat/employee-documents-ui`
 - **Why:** the endpoints from f1 with nothing calling them.
 - **Placement — decided by the user 2026-08-15: option (a), a *Documents* section inside the existing edit modal.** The alternative was a new `/admin/employees/doctors/[id]` and `/admin/employees/secretaries/[id]` pair mirroring `admin/patients/[id]`. (a) keeps the task inside two files and reflects that a clinic with a handful of staff does not need a detail page per employee.
 
@@ -2938,7 +2953,288 @@ Round trip with a real non-image file: upload **200** landing in `employee-files
 
 **Shape when it is pinned:** a *Documents* block below the colour picker, rendered only when `editingDoctor` / `editing` is set — there is no employee to attach a file to while creating one, so the `/new` pages stay out of Scope. Upload goes to `POST /api/upload` with `folder: "employee-files"`, then `POST /api/employees/files` with the returned `path`. List from `GET /api/employees/files?userId=…` on modal open, remove via `DELETE /api/employees/files/[fileId]`.
 
-**Two things the pass must settle, neither of which blocks f1:** whether a non-image document needs the icon treatment the patients Files grid uses (`admin/patients/[id]/page.tsx:298`) or a plain filename list suffices, and what the list shows while a save is in flight.
+**Planning pass: 2026-08-17 — completed.** Read in full: `src/app/admin/employees/doctors/page.tsx` (591 lines), `src/app/admin/employees/secretaries/page.tsx` (445), `src/app/admin/patients/[id]/page.tsx` (429), `src/app/api/employees/files/route.ts`, `src/app/api/employees/files/[fileId]/route.ts`, `src/app/api/upload/route.ts`, `src/lib/uploads.ts`, `src/lib/supabase.ts`, the `EmployeeFile` and `PatientFile` models in `prisma/schema.prisma`, and `src/app/admin/employees/doctors/new/page.tsx:66-115` for the upload idiom. Six things the earlier note got wrong or never reached:
+
+1. **The pattern this task was told to mirror does not exist.** The note points at the patients Files grid (`admin/patients/[id]/page.tsx:298`) as the reference. That grid is **read-only — there is no upload control on it at all** — and `grep -rn "patientFile\." src/` outside `src/generated/` returns **nothing**: no route anywhere creates a `PatientFile` row, and there is no `/api/patients/[id]/files`. The tab renders a relation that is never populated, which is why its bug (next item) was never noticed. **TJ-009f2 is the first working file-attachment UI in this app**, not a copy of an existing one. Filed the dead tab separately as **TJ-016**; it is not this task's problem.
+2. **That grid also has a live bug this task must not inherit.** It renders `href={f.filePath}`, but `filePath` holds a **Supabase Storage path**, not a URL — `patient-files/1723…-ab12.webp`. As an `href` that resolves relative to the current page and 404s. Any link built here must go through a public-URL builder, not the raw column.
+3. **`src/lib/uploads.ts` is `server-only` and therefore unusable from these two client components.** It holds the marker string (`/storage/v1/object/public/uploads/`) and `storagePathFrom()`, the exact inverse of what the UI needs. Hence the one new file in Scope: a client-safe `publicUploadUrl()`. Importing `uploads.ts` into a `"use client"` file is a build error, and it is the first thing an executor will try.
+4. **`/api/upload` re-encodes images and renames them, so two of the four metadata fields must come from its response, not from the picked file.** It converts anything `image/*` to WebP at quality 80 and generates its own name, returning `{ url, path, contentType }`. Record `contentType` (the stored type) as `fileType` — recording `file.type` would file a WebP object as `image/jpeg`. It does **not** return the stored byte length, so `fileSize` has to be the pre-conversion `file.size`; exact for the PDFs and scans this feature is for, approximate for a re-encoded image. Recorded rather than papered over. `"employee-files"` is already in the endpoint's `ALLOWED_FOLDERS` (`api/upload/route.ts:16`) — confirmed, no change needed there.
+5. **The DELETE endpoint returns `objectRemoved: false` on a *successful* removal whenever `SUPABASE_SERVICE_ROLE_KEY` is absent** (`files/[fileId]/route.ts:31` → `removeUpload` → the degradation path in `uploads.ts:29-32`). The row is gone and the request is a 200; only the storage object survives, which is exactly TJ-014a's known open half. **A UI that surfaces `objectRemoved` as success would show a failure on every removal on this machine, where the key is unset.** `res.ok` is the only signal the UI may read.
+6. **Both modals are shared between Add and Edit, and the state survives across openings.** `openAdd`/`openEdit` reset every other field explicitly (`doctors/page.tsx:100-125`); a Documents block that does not reset alongside them will show the previously-edited employee's documents inside the Add form. And there is no employee id during Add, so the block must not render at all there — `POST /api/employees/files` 400s without `userId`.
+
+**Also confirmed:** both modal cards are `max-width: 560px; max-height: 90vh; overflow-y: auto`, so the section has somewhere to go; `.error-msg`, `.field-hint`, `.btn-sm` and `.btn-delete` already exist in **both** files' `<style jsx>` blocks, so the new markup reuses them and adds only document-specific rules; the project's file-input idiom is `(e: React.ChangeEvent<HTMLInputElement>)` with **no** React import (the global namespace from `@types/react`), as at `employees/doctors/new/page.tsx:66`; and a plain visible `<input type="file">` is already used at `admin/patients/page.tsx:190`, so no hidden-input-plus-ref ceremony is needed.
+
+**The two open questions, now settled.** *Icons:* keep the `🖼` / `📄` convention from the patients grid, but as a **one-row-per-document list, not a card grid** — the modal is 560px wide and already the most crowded surface in the app, and a thumbnail-sized card says nothing useful about a PDF. *In flight:* the file input disables while an upload is running and a placeholder row reads `Uploading <name>…` at the top of the list; a removal turns that row's button into a disabled `Removing…`; failures land in an inline `.error-msg` above the list, not in an `alert()`.
+
+**Baseline on `master` (`7801504`), so the executor can tell inherited failures from its own:** tree clean; `npm run build` exit **0**; `npx tsc --noEmit` exit **0**; and `npx eslint` over the two target files exits **1** with **exactly 2 problems, one per file** — `react-hooks/set-state-in-effect` at `doctors/page.tsx:72` and `secretaries/page.tsx:59`, both on the pre-existing `useEffect(() => { fetch…(); }, [...])` mount pattern. **That count must still be 2 at the end.** Do not attempt to fix those two; they are systemic across every admin page and are not this task's concern.
+
+**Scope — touch only these:**
+- `src/lib/storageUrl.ts` — **new file**
+- `src/app/admin/employees/doctors/page.tsx`
+- `src/app/admin/employees/secretaries/page.tsx`
+
+**Do not touch:**
+- `src/lib/uploads.ts` and `src/lib/supabase.ts` — both `server-only`. Read them for context; importing either from a client component breaks the build.
+- `src/app/api/upload/route.ts` — it already allows `"employee-files"`. Do **not** add a stored-size field to its response, however tempting item 4 makes it; it is a shared endpoint with eight callers and belongs to its own task.
+- `src/app/api/employees/files/**` — the endpoints are TJ-009f1, merged and verified. This task consumes them unchanged.
+- `src/app/admin/patients/[id]/page.tsx` — the broken `href` and the dead tab are **TJ-016**. Do not fix them here, and do not copy them.
+- `prisma/schema.prisma` — no schema change. `EmployeeFile` is live.
+- The `/new` pages under `employees/doctors/` and `employees/secretaries/` — there is no employee to attach a document to while creating one. Out of scope by design.
+- The two `useEffect` mount patterns named in the baseline.
+
+**Instructions:**
+
+**On the anchors below:** they are quoted verbatim from the files but sit inside a numbered list, so their leading whitespace is not meaningful — match on the distinctive text, and keep whatever indentation the file itself uses at that point. Both target files indent JSX inside the modal by 24 spaces and their `<style jsx>` rules by 8.
+
+1. Create `src/lib/storageUrl.ts` with exactly this content:
+   ```ts
+   /**
+    * Public URL for an object in the uploads bucket.
+    *
+    * This is the inverse of storagePathFrom() in src/lib/uploads.ts, which lives
+    * behind "server-only" and so cannot be imported by a client component. The
+    * marker string is duplicated here deliberately: sharing it would mean either
+    * dropping that guard or adding a third module for one constant.
+    */
+   export function publicUploadUrl(path: string): string {
+       return `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/uploads/${path}`;
+   }
+   ```
+
+2. **In both** `src/app/admin/employees/doctors/page.tsx` **and** `src/app/admin/employees/secretaries/page.tsx`, add the import directly below the existing `import { parseWorkingHours, formatWorkingHours, isLegacyWorkingHours } from "@/lib/workingHours";` line:
+   ```ts
+   import { publicUploadUrl } from "@/lib/storageUrl";
+   ```
+
+3. **In both files**, add this interface directly above the existing `const FILTERS = ["Active", "Archived"] as const;` line:
+   ```ts
+   interface EmployeeDoc {
+       id: number;
+       fileName: string;
+       filePath: string;
+       fileType: string;
+       fileSize: number;
+       uploadedAt: string;
+   }
+   ```
+
+4. Add the document state. In `doctors/page.tsx`, directly below the line `    const [legacyHours, setLegacyHours] = useState("");`; in `secretaries/page.tsx`, below the identical line (it is the last `useState` in that component):
+   ```ts
+       const [docs, setDocs] = useState<EmployeeDoc[]>([]);
+       const [docsLoading, setDocsLoading] = useState(false);
+       const [uploadingName, setUploadingName] = useState("");
+       const [removingId, setRemovingId] = useState<number | null>(null);
+       const [docError, setDocError] = useState("");
+   ```
+
+5. Add the loader. In `doctors/page.tsx`, insert directly **below** the line `    useEffect(() => { fetchDoctors(); }, [fetchDoctors]);`; in `secretaries/page.tsx`, below `    useEffect(() => { fetchSecretaries(); }, [fetchSecretaries]);`. Identical in both files:
+   ```ts
+       const loadDocs = useCallback(async (userId: string) => {
+           setDocsLoading(true);
+           setDocError("");
+           const res = await fetch(`/api/employees/files?userId=${userId}`);
+           if (!res.ok) {
+               setDocs([]);
+               setDocsLoading(false);
+               setDocError("Could not load documents.");
+               return;
+           }
+           setDocs(await res.json());
+           setDocsLoading(false);
+       }, []);
+   ```
+   Both files already import `useCallback` on line 3, so no import change is needed for this step.
+
+6. Reset the document state when the modal opens. In `doctors/page.tsx`, inside `openAdd`, directly below `        setLegacyHours("");` and above `        setShowModal(true);`:
+   ```ts
+           setDocs([]);
+           setDocError("");
+           setUploadingName("");
+   ```
+   Then inside `openEdit`, in the same position (directly below its own `setLegacyHours(...)` line, above `setShowModal(true)`):
+   ```ts
+           setDocs([]);
+           setDocError("");
+           setUploadingName("");
+           loadDocs(doc.id);
+   ```
+   Apply the same two edits to `secretaries/page.tsx`, where the `openEdit` parameter is named `sec`, so the last line is `        loadDocs(sec.id);`.
+
+7. Add the two handlers. In `doctors/page.tsx`, insert directly **above** the line `    const handleResign = async (id: string) => {`:
+   ```ts
+       const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+           const file = e.target.files?.[0];
+           if (!file || !editingDoctor) return;
+           e.target.value = "";   // let the same file be picked again after a failure
+           setDocError("");
+           setUploadingName(file.name);
+
+           const fd = new FormData();
+           fd.append("file", file);
+           fd.append("folder", "employee-files");
+           const up = await fetch("/api/upload", { method: "POST", body: fd });
+           if (!up.ok) {
+               setUploadingName("");
+               setDocError("Upload failed.");
+               return;
+           }
+           const { path, contentType } = await up.json();
+
+           // fileType comes from the response, not the picked file: /api/upload
+           // re-encodes images to WebP, so file.type would be a lie. fileSize is
+           // the size as picked — the endpoint does not report the stored length,
+           // so it is exact for documents and approximate for a re-encoded image.
+           const res = await fetch("/api/employees/files", {
+               method: "POST",
+               headers: { "Content-Type": "application/json" },
+               body: JSON.stringify({
+                   userId: editingDoctor.id,
+                   fileName: file.name,
+                   filePath: path,
+                   fileType: contentType,
+                   fileSize: file.size,
+               }),
+           });
+           setUploadingName("");
+           if (!res.ok) {
+               setDocError("Could not attach the document.");
+               return;
+           }
+           loadDocs(editingDoctor.id);
+       };
+
+       const handleRemoveDoc = async (docId: number) => {
+           if (!editingDoctor) return;
+           setDocError("");
+           setRemovingId(docId);
+           // res.ok is the only success signal. The response also carries
+           // objectRemoved, which is false whenever SUPABASE_SERVICE_ROLE_KEY is
+           // unset — the row is still gone, so surfacing it would report a
+           // failure that did not happen. Do not read it.
+           const res = await fetch(`/api/employees/files/${docId}`, { method: "DELETE" });
+           setRemovingId(null);
+           if (!res.ok) {
+               setDocError("Could not remove the document.");
+               return;
+           }
+           loadDocs(editingDoctor.id);
+       };
+   ```
+   In `secretaries/page.tsx`, insert the same two handlers directly above `    const handleResign = async (id: string) => {`, with **every** `editingDoctor` replaced by `editing` — four occurrences across the two handlers.
+
+8. Add the markup. In `doctors/page.tsx`, insert directly **below** the closing of the Calendar Color group — match on this exact three-line anchor and insert after it:
+   ```
+                           {paletteExhausted && (
+                               <span className="field-hint">Every colour is in use — this one will be shared with another doctor.</span>
+                           )}
+                       </div>
+   ```
+   In `secretaries/page.tsx` there is no colour picker; insert the same block directly **above** this anchor instead (it is the modal's action row — note the `setShowModal(false)` in the second line, which distinguishes it):
+   ```
+                       <div className="modal-actions">
+                           <button className="btn-secondary" onClick={() => setShowModal(false)}>Cancel</button>
+   ```
+   The block, identical in both files except that `secretaries/page.tsx` uses `editing` in place of `editingDoctor`:
+   ```tsx
+                       {editingDoctor && (
+                           <div className="form-group doc-section">
+                               <label>Documents</label>
+                               {docError && <div className="error-msg" role="alert">{docError}</div>}
+                               <input
+                                   type="file"
+                                   className="doc-input"
+                                   aria-label="Upload a document"
+                                   disabled={!!uploadingName}
+                                   onChange={handleUpload}
+                               />
+                               {docsLoading ? (
+                                   <span className="field-hint">Loading documents…</span>
+                               ) : (
+                                   <ul className="doc-list">
+                                       {uploadingName && (
+                                           <li className="doc-row uploading">
+                                               <span className="doc-icon">⏳</span>
+                                               <span className="doc-name">Uploading {uploadingName}…</span>
+                                           </li>
+                                       )}
+                                       {docs.map((d) => (
+                                           <li key={d.id} className="doc-row">
+                                               <span className="doc-icon">{d.fileType.includes("image") ? "🖼" : "📄"}</span>
+                                               <a
+                                                   className="doc-name"
+                                                   href={publicUploadUrl(d.filePath)}
+                                                   target="_blank"
+                                                   rel="noreferrer"
+                                               >
+                                                   {d.fileName}
+                                               </a>
+                                               <button
+                                                   type="button"
+                                                   className="btn-sm btn-delete"
+                                                   disabled={removingId === d.id}
+                                                   onClick={() => handleRemoveDoc(d.id)}
+                                               >
+                                                   {removingId === d.id ? "Removing…" : "Remove"}
+                                               </button>
+                                           </li>
+                                       ))}
+                                       {docs.length === 0 && !uploadingName && (
+                                           <li className="doc-empty">No documents yet</li>
+                                       )}
+                                   </ul>
+                               )}
+                               <span className="field-hint">Documents are saved immediately — they do not wait for Save.</span>
+                           </div>
+                       )}
+   ```
+
+9. Add the styles. **In both files**, insert these rules inside the `<style jsx>` block, directly above the existing `        .field-hint { font-size: 0.72rem; color: rgba(255,255,255,0.35); }` line (present in both):
+   ```css
+           .doc-section { margin-top: 1.25rem; }
+           .doc-input { font-size: 0.82rem; color: rgba(255,255,255,0.6); }
+           .doc-list {
+             list-style: none; display: flex; flex-direction: column;
+             gap: 0.4rem; margin: 0.5rem 0 0.5rem; padding: 0;
+           }
+           .doc-row {
+             display: flex; align-items: center; gap: 0.6rem;
+             background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.06);
+             border-radius: 8px; padding: 0.5rem 0.7rem;
+           }
+           .doc-icon { flex-shrink: 0; }
+           .doc-name {
+             flex: 1; min-width: 0; font-size: 0.82rem; color: #fff;
+             overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+             text-decoration: none;
+           }
+           a.doc-name:hover { text-decoration: underline; }
+           .doc-row.uploading .doc-name { color: rgba(255,255,255,0.5); }
+           .doc-empty { font-size: 0.8rem; color: rgba(255,255,255,0.35); padding: 0.25rem 0; }
+   ```
+
+10. Do **not** change `handleSave`, the password or admin-re-auth fields, the colour picker, the resign/re-enrol/delete flows, or either table. Nothing about the existing save path moves.
+
+**Verification:**
+- `npm run build` — exit **0**.
+- `npx tsc --noEmit` — exit **0**. This is the check that catches a `server-only` import sneaking in.
+- `npx eslint src/lib/storageUrl.ts src/app/admin/employees/doctors/page.tsx src/app/admin/employees/secretaries/page.tsx` — **exactly 2 problems, both `react-hooks/set-state-in-effect`, one per page file**, unchanged from the baseline above. A third is task-generated: fix it. `storageUrl.ts` must contribute **0**. **Do not run `npm run lint`** — `master` fails it with 77 pre-existing problems and it can only produce a false failure.
+- `grep -rn "server-only" src/app/admin/employees/` returns **zero** hits.
+- `grep -c "objectRemoved" src/app/admin/employees/doctors/page.tsx src/app/admin/employees/secretaries/page.tsx` returns **0** for both — the regression from pass item 5.
+- `grep -n "editingDoctor" src/app/admin/employees/secretaries/page.tsx` returns **zero** hits, and `grep -c "editing" src/app/admin/employees/doctors/page.tsx` finds no bare `editing` that is not part of `editingDoctor` — the two files use different state names and a copy-paste between them is the likeliest single mistake in this task.
+- `git status --short` shows exactly **3** entries: one `A` (`src/lib/storageUrl.ts`) and two `M`. A fourth means something outside Scope was touched — stop and report.
+- Read your own diff and confirm the Documents block is inside the `{editingDoctor && (` / `{editing && (` guard in each file. If it renders during Add, every upload 400s.
+
+**Do not start a dev server.** The runtime check is the planner's at VISUAL REVIEW, and it needs a real Supabase-backed session.
+
+**Done when:**
+- [ ] `src/lib/storageUrl.ts` exists, exports `publicUploadUrl`, and imports nothing
+- [ ] Both employee edit modals show a Documents section; neither Add form does
+- [ ] Upload posts to `/api/upload` with `folder: "employee-files"`, then records `path` + `contentType` against the employee
+- [ ] The list links each document to its real public URL, not the bare `filePath`
+- [ ] Remove calls `DELETE /api/employees/files/[fileId]` and reports success on `res.ok` alone
+- [ ] In-flight upload and removal are both visible; failures show inline, never in an `alert()`
+- [ ] Build and typecheck pass; eslint still reports exactly the 2 inherited problems; diff is exactly three files
+- [ ] Visual review: a document uploaded, listed, opened from its link, and removed, on both the doctors and secretaries modals
 
 ---
 
@@ -3294,7 +3590,7 @@ Both doctors back to `"9-7"`, `Test Delete` RESIGNED on `#6ee7b7`, `Test Delete2
 
 ### TJ-014 — Uploaded files are never removed from storage
 
-- **Status:** SPLIT — superseded by **TJ-014a** (OPEN), **TJ-014b** (READY), **TJ-014c** (BACKLOG) and **TJ-014d** (BLOCKED). Nothing executes against this ID. Kept for the inventory, the feeder analysis, and the pass that produced the split.
+- **Status:** SPLIT — superseded by **TJ-014a** (OPEN), **TJ-014b** (DONE, merged `ff48a2e`), **TJ-014c** (BACKLOG) and **TJ-014d** (BLOCKED). Nothing executes against this ID. Kept for the inventory, the feeder analysis, and the pass that produced the split.
 
 **Re-split 2026-08-15, on the user's directive that key-blocked work stays open and must not stall the rest.** The original framing — "BLOCKED, needs the service-role key" — was **too coarse, and it was blocking work that does not need the key at all.** TJ-014a already proved the shape: the capability was built, merged and half-verified with the key absent, because `removeUpload` degrades to a logged no-op. The same is true of every remaining wiring task. Sorting the parts by what actually requires the credential:
 
@@ -3780,6 +4076,87 @@ import { removeUpload } from "@/lib/uploads";
 - [ ] TJ-014a's last checkbox ticked and that task closed
 - [ ] The bucket re-inventoried at deletion time, not read from the table above
 - [ ] Every remaining orphan removed, and every referenced object still present
+
+---
+
+### TJ-015 — Scope ESLint to hand-written app code
+
+- **Status:** READY — planning pass run 2026-08-17
+- **Branch:** `chore/scope-eslint-to-app-code`
+- **Why:** `npm run lint` reports **77 problems (43 errors, 34 warnings)** on a clean `master`, and 22 of them are noise from code nobody wrote by hand. That is why every task in this queue has had to carry the instruction *"do not run `npm run lint`, it fails on master"* and substitute a hand-listed `npx eslint` command instead. Silencing the two non-app trees does not fix the 55 real findings, but it makes the command's output attributable — which is the precondition for ever making it a gate.
+
+**Planning pass:** 2026-08-17 — read `eslint.config.mjs` (17 lines, the whole file), `.gitignore`, and `package.json:10`. Measured rather than assumed, per file tree:
+
+| Tree | Problems | Made of |
+|---|---|---|
+| `src/generated/**` | 19 (0 errors, **19 warnings**) | all `Unused eslint-disable directive` — Prisma emits a blanket disable comment its own output does not need |
+| `design_handoff_landing_and_blog_cms/**` | 3 (**2 errors**, 1 warning) | `react/no-deprecated` on `ReactDOM.render` and `@next/next/no-assign-module-variable`, both inside the vendored `support.js` prototype |
+| everything else | **55** (41 errors, 14 warnings) | 37 × `react-hooks/set-state-in-effect`, 4 × React Compiler memoization, 10 × `<img>`/LCP, 5 × hook dependencies |
+
+So the expected result is **exactly 55 problems (41 errors, 14 warnings)** — a corrected earlier note in this file claimed all 34 warnings were generated-code noise; only **19** are, and the other 15 are genuine app-code findings that must survive this change. **This task must not reduce the 55.** Anything that does means the ignore globs are too wide.
+
+Confirmed `src/generated/prisma` is already in `.gitignore` (last line), so that tree is untracked build output — linting it can only ever report on code regenerated by `postinstall`. Confirmed `eslint.config.mjs` already imports `globalIgnores` from `eslint/config` and calls it once, so this is an addition to an existing array and needs no new import or dependency. Confirmed the two trees are disjoint from every `src/app` and `src/lib` path any open task touches, so this cannot mask a finding in current work.
+
+**Ordering constraint:** do not run this while another executor has a branch open. It changes the lint baseline every other task's Verification is written against — TJ-009f2's in particular, which pins "exactly 2 problems" over two files. Run it on a quiet queue.
+
+**Scope — touch only these:**
+- `eslint.config.mjs`
+
+**Do not touch:** every rule configuration — this task adds no rule, disables no rule, and changes no severity. Not `package.json` (the `lint` script stays `eslint`). Not `.gitignore`. No source file: if a source file changes, the globs are wrong.
+
+**Instructions:**
+
+1. In `eslint.config.mjs`, replace this block:
+   ```js
+     globalIgnores([
+       // Default ignores of eslint-config-next:
+       ".next/**",
+       "out/**",
+       "build/**",
+       "next-env.d.ts",
+     ]),
+   ```
+   with:
+   ```js
+     globalIgnores([
+       // Default ignores of eslint-config-next:
+       ".next/**",
+       "out/**",
+       "build/**",
+       "next-env.d.ts",
+       // Prisma's generated client — regenerated by postinstall, gitignored, and
+       // the only source of the 19 "unused eslint-disable directive" warnings.
+       "src/generated/**",
+       // Vendored design prototype, kept for reference and never shipped. Its
+       // support.js is bundled third-party code we do not maintain.
+       "design_handoff_landing_and_blog_cms/**",
+     ]),
+   ```
+
+**Verification:**
+- `npm run lint` reports **exactly 55 problems (41 errors, 14 warnings)** — down from 77, and the 55 unchanged.
+- `npx eslint "src/generated/**/*.ts"` and `npx eslint "design_handoff_landing_and_blog_cms/**/*.js"` both report **0 problems** (the ignore applies even when the path is named explicitly).
+- `npm run build` — exit **0**. The config is not consumed by the build, so a failure means the file was left syntactically broken.
+- `git status --short` shows exactly **1** entry: `M eslint.config.mjs`.
+- Spot-check that a real finding survives: `npx eslint src/app/admin/doctors/page.tsx` still reports its `react-hooks/set-state-in-effect` error.
+
+**Done when:**
+- [ ] `npm run lint` runs against hand-written app code only
+- [ ] 55 problems remain, and all 55 are the same ones as before
+- [ ] No rule, severity, or source file changed
+- [ ] One file in the diff
+
+---
+
+### TJ-016 — The patients Files tab is dead UI
+
+- **Status:** BACKLOG — no planning pass. Do not execute against this ID.
+- **Why:** Found during TJ-009f2's pass, which had been told to mirror this surface. Three separate problems, all in `src/app/admin/patients/[id]/page.tsx`:
+  1. **Nothing can ever put a file there.** `grep -rn "patientFile\." src/` outside `src/generated/` returns nothing — no route creates a `PatientFile` row, and there is no `/api/patients/[id]/files` endpoint. The `PatientFile` model exists in the schema and the tab renders `patient.files`, but the relation is permanently empty. The tab has shown "No files uploaded yet" since it shipped and always will.
+  2. **The link is broken.** `page.tsx:300` renders `href={f.filePath}`, and `filePath` holds a storage path (`patient-files/1723…-ab12.webp`), not a URL — it would resolve relative to `/admin/patients/[id]` and 404. Invisible today only because of problem 1. `src/lib/storageUrl.ts` (added by TJ-009f2) is the fix.
+  3. **The tab header lies by omission.** `Files ({patient.files.length})` is honest arithmetic over an array that is structurally always empty.
+- **The decision the pass must put to the user first:** whether patients should have documents at all. If yes, this is the TJ-009f1 + TJ-009f2 pair over again for patients — an endpoint trio plus a UI — and the endpoints should be lifted from `api/employees/files/` rather than written fresh. If no, the honest change is to delete the tab, the model, and the relation. **Do not plan the middle option** of leaving a decorative empty tab in place.
+- **Not urgent, and cheap to leave:** an empty tab is inert. But it is the kind of thing a client finds during a demo and reads as "the feature is broken," so it should not sit unresolved through handover.
 
 ---
 
