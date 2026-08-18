@@ -48,7 +48,7 @@ Two things that bear repeating here, because this is the file both agents open:
 | TJ-009f2 | Employee documents UI | DONE — merged `cd9b015`; round trip proven live on both modals | `feat/employee-documents-ui` |
 | TJ-009g | Hard delete a doctor | DONE — merged `fe05f69`; both paths proven | `feat/hard-delete-doctor` |
 | TJ-010 | Employees / secretaries — reported issues | SPLIT — passed 2026-08-18; six of its seven items are already shipped, see TJ-010a | — |
-| TJ-010a | Hard delete a secretary | READY | `feat/hard-delete-secretary` |
+| TJ-010a | Hard delete a secretary | VISUAL REVIEW — committed `c0bd451`; verified and layout-reviewed, **authenticated runtime half owed** | `feat/hard-delete-secretary` |
 | TJ-011 | Patients — reported issues | BACKLOG — needs a pass, splits further | — |
 | TJ-012 | Blog — hard delete a post | BACKLOG — needs a pass | — |
 | TJ-013 | Doctor profiles (public site) — hard delete | BACKLOG — needs a pass | — |
@@ -3761,7 +3761,7 @@ export async function DELETE(
 
 ### TJ-010a — Hard delete a secretary
 
-- **Status:** READY
+- **Status:** VISUAL REVIEW — commit `c0bd451` on `feat/hard-delete-secretary`. Planner verification passed and the layout half of the visual review passed. **Not merged:** the authenticated runtime half is still owed and the protocol does not allow merging without it.
 - **Branch:** `feat/hard-delete-secretary`
 - **Why:** `DELETE /api/employees/secretaries/[id]` only ever sets `status: "RESIGNED"`. A secretary added by mistake — a typo, a duplicate, a test account — can be archived but never removed, so the archive fills with rows that will never mean anything again. The doctors surface solved exactly this in TJ-009g and the solution is proven; this brings the secretaries surface into line with it, deliberately reusing the same shape rather than inventing a second one. Split out of TJ-010, whose other six items turned out to be shipped already.
 
@@ -3980,7 +3980,7 @@ After the line `        .modal-actions { display: flex; justify-content: flex-en
 - `npx eslint "src/app/admin/employees/secretaries/page.tsx" "src/app/api/employees/secretaries/[id]/route.ts"` reports **`1 problem (1 error, 0 warnings)`** — not zero. The one finding is a pre-existing `react-hooks/set-state-in-effect` on the `useEffect(() => { fetchSecretaries(); }, [fetchSecretaries]);` line, which is outside this task's Scope and must be left alone. **Two or more problems means you introduced one.**
 - `npm run lint` still reports `55 problems (41 errors, 14 warnings)`.
 - `grep -c "hard=true" "src/app/admin/employees/secretaries/page.tsx"` returns **1**.
-- `grep -c "btn-danger" "src/app/admin/employees/secretaries/page.tsx"` returns **3** — one use in the JSX and two in the CSS. **This is the check for Step 6**; if it returns 1 you added the modal and forgot the styles.
+- `grep -c "btn-danger" "src/app/admin/employees/secretaries/page.tsx"` returns **4** — one use in the JSX and **three** CSS selector lines: the base rule, `:hover:not(:disabled)` and `:disabled`. **This is the check for Step 6**; if it returns 1 you added the modal and forgot the styles. *(Corrected 2026-08-18 — this bullet originally said 3. It was wrong, the executor caught it, and the code was right all along. See the planner verification below.)*
 - `grep -c "Secretary marked as resigned" "src/app/api/employees/secretaries/[id]/route.ts"` returns **1** — the soft-delete default survived.
 - `git diff --stat` lists exactly the two files in Scope.
 - `git status` is clean after the commit.
@@ -3998,6 +3998,44 @@ After the line `        .modal-actions { display: flex; justify-content: flex-en
 - [ ] Only the two Scope files in the diff
 
 **Stop and ask** if an anchor does not match exactly once, or if a verification number differs from the one written here. The lint expectation is **1**, not 0 — do not "fix" the pre-existing finding to make it zero.
+
+**Planner verification:** 2026-08-18 — read the whole `git diff master..feat/hard-delete-secretary` rather than trusting the report. 126 insertions, 8 deletions across exactly the two Scope files; the doctors route and page are byte-for-byte untouched; nothing outside Scope moved. The route diff matches the specified replacement exactly, including the `role: "SECRETARY"` filter on the lookup, which is what stops this endpoint deleting a doctor. Re-ran every Verification command independently on the branch rather than accepting the executor's transcript: `npm run build` exit 0; `npx eslint` over both files → `1 problem (1 error, 0 warnings)`, the pre-existing `react-hooks/set-state-in-effect`, untouched; `npm run lint` → `55 problems (41 errors, 14 warnings)`; `hard=true` → 1; `Secretary marked as resigned` → 1.
+
+**The executor was right and the planner was wrong about `btn-danger`, and this is the third time this exact class of error has shipped in a Verification block.** The bullet predicted 3; the real count is 4. Settled against the model rather than by argument: `git show master:src/app/admin/employees/doctors/page.tsx | grep -c "btn-danger"` returns **4** on the untouched file the task said to copy verbatim — one JSX use plus *three* selector lines, because `.btn-danger` carries `:hover:not(:disabled)` and `:disabled` as well as its base rule. The pass counted two. The executor copied the block verbatim as Step 6 required, got 4, and **stopped and reported instead of restructuring the CSS to force the number down to 3** — which would have broken the very drift this task exists to prevent. That is exactly the behaviour the instructions ask for. Bullet corrected above.
+
+**Visual review, part one of two — the layout. 2026-08-18. Passed.**
+
+Run through the static-harness technique from the 2026-08-15 note rather than the live page, because the live surface needs an admin session this session does not have (see below). The page's entire `<style jsx>` block was lifted verbatim from the branch, together with the dialog markup, and served over HTTP — `file://` URLs are refused by the browser tool. **Every claim below is a computed style or a measured box, not a look at a picture.** A screenshot was taken as corroboration only.
+
+The specific risk this was built to catch — the dialog being copied without its three CSS rules — **is absent**:
+
+| Assertion | Measured |
+|---|---|
+| `.modal-narrow` is in effect | `max-width: 420px`, rendered width **420px**, not full-bleed |
+| `.btn-danger` base rule | `background: rgb(220, 38, 38)` — `#dc2626` |
+| `.btn-danger:disabled` | `opacity: 0.5`, `cursor: not-allowed` |
+| `.btn-danger` enabled | `opacity: 1`, `cursor: pointer` — toggled live to prove both states |
+| `.delete-warning` | `13.6px` (0.85rem), `rgba(255, 255, 255, 0.6)`, `visibility: visible`, real 354×61 box |
+| Overlay | `position: fixed`, covers the full 1920×855 viewport |
+
+**At 320px, measured inside a same-origin 320px iframe** — because `resize_window` reports success without resizing, per the standing note: `document.documentElement.scrollWidth` is **320** against a 320px viewport, so **no horizontal overflow**; the card fits at exactly 320 and does not overflow; Cancel and Delete permanently do not overlap and the danger button's right edge lands at 287. **This dialog is not affected by the `.form-grid` 320px defect** recorded against the *edit* modals — it uses `.modal-actions`, a flex row, not the hard `1fr 1fr` grid.
+
+**Visual review, part two — the authenticated runtime half. NOT DONE. This is what blocks the merge.**
+
+Two obstacles, both of which need the user:
+
+1. **No admin credentials.** The live ADMIN is `noorhamami` — the user's own account, not the seed's `admin` / `admin123` default, which the database shows was never used. Nothing in this repo can log in. The standing note of 2026-08-15 is explicit that a logged-out review of an authenticated surface comes back green whether the feature works or not, so it was not attempted.
+2. **A stale server owns port 3000.** PID 22936, a `next start` launched **2026-08-15 at 23:57** — three days old, serving a build from before TJ-009f2, TJ-015 and this task. `curl` returns a cheerful 200 from it, which is precisely the trap recorded after the TJ-003 review. Reviewing against it would test code that predates the change. It must be stopped before part two runs, and `AUTH_URL=http://localhost:3000/` pins auth redirects there, so moving to a free port is not an option for a logged-in review.
+
+**What part two must assert, once a session exists:**
+- `?hard=true` removes an unreferenced secretary; the row disappears from Archived
+- The default `DELETE` still only marks RESIGNED
+- A **doctor's** id sent to this endpoint returns **404** and deletes nothing — the `role: "SECRETARY"` filter under load
+- A referenced secretary returns **409** naming the blockers
+- *Delete permanently* renders only on archived rows; active rows still show *Resign* alone
+- The confirm button stays disabled until the typed name matches exactly
+
+**Recommended subject, so nothing real is touched:** create a throwaway secretary through the UI, resign it, hard-delete *that*, and leave the existing `Test Delete` row alone. The pass confirmed `Test Delete` is already RESIGNED and unreferenced and would serve, but deleting it is an irreversible write to production data that nobody has asked for. A self-cleaning fixture proves the same thing and leaves the database exactly as found.
 
 ---
 
@@ -4691,6 +4729,8 @@ Confirmed `src/generated/prisma` is already in `.gitignore` (last line), so that
 ## Notes for the planner
 
 Findings reported by the executor, or surfaced during a pass, that fall outside the scope of the task that turned them up. The planner triages these into tasks. **The executor does not write here** — it reports in conversation and the planner records.
+
+- **Third time: a count written into a Verification block was guessed, and the executor caught it.** TJ-010a's bullet predicted `grep -c "btn-danger"` would return 3 — "one use in the JSX and two in the CSS." It returns **4**, because the rule carries `:hover:not(:disabled)` and `:disabled` alongside its base selector. The file it was copied from was sitting on `master`, unmodified, and one `grep -c` against it would have settled the number before the task shipped. This is the same failure as TJ-009b's eslint baseline and TJ-015's `0 problems`, and the note above it already says not to do this. **What is new is the shape of the miss: the count was of a thing the pass had already read.** Reading a code block is not the same as counting matches in it — the eye collapses `:hover` and `:disabled` into "the styling" and reports two. **Any bullet containing a number gets the command run against `master` and the output pasted, with no exception for numbers that feel obvious from a file already open.** Credit where due: the executor copied the block verbatim as instructed, got 4, and stopped rather than restructuring correct CSS to satisfy a wrong number — which would have reintroduced the drift the task existed to prevent. (Found during the TJ-010a review, 2026-08-18.)
 
 - **A multi-item task decays silently while its neighbours ship, and nobody notices because the queue never re-reads itself.** TJ-010 listed seven reported secretary issues. When its pass finally ran on 2026-08-18, **six were already fixed** — the working-hours selector, both password fields, the archive view, re-enrolment and the documents cycle had all arrived as side effects of TJ-009a / c / e / f2, which covered both employee surfaces by design, and the "Delete vs Resign" label mismatch had resolved itself when TJ-009g moved *Delete permanently* onto archived rows only. The queue still described all seven as open, and would have kept saying so. **The cost of finding this out was reading two files.** The general shape: when a task is a *list of reported symptoms* rather than a single change, its items are exactly the things another task is most likely to have fixed in passing — re-verify every item against the code at pass time, and expect the list to have shrunk. (Found during the TJ-010 pass, 2026-08-18.)
 
