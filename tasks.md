@@ -47,15 +47,17 @@ Two things that bear repeating here, because this is the file both agents open:
 | TJ-009f1 | Employee document endpoints | DONE — merged `9b339a8`; fully verified | `feat/employee-file-api` |
 | TJ-009f2 | Employee documents UI | DONE — merged `cd9b015`; round trip proven live on both modals | `feat/employee-documents-ui` |
 | TJ-009g | Hard delete a doctor | DONE — merged `fe05f69`; both paths proven | `feat/hard-delete-doctor` |
-| TJ-010 | Employees / secretaries — reported issues | BACKLOG — needs a pass, splits further; its §3 is closed by TJ-009a | — |
+| TJ-010 | Employees / secretaries — reported issues | SPLIT — passed 2026-08-18; six of its seven items are already shipped, see TJ-010a | — |
+| TJ-010a | Hard delete a secretary | READY | `feat/hard-delete-secretary` |
 | TJ-011 | Patients — reported issues | BACKLOG — needs a pass, splits further | — |
 | TJ-012 | Blog — hard delete a post | BACKLOG — needs a pass | — |
 | TJ-013 | Doctor profiles (public site) — hard delete | BACKLOG — needs a pass | — |
-| TJ-014 | Uploaded files are never removed from storage | SPLIT — measured (7/7 orphaned); see TJ-014a … TJ-014d | — |
+| TJ-014 | Uploaded files are never removed from storage | SPLIT — measured (7/7 orphaned); see TJ-014a … TJ-014e | — |
 | TJ-014a | Give the app the ability to delete a storage object | OPEN — merged `b248edb`; degradation half proven, **removal half waits on the key** | `feat/storage-delete-capability` |
 | TJ-014b | Remove the replaced picture on the four hazard-free paths | DONE — merged `ff48a2e`; runtime-proven on `/admin/doctors`, guard holds | `feat/remove-replaced-pictures` |
 | TJ-014c | Linked translations share one cover image — guard before removing | BACKLOG — hazard proven in code, needs a pass to design the guard | — |
 | TJ-014d | Purge the existing orphans and prove the removal half | BLOCKED — **needs `SUPABASE_SERVICE_ROLE_KEY`** | — |
+| TJ-014e | Hard-deleting an employee leaks their uploads | BACKLOG — found during TJ-010a's pass; needs a pass | — |
 | TJ-015 | Scope ESLint to hand-written app code | DONE — merged `783b2d0`; `npm run lint` is now usable, 55 real findings | `chore/scope-eslint-to-app-code` |
 | TJ-016 | The patients Files tab is dead UI | BACKLOG — found during TJ-009f2's pass; needs a pass | — |
 
@@ -3724,7 +3726,7 @@ export async function DELETE(
 
 ### TJ-010 — Employees / secretaries — reported issues
 
-- **Status:** BACKLOG — no planning pass. Do not execute against this ID.
+- **Status:** SPLIT — planning pass run 2026-08-18. **Six of the seven items below have already shipped** inside the TJ-009 stack; the only live work left is the hard delete, which is now **TJ-010a**. Do not execute against this ID.
 - **Why:** Six issues, five of them the same as TJ-009's. Filed separately because the user did, but most should ship as one change across both surfaces rather than twice.
 
 **Verified against `src/app/admin/employees/secretaries/page.tsx` and `src/app/api/employees/secretaries/[id]/route.ts`:**
@@ -3736,6 +3738,266 @@ export async function DELETE(
 5. **Re-enrol.** **Real**, and again **UI-only** — `PUT` already accepts `status`.
 6. **Doctors say "Delete" while secretaries say "Resign".** **Real, and worse than a wording mismatch.** Both buttons call the same soft-delete, but the doctors' one is labelled *Delete* (`doctors/page.tsx:153`) and the secretaries' *Resign* (`secretaries/page.tsx:135`). Whichever verb wins, one of the two labels is currently lying about what it does. The user described the secretary label as "archive"; it actually reads *Resign*. Settle the vocabulary across both tabs in the same task.
 7. **Identification documents.** **Real**, identical to TJ-009 §1 — same table, same blocker.
+
+**Planning pass:** 2026-08-18 — read `src/app/admin/employees/secretaries/page.tsx` and `.../doctors/page.tsx` in full, `src/app/api/employees/secretaries/[id]/route.ts` and `.../doctors/[id]/route.ts` in full, `prisma/schema.prisma`, and the live database through a read-only probe. **This task is almost entirely finished and nobody had noticed.** Re-checking all seven items against the code as it stands today:
+
+| § | Item | State on 2026-08-18 |
+|---|---|---|
+| 1 | Hard delete | **The only live work.** Split out as TJ-010a. |
+| 2 | Working-hours selector | **Shipped** by TJ-009e — `page.tsx:5` imports `parseWorkingHours` / `formatWorkingHours`, and `hoursFrom` / `hoursTo` state exists at `:58-59`. |
+| 3 | Show + repeat password | **Shipped** by TJ-009a — `confirmPassword` at `:26`, `showPassword` at `:55`. |
+| 4 | Archive view | **Shipped** by TJ-009c — `FILTERS = ["Active", "Archived"]` at `:39` with live counts at `:90-93`. |
+| 5 | Re-enrol | **Shipped** by TJ-009c — `handleReEnrol` at `:253`. |
+| 6 | "Delete" vs "Resign" mismatch | **Resolved as a side effect.** Both surfaces now read *Resign* for an ACTIVE employee — `secretaries/page.tsx:313` and `doctors/page.tsx:374` — and *Delete permanently* is reserved for the archived row. The label no longer lies about what the button does. Nothing to file. |
+| 7 | Identification documents | **Shipped** by TJ-009f2 — the secretaries modal carries the full upload / list / remove cycle at `:76-88`, `:189-228`, `:230-245`. |
+
+**One claim in §1 above is wrong and TJ-010a is specified against the correction.** This file says a secretary "has *no* inbound foreign keys at all". That is not what the schema says. `Reservation.doctorId`, `Note.doctorId` and `DoctorProfile.userId` all point at **`User`**, and none of them is role-aware — nothing at the database level stops a `SECRETARY` row from being referenced. It happens to be true *today* that none is, which is a fact about the data and not a property of the design. So TJ-010a checks for blockers exactly as the shipped doctor path does, rather than deleting on the strength of an assumption that a future seed script or a hand-written row could quietly break.
+
+**Live database, read 2026-08-18 through a read-only probe.** Four users: one ADMIN, two DOCTORs (both ACTIVE, holding 1 and 9 reservations), and **one SECRETARY — `Test Delete`, already RESIGNED, with zero reservations, zero notes, no profile, no picture and no documents.** There are **zero `EmployeeFile` rows** in the whole database. So the happy path has a ready-made disposable subject for the runtime review, and the storage-leak hazard below is latent rather than live.
+
+**Found during this pass and filed as TJ-014e:** hard delete removes the `User` row and cascades its `EmployeeFile` rows, but **nothing removes the underlying storage objects** — not the employee's `pictureUrl`, not their documents. The shipped doctor path (TJ-009g) already has this hole; TJ-010a would faithfully reproduce it. Deliberately left alone here so that one task fixes it on both routes at once, rather than the two routes drifting apart. The comment at `prisma/schema.prisma:93-95` still asserts that "nothing in this application ever removes the underlying object from Supabase Storage", which TJ-014a and TJ-014b made stale.
+
+---
+
+### TJ-010a — Hard delete a secretary
+
+- **Status:** READY
+- **Branch:** `feat/hard-delete-secretary`
+- **Why:** `DELETE /api/employees/secretaries/[id]` only ever sets `status: "RESIGNED"`. A secretary added by mistake — a typo, a duplicate, a test account — can be archived but never removed, so the archive fills with rows that will never mean anything again. The doctors surface solved exactly this in TJ-009g and the solution is proven; this brings the secretaries surface into line with it, deliberately reusing the same shape rather than inventing a second one. Split out of TJ-010, whose other six items turned out to be shipped already.
+
+**Planning pass:** 2026-08-18 — recorded in full under **TJ-010** above: both routes and both pages read end to end, the "no inbound foreign keys" claim corrected against the schema, the live database probed read-only, three missing CSS rules found, and every anchor's indentation measured rather than eyeballed.
+
+**Scope — touch only these:**
+- `src/app/api/employees/secretaries/[id]/route.ts`
+- `src/app/admin/employees/secretaries/page.tsx`
+
+**Do not touch:** `src/app/api/employees/doctors/[id]/route.ts` or `src/app/admin/employees/doctors/page.tsx` — they are the model you are copying, not part of the change. The `GET` and `PUT` handlers in the secretaries route. The soft-delete behaviour, which stays the default and must keep working exactly as it does. `prisma/schema.prisma` — no schema change here, and no `prisma db push`. Do not add storage cleanup: hard delete leaks the employee's uploads today on **both** routes, that is real, and it is filed as **TJ-014e** so it gets fixed once for both rather than half-fixed here.
+
+**A note on line endings:** every file in this tree is CRLF. Match anchors one line at a time.
+
+**Instructions**
+
+**Step 1 — `src/app/api/employees/secretaries/[id]/route.ts`: add the hard path.**
+
+`DELETE` is the last function in this file. Replace **everything from this line to the end of the file**:
+
+```
+// DELETE /api/employees/secretaries/[id] — soft delete (set status to RESIGNED)
+```
+
+with exactly this:
+
+```
+// DELETE /api/employees/secretaries/[id]
+//   default        → soft delete (set status to RESIGNED)
+//   ?hard=true     → permanent removal, refused if the secretary is referenced
+export async function DELETE(
+    req: NextRequest,
+    { params }: { params: Promise<{ id: string }> }
+) {
+    const session = await auth();
+    if (!session || (session.user as { role: string }).role !== "ADMIN") {
+        return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    const { id } = await params;
+    const hard = req.nextUrl.searchParams.get("hard") === "true";
+
+    if (!hard) {
+        // Soft delete — set status to RESIGNED instead of permanent deletion
+        await prisma.user.update({
+            where: { id },
+            data: { status: "RESIGNED" },
+        });
+
+        return NextResponse.json({ message: "Secretary marked as resigned" });
+    }
+
+    // Hard delete. The foreign keys that point at User are not role-aware, so a
+    // secretary can in principle hold reservations or notes even though no UI
+    // flow creates them that way — check rather than assume. Reservations and
+    // notes are RESTRICT and are clinical records besides; DoctorProfile.userId
+    // is SET NULL, which would leave a live public profile silently unlinked, so
+    // that is refused too. EmployeeFile cascades, which is intended.
+    const secretary = await prisma.user.findFirst({
+        where: { id, role: "SECRETARY" },
+        select: {
+            name: true,
+            _count: { select: { reservations: true, notes: true } },
+            doctorProfile: { select: { id: true } },
+        },
+    });
+
+    if (!secretary) {
+        return NextResponse.json({ error: "Secretary not found" }, { status: 404 });
+    }
+
+    const blockers: string[] = [];
+    if (secretary._count.reservations > 0) {
+        blockers.push(`${secretary._count.reservations} reservation(s)`);
+    }
+    if (secretary._count.notes > 0) {
+        blockers.push(`${secretary._count.notes} note(s)`);
+    }
+    if (secretary.doctorProfile) {
+        blockers.push("a linked public profile");
+    }
+
+    if (blockers.length > 0) {
+        return NextResponse.json(
+            {
+                error: `Cannot delete ${secretary.name}: they have ${blockers.join(" and ")}. Resign them instead.`,
+            },
+            { status: 409 }
+        );
+    }
+
+    await prisma.user.delete({ where: { id } });
+
+    return NextResponse.json({ message: "Secretary deleted permanently" });
+}
+```
+
+The signature changes from `_req` to `req` because the query string is now read. `NextRequest` is already imported at the top of the file; do not add an import. The `role: "SECRETARY"` filter on the lookup is load-bearing — it is what stops this endpoint deleting a doctor if someone passes a doctor's id.
+
+**Step 2 — `src/app/admin/employees/secretaries/page.tsx`: delete-dialog state.**
+
+After the line `    const [docError, setDocError] = useState("");` (indented four spaces), insert these four lines, each indented four spaces:
+
+```
+    const [deleteTarget, setDeleteTarget] = useState<Secretary | null>(null);
+    const [deleteConfirm, setDeleteConfirm] = useState("");
+    const [deleteError, setDeleteError] = useState("");
+    const [deleting, setDeleting] = useState(false);
+```
+
+**Step 3 — same file: the two handlers.**
+
+Immediately **before** the line `    if (loading) {` (indented four spaces), insert this block followed by one blank line:
+
+```
+    const openDelete = (sec: Secretary) => {
+        setDeleteTarget(sec);
+        setDeleteConfirm("");
+        setDeleteError("");
+    };
+
+    const handleHardDelete = async () => {
+        if (!deleteTarget) return;
+        setDeleting(true);
+        setDeleteError("");
+        const res = await fetch(`/api/employees/secretaries/${deleteTarget.id}?hard=true`, {
+            method: "DELETE",
+        });
+        setDeleting(false);
+        if (!res.ok) {
+            const data = await res.json().catch(() => ({}));
+            setDeleteError(data.error || "Could not delete this secretary.");
+            return;
+        }
+        setDeleteTarget(null);
+        fetchSecretaries();
+    };
+```
+
+**Step 4 — same file: the Actions cell.**
+
+Replace this single line, which is indented **44** spaces:
+
+```
+                                            <button className="btn-sm btn-edit" onClick={() => handleReEnrol(sec.id)}>Re-enrol</button>
+```
+
+with these four lines — the fragment tags at 44 spaces, the two buttons at 48:
+
+```
+                                            <>
+                                                <button className="btn-sm btn-edit" onClick={() => handleReEnrol(sec.id)}>Re-enrol</button>
+                                                <button className="btn-sm btn-delete" onClick={() => openDelete(sec)}>Delete permanently</button>
+                                            </>
+```
+
+This leaves the ACTIVE branch alone: an active secretary still shows *Resign* only. *Delete permanently* appears exclusively on an archived row, which is the same rule the doctors surface follows.
+
+**Step 5 — same file: the confirmation modal.**
+
+Immediately **before** the line `            <style jsx>{` (indented twelve spaces — it is the only such line in the file), insert this block followed by one blank line, opening at twelve spaces:
+
+```
+            {deleteTarget && (
+                <div className="modal-overlay" onClick={() => setDeleteTarget(null)}>
+                    <div className="modal-card modal-narrow" onClick={(e) => e.stopPropagation()}>
+                        <h2>Delete {deleteTarget.name}?</h2>
+                        <p className="delete-warning">
+                            This permanently removes the account and cannot be undone. It is refused if
+                            this secretary has any reservations, notes, or a linked public profile.
+                        </p>
+                        {deleteError && <div className="error-msg" role="alert">{deleteError}</div>}
+                        <div className="form-group">
+                            <label>Type <strong>{deleteTarget.name}</strong> to confirm</label>
+                            <input
+                                value={deleteConfirm}
+                                onChange={(e) => setDeleteConfirm(e.target.value)}
+                                autoFocus
+                            />
+                        </div>
+                        <div className="modal-actions">
+                            <button className="btn-secondary" onClick={() => setDeleteTarget(null)}>Cancel</button>
+                            <button
+                                className="btn-danger"
+                                onClick={handleHardDelete}
+                                disabled={deleting || deleteConfirm !== deleteTarget.name}
+                            >
+                                {deleting ? "Deleting…" : "Delete permanently"}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+```
+
+**Step 6 — same file: the three CSS rules it needs.**
+
+This is the step that is easy to skip and impossible to see in a build. **`.modal-narrow`, `.delete-warning` and `.btn-danger` are defined in the doctors page's `<style jsx>` block and do not exist in this file** — the pass checked each one. Without them the dialog renders full width with an unstyled confirm button, which passes every command in the Verification block below and is obvious the moment anyone looks at it.
+
+After the line `        .modal-actions { display: flex; justify-content: flex-end; gap: 0.75rem; margin-top: 1.5rem; }` (indented eight spaces), insert these seven lines, copied verbatim from `doctors/page.tsx:710-718`:
+
+```
+        .modal-narrow { max-width: 420px; }
+        .delete-warning { font-size: 0.85rem; color: rgba(255,255,255,0.6); margin-bottom: 1rem; line-height: 1.5; }
+        .btn-danger {
+          background: #dc2626; color: #fff; border: none; border-radius: 10px;
+          padding: 0.6rem 1.25rem; font-size: 0.9rem; font-weight: 600;
+          cursor: pointer; font-family: inherit;
+        }
+        .btn-danger:hover:not(:disabled) { background: #b91c1c; }
+        .btn-danger:disabled { opacity: 0.5; cursor: not-allowed; }
+```
+
+**Verification** — run all of these and paste the real output. Every number was measured on `master` on 2026-08-18.
+
+- `npm run build` passes. Green on `master` today.
+- `npx eslint "src/app/admin/employees/secretaries/page.tsx" "src/app/api/employees/secretaries/[id]/route.ts"` reports **`1 problem (1 error, 0 warnings)`** — not zero. The one finding is a pre-existing `react-hooks/set-state-in-effect` on the `useEffect(() => { fetchSecretaries(); }, [fetchSecretaries]);` line, which is outside this task's Scope and must be left alone. **Two or more problems means you introduced one.**
+- `npm run lint` still reports `55 problems (41 errors, 14 warnings)`.
+- `grep -c "hard=true" "src/app/admin/employees/secretaries/page.tsx"` returns **1**.
+- `grep -c "btn-danger" "src/app/admin/employees/secretaries/page.tsx"` returns **3** — one use in the JSX and two in the CSS. **This is the check for Step 6**; if it returns 1 you added the modal and forgot the styles.
+- `grep -c "Secretary marked as resigned" "src/app/api/employees/secretaries/[id]/route.ts"` returns **1** — the soft-delete default survived.
+- `git diff --stat` lists exactly the two files in Scope.
+- `git status` is clean after the commit.
+
+**Runtime proof is the planner's.** Do not delete anything from the live database to test this, and do not create fixtures. The planner will run it at visual review against the `Test Delete` secretary, which the pass confirmed is already RESIGNED and unreferenced, and will separately confirm that pointing this endpoint at a doctor's id returns 404 and removes nothing.
+
+**Done when:**
+- [ ] `?hard=true` deletes an unreferenced secretary; without it the row is still only marked RESIGNED
+- [ ] A referenced secretary is refused with 409 and a message naming what blocks it
+- [ ] A doctor's id sent to this endpoint returns 404 and deletes nothing
+- [ ] *Delete permanently* appears only on archived rows; active rows still show *Resign* alone
+- [ ] The confirm button stays disabled until the typed name matches exactly
+- [ ] All three CSS rules present; the dialog renders narrow, with a red confirm button
+- [ ] Build green; the two files still report exactly 1 pre-existing lint problem; `npm run lint` still 55
+- [ ] Only the two Scope files in the diff
+
+**Stop and ask** if an anchor does not match exactly once, or if a verification number differs from the one written here. The lint expectation is **1**, not 0 — do not "fix" the pre-existing finding to make it zero.
 
 ---
 
@@ -4328,6 +4590,17 @@ import { removeUpload } from "@/lib/uploads";
 
 ---
 
+### TJ-014e — Hard-deleting an employee leaks their uploads
+
+- **Status:** BACKLOG — no planning pass. Do not execute against this ID.
+- **Why:** `prisma.user.delete()` removes the `User` row and cascades its `EmployeeFile` rows, but nothing removes the objects those rows pointed at, and nothing removes the employee's `pictureUrl` object either. TJ-014b wired `removeUpload` into the four **replacement** paths; the **deletion** paths were never in its scope and still leak. This is the same class of defect TJ-014 was opened for, arriving through a door that split never covered.
+- **Both routes, one fix.** `DELETE /api/employees/doctors/[id]?hard=true` has shipped with this hole since TJ-009g, and TJ-010a reproduces it on purpose so the two surfaces stay identical and one task can close both. Do not fix one without the other.
+- **Latent today, and that is why it is cheap now.** The live database held **zero `EmployeeFile` rows** and no employee with a `pictureUrl` when this was found on 2026-08-18. Nothing is leaking yet because nothing has been uploaded and then deleted. The first real employee with a photo and an ID document changes that.
+- **What its pass must settle:** the objects have to be read *before* the row is deleted — the cascade takes the paths with it, so a delete-then-clean ordering has nothing left to read. `removeUpload` never throws and no-ops without `SUPABASE_SERVICE_ROLE_KEY`, so this ships and is verifiable with the key absent, exactly as TJ-014b was; only the observable 200 → 404 flip waits on **TJ-014d**. The pass must also decide whether a failed object removal is worth surfacing at all, given `handleRemoveDoc` in both pages deliberately ignores `objectRemoved`.
+- **While in there:** `prisma/schema.prisma:93-95` still comments that "nothing in this application ever removes the underlying object from Supabase Storage". TJ-014a and TJ-014b made that false. Fold the correction into this task rather than filing it alone.
+
+---
+
 ### TJ-015 — Scope ESLint to hand-written app code
 
 - **Status:** DONE — task commit `e061c06`, merged to `master` as `783b2d0` with `--no-ff`.
@@ -4418,6 +4691,10 @@ Confirmed `src/generated/prisma` is already in `.gitignore` (last line), so that
 ## Notes for the planner
 
 Findings reported by the executor, or surfaced during a pass, that fall outside the scope of the task that turned them up. The planner triages these into tasks. **The executor does not write here** — it reports in conversation and the planner records.
+
+- **A multi-item task decays silently while its neighbours ship, and nobody notices because the queue never re-reads itself.** TJ-010 listed seven reported secretary issues. When its pass finally ran on 2026-08-18, **six were already fixed** — the working-hours selector, both password fields, the archive view, re-enrolment and the documents cycle had all arrived as side effects of TJ-009a / c / e / f2, which covered both employee surfaces by design, and the "Delete vs Resign" label mismatch had resolved itself when TJ-009g moved *Delete permanently* onto archived rows only. The queue still described all seven as open, and would have kept saying so. **The cost of finding this out was reading two files.** The general shape: when a task is a *list of reported symptoms* rather than a single change, its items are exactly the things another task is most likely to have fixed in passing — re-verify every item against the code at pass time, and expect the list to have shrunk. (Found during the TJ-010 pass, 2026-08-18.)
+
+- **A copied dialog needs its copied CSS, and nothing in the build will tell you otherwise.** TJ-010a mirrors TJ-009g's delete confirmation onto the secretaries page. `.modal-overlay`, `.modal-card`, `.error-msg`, `.form-group`, `.modal-actions` and `.btn-secondary` all exist in both pages — but `.modal-narrow`, `.delete-warning` and `.btn-danger` are defined **only** in the doctors page's `<style jsx>` block. Because these are styled-jsx blocks and not global CSS, moving JSX between two pages that look identical silently drops whatever rules the destination happens to lack: the markup renders, the build passes, the lint passes, and the dialog comes out full-width with an unstyled confirm button. **When a task copies markup across a styled-jsx boundary, diff the two style blocks for every class the markup names.** One `grep -c` per class settles it. (Found during the TJ-010a pass, 2026-08-18.)
 
 - **A claim about how a library behaves is not a pass finding until `node_modules` has been read.** TJ-005b carried, for a day, the confident warning that `authorized()` “receives a **JWT token**, not a session user” and that `canManageContent()` would therefore need a second overload or a flag normalised onto two shapes. It is simply false: `next-auth/lib/index.js:129-133` builds that argument with `getSession()`, and `lib/index.d.ts:42-46` types it `auth: Session | null`. What makes it worth recording is that the counter-evidence was already on screen — `auth.config.ts:55` reads `auth?.user.role` today and role gating demonstrably works, which it could not if the argument were a raw token. The claim contradicted observable behaviour and survived anyway, because a planning pass writes in a confident voice and that voice is not itself evidence. **A vendored dependency is source you can read, and reading it cost about two minutes.** (Found during the TJ-005b pass, 2026-08-18.)
 
