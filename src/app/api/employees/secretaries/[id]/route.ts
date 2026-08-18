@@ -128,9 +128,11 @@ export async function PUT(
     return NextResponse.json({ id: secretary.id, name: secretary.name, message: "Secretary updated" });
 }
 
-// DELETE /api/employees/secretaries/[id] — soft delete (set status to RESIGNED)
+// DELETE /api/employees/secretaries/[id]
+//   default        → soft delete (set status to RESIGNED)
+//   ?hard=true     → permanent removal, refused if the secretary is referenced
 export async function DELETE(
-    _req: NextRequest,
+    req: NextRequest,
     { params }: { params: Promise<{ id: string }> }
 ) {
     const session = await auth();
@@ -139,12 +141,58 @@ export async function DELETE(
     }
 
     const { id } = await params;
+    const hard = req.nextUrl.searchParams.get("hard") === "true";
 
-    // Soft delete — set status to RESIGNED instead of permanent deletion
-    await prisma.user.update({
-        where: { id },
-        data: { status: "RESIGNED" },
+    if (!hard) {
+        // Soft delete — set status to RESIGNED instead of permanent deletion
+        await prisma.user.update({
+            where: { id },
+            data: { status: "RESIGNED" },
+        });
+
+        return NextResponse.json({ message: "Secretary marked as resigned" });
+    }
+
+    // Hard delete. The foreign keys that point at User are not role-aware, so a
+    // secretary can in principle hold reservations or notes even though no UI
+    // flow creates them that way — check rather than assume. Reservations and
+    // notes are RESTRICT and are clinical records besides; DoctorProfile.userId
+    // is SET NULL, which would leave a live public profile silently unlinked, so
+    // that is refused too. EmployeeFile cascades, which is intended.
+    const secretary = await prisma.user.findFirst({
+        where: { id, role: "SECRETARY" },
+        select: {
+            name: true,
+            _count: { select: { reservations: true, notes: true } },
+            doctorProfile: { select: { id: true } },
+        },
     });
 
-    return NextResponse.json({ message: "Secretary marked as resigned" });
+    if (!secretary) {
+        return NextResponse.json({ error: "Secretary not found" }, { status: 404 });
+    }
+
+    const blockers: string[] = [];
+    if (secretary._count.reservations > 0) {
+        blockers.push(`${secretary._count.reservations} reservation(s)`);
+    }
+    if (secretary._count.notes > 0) {
+        blockers.push(`${secretary._count.notes} note(s)`);
+    }
+    if (secretary.doctorProfile) {
+        blockers.push("a linked public profile");
+    }
+
+    if (blockers.length > 0) {
+        return NextResponse.json(
+            {
+                error: `Cannot delete ${secretary.name}: they have ${blockers.join(" and ")}. Resign them instead.`,
+            },
+            { status: 409 }
+        );
+    }
+
+    await prisma.user.delete({ where: { id } });
+
+    return NextResponse.json({ message: "Secretary deleted permanently" });
 }
