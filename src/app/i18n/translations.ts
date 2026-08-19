@@ -152,8 +152,6 @@ export const translations = {
             weekdaysTime: "10:00 AM – 7:00 PM",
             thursday: "Thursday",
             thursdayTime: "10:00 AM – 3:00 PM",
-            friday: "Friday",
-            fridayTime: "10:00 AM – 7:00 PM",
         },
         contact: {
             label: "Get in Touch",
@@ -330,8 +328,6 @@ export const translations = {
             weekdaysTime: "١٠:٠٠ ص – ٧:٠٠ م",
             thursday: "الخميس",
             thursdayTime: "١٠:٠٠ ص – ٣:٠٠ م",
-            friday: "الجمعة",
-            fridayTime: "١٠:٠٠ ص – ٧:٠٠ م",
         },
         contact: {
             label: "تواصل معنا",
@@ -461,8 +457,6 @@ export interface Translations {
         weekdaysTime: string;
         thursday: string;
         thursdayTime: string;
-        friday: string;
-        fridayTime: string;
     };
     contact: {
         label: string;
