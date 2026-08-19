@@ -65,7 +65,7 @@ export default function Finder() {
                                 <div className="finder-treatment-row" key={tr.title}>
                                     <div className="finder-treatment-icon">
                                         {/* eslint-disable-next-line @next/next/no-img-element */}
-                                        <img src={tr.icon} alt="" />
+                                        <img src={tr.icon} alt="" loading="lazy" decoding="async" />
                                     </div>
                                     <div>
                                         <div className="finder-treatment-title">{tr.title}</div>
