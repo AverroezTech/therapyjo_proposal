@@ -63,6 +63,10 @@ export default function SecretariesPage() {
     const [uploadingName, setUploadingName] = useState("");
     const [removingId, setRemovingId] = useState<number | null>(null);
     const [docError, setDocError] = useState("");
+    const [deleteTarget, setDeleteTarget] = useState<Secretary | null>(null);
+    const [deleteConfirm, setDeleteConfirm] = useState("");
+    const [deleteError, setDeleteError] = useState("");
+    const [deleting, setDeleting] = useState(false);
 
     const fetchSecretaries = useCallback(async () => {
         const res = await fetch("/api/employees/secretaries");
@@ -259,6 +263,29 @@ export default function SecretariesPage() {
         fetchSecretaries();
     };
 
+    const openDelete = (sec: Secretary) => {
+        setDeleteTarget(sec);
+        setDeleteConfirm("");
+        setDeleteError("");
+    };
+
+    const handleHardDelete = async () => {
+        if (!deleteTarget) return;
+        setDeleting(true);
+        setDeleteError("");
+        const res = await fetch(`/api/employees/secretaries/${deleteTarget.id}?hard=true`, {
+            method: "DELETE",
+        });
+        setDeleting(false);
+        if (!res.ok) {
+            const data = await res.json().catch(() => ({}));
+            setDeleteError(data.error || "Could not delete this secretary.");
+            return;
+        }
+        setDeleteTarget(null);
+        fetchSecretaries();
+    };
+
     if (loading) {
         return <div style={{ color: "rgba(255,255,255,0.5)", padding: "2rem" }}>Loading...</div>;
     }
@@ -312,7 +339,10 @@ export default function SecretariesPage() {
                                         {sec.status === "ACTIVE" ? (
                                             <button className="btn-sm btn-delete" onClick={() => handleResign(sec.id)}>Resign</button>
                                         ) : (
-                                            <button className="btn-sm btn-edit" onClick={() => handleReEnrol(sec.id)}>Re-enrol</button>
+                                            <>
+                                                <button className="btn-sm btn-edit" onClick={() => handleReEnrol(sec.id)}>Re-enrol</button>
+                                                <button className="btn-sm btn-delete" onClick={() => openDelete(sec)}>Delete permanently</button>
+                                            </>
                                         )}
                                     </div>
                                 </td>
@@ -493,6 +523,37 @@ export default function SecretariesPage() {
                 </div>
             )}
 
+            {deleteTarget && (
+                <div className="modal-overlay" onClick={() => setDeleteTarget(null)}>
+                    <div className="modal-card modal-narrow" onClick={(e) => e.stopPropagation()}>
+                        <h2>Delete {deleteTarget.name}?</h2>
+                        <p className="delete-warning">
+                            This permanently removes the account and cannot be undone. It is refused if
+                            this secretary has any reservations, notes, or a linked public profile.
+                        </p>
+                        {deleteError && <div className="error-msg" role="alert">{deleteError}</div>}
+                        <div className="form-group">
+                            <label>Type <strong>{deleteTarget.name}</strong> to confirm</label>
+                            <input
+                                value={deleteConfirm}
+                                onChange={(e) => setDeleteConfirm(e.target.value)}
+                                autoFocus
+                            />
+                        </div>
+                        <div className="modal-actions">
+                            <button className="btn-secondary" onClick={() => setDeleteTarget(null)}>Cancel</button>
+                            <button
+                                className="btn-danger"
+                                onClick={handleHardDelete}
+                                disabled={deleting || deleteConfirm !== deleteTarget.name}
+                            >
+                                {deleting ? "Deleting…" : "Delete permanently"}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
             <style jsx>{`
         .page-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 1.5rem; }
         .page-header h1 { font-size: 1.5rem; font-weight: 600; }
@@ -570,6 +631,15 @@ export default function SecretariesPage() {
         .hours-row input { flex: 1; min-width: 0; }
         .hours-sep { font-size: 0.8rem; color: rgba(255,255,255,0.4); flex-shrink: 0; }
         .modal-actions { display: flex; justify-content: flex-end; gap: 0.75rem; margin-top: 1.5rem; }
+        .modal-narrow { max-width: 420px; }
+        .delete-warning { font-size: 0.85rem; color: rgba(255,255,255,0.6); margin-bottom: 1rem; line-height: 1.5; }
+        .btn-danger {
+          background: #dc2626; color: #fff; border: none; border-radius: 10px;
+          padding: 0.6rem 1.25rem; font-size: 0.9rem; font-weight: 600;
+          cursor: pointer; font-family: inherit;
+        }
+        .btn-danger:hover:not(:disabled) { background: #b91c1c; }
+        .btn-danger:disabled { opacity: 0.5; cursor: not-allowed; }
         .error-msg {
           background: rgba(220,38,38,0.1); border: 1px solid rgba(220,38,38,0.2);
           color: #fca5a5; padding: 0.5rem 0.75rem; border-radius: var(--radius-sm, 2px);
