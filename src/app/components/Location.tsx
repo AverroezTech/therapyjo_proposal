@@ -42,10 +42,6 @@ export default function Location() {
                             <span>{t.location.thursday}</span>
                             <span className="location-hours-value">{t.location.thursdayTime}</span>
                         </div>
-                        <div className="location-hours-item">
-                            <span>{t.location.friday}</span>
-                            <span className="location-hours-value">{t.location.fridayTime}</span>
-                        </div>
                     </div>
                 </div>
             </div>

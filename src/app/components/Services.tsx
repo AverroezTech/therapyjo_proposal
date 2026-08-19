@@ -32,7 +32,7 @@ export default function Services() {
                             <div className="svc-row-num">{String(i + 1).padStart(2, "0")}</div>
                             <div className="svc-row-icon">
                                 {/* eslint-disable-next-line @next/next/no-img-element */}
-                                <img src={ICONS[i]} alt="" />
+                                <img src={ICONS[i]} alt="" loading="lazy" decoding="async" />
                             </div>
                             <div className="svc-row-content">
                                 <h3 className="svc-row-title">{svc.title}</h3>
