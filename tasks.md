@@ -1039,17 +1039,218 @@ The middle row required a fresh sign-in after the flag was set — confirms the 
 
 ### TJ-005b2 — Grant and revoke the flag from the admin UI
 
-- **Status:** BACKLOG — no planning pass. Do not execute against this ID. It also cannot start before TJ-005b1 merges: until the column and the claim exist there is nothing to toggle.
-- **Why:** TJ-005b1 makes the grant enforceable but leaves it unreachable — no screen can set it, and a content-only holder has no way in even once someone sets it by hand. This task closes both halves: an ADMIN-only toggle on the employee edit screens, and the nav treatment that keeps the clinical surfaces out of a content holder's sight.
-- **Fixed by the user's decision of 2026-08-17, not open for the pass to revisit:** `ADMIN` only may grant it, from the employee edit screens; the toggle states that it **takes effect at next sign-in**; and hiding nav items is a second line of defence, **never the boundary** — the boundary is `authorized()` and TJ-005b1 already shipped it.
+- **Status:** SPLIT — the planning pass of 2026-08-21 ran and split it. The toggle is **TJ-005b2a** (`READY`); the nav treatment and the way in is **TJ-005b2b** (`BACKLOG`). Do not execute against this parent ID.
+- **Why:** TJ-005b1 makes the grant enforceable but leaves it unreachable — no screen can set it, and a content-only holder has no way in even once someone sets it by hand. Those are two concerns, not one, and they land in disjoint files; see the split note in TJ-005b2a.
+- **Fixed by the user's decision of 2026-08-17, binding on both halves:** `ADMIN` only may grant it, from the employee edit screens; the toggle states that it **takes effect at next sign-in**; and hiding nav items is a second line of defence, **never the boundary** — the boundary is `authorized()` and TJ-005b1 already shipped it.
+
+---
+
+### TJ-005b2a — Grant and revoke the flag from the employee edit screens
+
+- **Status:** READY
+- **Branch:** `feat/content-grant-toggle`
+- **Why:** `User.canManageContent` shipped with TJ-005b1 and is enforced at `authorized()` and at every content API, but **no screen writes it** — the only way to grant it today is by hand in the database. This task gives ADMIN a checkbox on the two employee edit modals and carries the field through the two PUT routes, so the capability TJ-005b1 made real becomes reachable.
+
+**Planning pass:** 2026-08-21 — read `src/app/admin/employees/doctors/page.tsx`, `src/app/admin/employees/secretaries/page.tsx`, `src/app/api/employees/doctors/route.ts`, `src/app/api/employees/doctors/[id]/route.ts`, `src/app/api/employees/secretaries/route.ts`, `src/app/api/employees/secretaries/[id]/route.ts`, `src/app/admin/layout.tsx`, `src/lib/auth.config.ts`, `src/lib/permissions.ts`, `src/types/next-auth.d.ts`, `prisma/schema.prisma`.
+
+Confirmed:
+- The `role !== "ADMIN"` guard at the head of both `PUT` handlers (`secretaries/[id]/route.ts:48-50`, `doctors/[id]/route.ts:49-51`) returns 401 to every non-ADMIN caller before the body is read. **It is sufficient — no new guard is needed.** Adding the field to `updateData` inherits it.
+- **A doctor may hold the flag.** `permissions.ts:15` checks the column irrespective of role, and `mayEnterAdmin` in `auth.config.ts:75-76` admits any role holding it. Both screens get the toggle; that matches the user's "from the employee edit screens".
+- **Helper text is EN only.** No admin screen imports `translations.ts`; grep for it under `src/app/admin` returns nothing. Confirmed, not assumed.
+- **An ADMIN cannot lock themselves out by unticking their own box.** `canManageContent()` short-circuits on `role === "ADMIN"`, so the column is inert for admins.
+- `handleReEnrol` PUTs `{ status: "ACTIVE" }` alone; with the `!== undefined` guard the flag is left untouched by a re-enrolment. No regression there.
+
+Corrected against what the parent task assumed:
+- **The Add path in these modals is dead code.** `openAdd` is defined in both files (`doctors/page.tsx:129`, `secretaries/page.tsx:104`) and **called from nowhere** — both headers `router.push` to the `/new` pages instead. The modal is edit-only in practice, so the toggle is gated on `editing` and the `/new` pages stay out of Scope: a new employee starts at the column default of `false` and is flagged by editing. (Same dead-`openAdd` pattern TJ-011 records for patients. Reported, not fixed here.)
+- **The list `GET` routes must also return the field,** which the parent task did not mention. `openEdit` seeds the form from the already-fetched list object, so without it the checkbox would render unticked for a flagged employee and silently revoke the grant on the next save. Both list routes are therefore in Scope.
+- **`/api/employees/doctors` is fetched by non-admin surfaces** — `secretary/page.tsx:57`, `doctor/session/[id]/page.tsx:88`, `secretary/notes/*`, `secretary/reservations/new`. The field is therefore selected through the existing `isAdmin` boolean, exactly as `username` already is, so a secretary listing doctors never learns who holds the grant.
+- **`const body: Record<string, string>`** in both `handleSave` functions (`doctors/page.tsx:188`, `secretaries/page.tsx:163`) will not accept a boolean. The type must widen or the build fails.
+
+**The 320px overflow, looked at in the same sitting as the parent required:** `.form-grid` is `grid-template-columns: 1fr 1fr` with **no media query** in either file (`doctors/page.tsx:688`, `secretaries/page.tsx:621`); at 320px the two `type="time"` inputs plus their "to" separator cannot fit a ~120px column. It is real and it is pre-existing. **This task does not enter that grid** — the toggle is a full-width row placed after it — so the toggle cannot make it worse and is not blocked by it. Filed separately as **TJ-020**; fixing it here would be a second concern with its own visual review.
+
+**Scope — touch only these:**
+- `src/app/api/employees/doctors/route.ts`
+- `src/app/api/employees/doctors/[id]/route.ts`
+- `src/app/api/employees/secretaries/route.ts`
+- `src/app/api/employees/secretaries/[id]/route.ts`
+- `src/app/admin/employees/doctors/page.tsx`
+- `src/app/admin/employees/secretaries/page.tsx`
+
+Six files, above the usual four, and deliberately so: it is one change applied symmetrically to a doctor half and a secretary half. Splitting by role would put an identical diff on two branches and make review worse, not better.
+
+**Do not touch:** `src/app/admin/layout.tsx` (that is TJ-005b2b), `src/lib/auth.config.ts`, `src/lib/permissions.ts`, `src/types/next-auth.d.ts`, `prisma/schema.prisma` (TJ-005b1 shipped all of these and they are complete for this task), the `POST` handlers in the two list routes, the `/new` pages under `src/app/admin/employees/`, and the dead `openAdd` functions.
+
+**Instructions:**
+
+*1. Both list routes — return the field to ADMIN only.*
+
+In `src/app/api/employees/doctors/route.ts` and `src/app/api/employees/secretaries/route.ts`, inside the `GET` handler's `select`, insert a line immediately after `            username: isAdmin,`:
+
+```
+            canManageContent: isAdmin,
+```
+
+*2. Both `[id]` routes — accept the field on `PUT`.*
+
+In `src/app/api/employees/secretaries/[id]/route.ts`, replace:
+
+```
+    const { name, email, phone, workingHours, password, pictureUrl, status, adminPassword } = body;
+```
+
+with:
+
+```
+    const { name, email, phone, workingHours, password, pictureUrl, status, adminPassword, canManageContent } = body;
+```
+
+In `src/app/api/employees/doctors/[id]/route.ts`, replace:
+
+```
+    const { name, email, phone, workingHours, password, color, pictureUrl, status, adminPassword } = body;
+```
+
+with:
+
+```
+    const { name, email, phone, workingHours, password, color, pictureUrl, status, adminPassword, canManageContent } = body;
+```
+
+Then in **both** files, immediately after the line `    if (status !== undefined) updateData.status = status;`, insert:
+
+```
+    // Only ADMIN reaches this handler at all — the guard at the top of PUT is
+    // the gate, and the column is inert for an ADMIN anyway (permissions.ts
+    // short-circuits on role), so no one can revoke their own access here.
+    // Coerced rather than passed through: a JSON body could carry a string.
+    if (canManageContent !== undefined) {
+        updateData.canManageContent = canManageContent === true;
+    }
+```
+
+*3. Both admin pages — carry the field in state.*
+
+Add `    canManageContent: boolean;` as the last field of the `Doctor` / `Secretary` interface, and of the `DoctorForm` / `SecretaryForm` interface.
+
+Add `canManageContent: false,` to the `useState` initialiser for `form` and to the object built in `openAdd` (leave `openAdd` otherwise untouched — it is dead, but it must still typecheck).
+
+In `openEdit`, add `canManageContent: doc.canManageContent,` (doctors) / `canManageContent: sec.canManageContent,` (secretaries) to the object passed to `setForm`.
+
+*4. Both admin pages — send it.*
+
+Widen the body type. Replace `        const body: Record<string, string> = {` with:
+
+```
+        const body: Record<string, string | boolean> = {
+```
+
+in both files. Then, in `handleSave`, inside the `else if (form.password) {` branch's **enclosing** `if (!editing…) { … } else if … { … }` chain, add the field unconditionally for the edit path. Concretely, in `secretaries/page.tsx` replace:
+
+```
+        if (!editing) {
+            body.username = form.username;
+            body.password = form.password;
+        } else if (form.password) {
+            body.password = form.password;
+            body.adminPassword = form.adminPassword;
+        }
+```
+
+with:
+
+```
+        if (!editing) {
+            body.username = form.username;
+            body.password = form.password;
+        } else {
+            body.canManageContent = form.canManageContent;
+            if (form.password) {
+                body.password = form.password;
+                body.adminPassword = form.adminPassword;
+            }
+        }
+```
+
+and in `doctors/page.tsx` the identical replacement, reading `editingDoctor` in place of `editing`.
+
+*5. Both admin pages — the control.*
+
+In `src/app/admin/employees/secretaries/page.tsx`, insert immediately **before** the line `                        {editing && (` (line 461, the Documents block — it occurs exactly once):
+
+```
+                        {editing && (
+                            <div className="form-group grant-section">
+                                <label>Content management</label>
+                                <label className="grant-row">
+                                    <input
+                                        type="checkbox"
+                                        checked={form.canManageContent}
+                                        onChange={(e) => setForm({ ...form, canManageContent: e.target.checked })}
+                                    />
+                                    <span>May manage Blog, public Doctor profiles, and Approvals</span>
+                                </label>
+                                <span className="field-hint">Takes effect at their next sign-in.</span>
+                            </div>
+                        )}
+
+```
+
+In `src/app/admin/employees/doctors/page.tsx`, insert the same block immediately **before** the line `                        {editingDoctor && (` (line 519, occurs exactly once), with `editing` replaced by `editingDoctor` in the guard.
+
+*6. Both admin pages — the CSS.*
+
+The existing `.form-group input` rule gives every input a filled background, a border, `border-radius: 8px` and `0.65rem 0.8rem` of padding; a native checkbox inherits all of it and renders as a large filled box. Override it explicitly. In **both** files, insert immediately before the line `        .field-hint { font-size: 0.72rem; color: rgba(255,255,255,0.35); }`:
+
+```
+        .grant-section { margin-top: 1.25rem; }
+        .grant-row { display: flex; align-items: center; gap: 0.6rem; cursor: pointer; }
+        .grant-row input[type="checkbox"] {
+          width: 16px; height: 16px; flex-shrink: 0;
+          margin: 0; padding: 0; border: none; background: none;
+          border-radius: 0; accent-color: #10b981; cursor: pointer;
+        }
+        .grant-row span { font-size: 0.85rem; color: rgba(255,255,255,0.85); font-weight: 400; }
+```
+
+**Verification:**
+- `npm run build` passes.
+- `npx tsc --noEmit` reports no error in the six files in Scope (the widened `Record<string, string | boolean>` is the one that would otherwise fail).
+- `npx eslint src/app/admin/employees src/app/api/employees` is clean.
+- **The regression risk this task carries is silent revocation:** saving an unrelated field on an employee who already holds the grant must not clear it. Prove it, do not reason about it. With the dev server up and an ADMIN session: flag a secretary through the new checkbox, reload the page, reopen the same modal and confirm the box is **ticked** (this is what fails if step 1 was skipped), then change only their phone number and Save, and confirm the column is still `true`.
+- **Prove the grant is refused to a non-ADMIN**, since the claim that the existing guard suffices is the pass's, not the code's: `PUT /api/employees/secretaries/<id>` with `{"canManageContent":true}` from a SECRETARY session must return 401 and leave the column unchanged.
+- Report the modal's appearance at 320px and at 1440px: the checkbox row must not overflow the modal card. (The pre-existing `.form-grid` overflow above it is TJ-020 and is **not** yours to fix — report it, do not touch it.)
+
+**Done when:**
+- [ ] Both list routes return `canManageContent` to ADMIN only, and no non-admin surface receives it
+- [ ] Both PUT routes accept and coerce it, and ignore it when absent
+- [ ] The checkbox reflects the stored value on reopen and survives an unrelated save
+- [ ] A non-ADMIN PUT is refused 401
+- [ ] Nothing outside the six files in Scope changed
+
+---
+
+### TJ-005b2b — The nav treatment, and a way in for a content-only holder
+
+- **Status:** BACKLOG — no planning pass. Do not execute against this ID.
+- **Why:** Even once TJ-005b2a lets an ADMIN grant the flag, the holder has no route to it. Two gaps found during the 2026-08-21 pass, both real, both outside that task's files:
+  1. **The nav shows what the holder cannot reach.** `src/app/admin/layout.tsx:143-187` renders Dashboard, Employees, Patients and Notes unconditionally. `authorized()` bounces a content holder off all four, so they are shown four links that lead to `/unauthorized`.
+  2. **The brand link is a trap.** `layout.tsx:140` points at `/admin`, which is **not** in `CONTENT_PATHS` — a content holder clicking the product name is bounced to `/unauthorized` from their own home page.
+  3. **There is no way in at all.** `auth.config.ts:45-52` dispatches on role alone, so a flagged secretary lands on `/secretary`, and nothing in `src/app/secretary/layout.tsx` or `src/app/doctor/layout.tsx` links to `/admin/blog`. The grant is unreachable without typing the URL.
 
 **What its planning pass owes:**
-1. **Where the toggle goes in the employee edit modals** — and this is the reason the pass is not run yet. That surface is already crowded by TJ-009f2's documents section, and the standing planner note records that `.form-grid` in both modals has never fitted a 320px screen. The toggle's placement and that overflow have to be looked at in the same sitting, or this squeezes a control into a layout that is already broken.
-2. **Which route accepts the field.** Both `PUT /api/employees/doctors/[id]` and `.../secretaries/[id]` build `updateData` from named body fields; adding one more is mechanical, but the pass must pin how a non-ADMIN caller is refused and confirm the existing `role !== "ADMIN"` guard is enough.
-3. **Whether a doctor may hold it at all,** or only a secretary. The user's decision says "from the employee edit screens", which are both surfaces; confirm that is intended rather than assumed.
-4. **The nav condition in `src/app/admin/layout.tsx`,** which reads the session through `useSession()` — so it depends on TJ-005b1's `session` callback and on `Session["user"].canManageContent` being declared. Dashboard, Employees, Patients and Notes hide; Blog, Doctors and Approvals stay.
-5. **Where a content-only holder lands at sign-in.** `auth.config.ts:33-39` dispatches on role alone, so a flagged secretary is still sent to `/secretary`. Decide whether that changes, and note it is the one item here that touches the file TJ-005b1 edited.
-6. **The helper text, EN only** — the admin UI is not translated. Confirm rather than assume.
+1. **Which way the nav fails while the session is loading.** `useSession()` returns `undefined` on first paint, so a role test reads as non-ADMIN for a moment. Gating on `status === "authenticated" && isAdmin` costs an ADMIN a brief flash of a shorter nav but never shows a forbidden link to a content holder; the reverse gating trades that the other way. Recommend the former — it fails in the same direction as the `CONTENT_PATHS` default — but the pass must decide it explicitly, not inherit it.
+2. **Where the brand link points for a non-admin** — `/admin/blog` is the obvious answer; confirm it against `CONTENT_PATHS`.
+3. **Item 3's shape, and it is a genuine product decision.** Either redirect a flagged non-admin to `/admin/blog` at sign-in (which costs them their clinical dashboard, and touches the file TJ-005b1 edited) or add a conditional link into the secretary and doctor layouts (which leaves them where they belong but touches two more layouts). Recommend the latter. Do not decide it in the executor.
+4. **`src/app/secretary/layout.tsx` and `src/app/doctor/layout.tsx` must actually be read** — neither was opened during the 2026-08-21 pass, and no claim about them above rests on more than a grep.
+
+---
+
+### TJ-020 — `.form-grid` in the employee modals has never fitted 320px
+
+- **Status:** BACKLOG — no planning pass. Do not execute against this ID.
+- **Why:** Confirmed during the TJ-005b2a pass, and previously only a standing planner note. `.form-grid` is declared `grid-template-columns: 1fr 1fr` with **no media query** in either employee modal (`src/app/admin/employees/doctors/page.tsx:688`, `src/app/admin/employees/secretaries/page.tsx:621`). `.modal-card` is `width: 100%; max-width: 560px; padding: 2rem`, so at a 320px viewport each column is roughly 120px — narrower than a `type="time"` input's intrinsic width, and the Working Hours field puts **two** of them plus a "to" separator in one column. The Definition of Done requires 320px not to be broken; this predates the requirement and has never been met.
+
+**What its planning pass owes:** whether a single `@media` collapsing the grid to one column is enough, or whether `.hours-row` needs to wrap independently; and whether the same declaration exists in any other modal (the patients and blog screens were not checked).
 
 ---
 
