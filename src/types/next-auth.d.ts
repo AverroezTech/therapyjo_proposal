@@ -5,6 +5,7 @@ declare module "next-auth" {
         user: {
             id: string;
             role: "ADMIN" | "DOCTOR" | "SECRETARY";
+            canManageContent: boolean;
         } & DefaultSession["user"];
     }
 }

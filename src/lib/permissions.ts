@@ -5,11 +5,12 @@ import type { Session } from "next-auth";
  * and the Approvals queue?
  *
  * The rule lives here rather than inline at each handler so it can be granted
- * without a code change at every call site. Today it derives from the role;
- * a per-user override is TJ-005b.
+ * without a code change at every call site. ADMIN always holds it; anyone else
+ * holds it only if their User.canManageContent column is set (TJ-005b1).
  */
 export function canManageContent(
     user: Session["user"] | undefined | null
 ): boolean {
-    return user?.role === "ADMIN";
+    if (!user) return false;
+    return user.role === "ADMIN" || user.canManageContent === true;
 }

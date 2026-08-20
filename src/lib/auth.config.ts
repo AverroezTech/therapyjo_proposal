@@ -1,12 +1,20 @@
 import type { NextAuthConfig } from "next-auth";
+import { canManageContent } from "@/lib/permissions";
 
 // Auth config that does NOT import Prisma — safe for Edge runtime / middleware
+// Paths under /admin that a content grant admits its holder to. Every other
+// /admin path is ADMIN-only, and the direction of that default is the point:
+// a page added under /admin in future is closed because it is absent from
+// this list, not because someone remembered to exclude it. (TJ-005b1)
+const CONTENT_PATHS = ["/admin/blog", "/admin/doctors", "/admin/approvals"];
+
 export const authConfig: NextAuthConfig = {
     providers: [], // providers are added in auth.ts (server-only)
     callbacks: {
         async jwt({ token, user }) {
             if (user) {
                 token.role = (user as { role: string }).role;
+                token.canManageContent = (user as { canManageContent?: boolean }).canManageContent === true;
                 token.id = user.id;
             }
             return token;
@@ -15,6 +23,7 @@ export const authConfig: NextAuthConfig = {
             if (session.user) {
                 session.user.id = token.id as string;
                 (session.user as { role: string }).role = token.role as string;
+                (session.user as { canManageContent: boolean }).canManageContent = token.canManageContent === true;
             }
             return session;
         },
@@ -54,7 +63,16 @@ export const authConfig: NextAuthConfig = {
             // Role-based protection
             const role = (auth?.user as { role?: string })?.role;
 
-            if (pathname.startsWith("/admin") && role !== "ADMIN") {
+            // A content grant reaches the content pages and nothing else. Match
+            // whole segments rather than bare prefixes, so /admin/employees/doctors
+            // and any /admin/doctorsX path stay ADMIN-only.
+            const isContentPath = CONTENT_PATHS.some(
+                (p) => pathname === p || pathname.startsWith(p + "/")
+            );
+            const mayEnterAdmin =
+                role === "ADMIN" || (isContentPath && canManageContent(auth?.user));
+
+            if (pathname.startsWith("/admin") && !mayEnterAdmin) {
                 return Response.redirect(new URL("/unauthorized", nextUrl));
             }
             if (pathname.startsWith("/secretary") && role !== "SECRETARY" && role !== "ADMIN") {
