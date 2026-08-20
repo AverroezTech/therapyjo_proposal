@@ -840,6 +840,17 @@ Four things this pass settled, the first of which corrects the paragraph above:
 
 **Planning pass:** 2026-08-18 — recorded in full under **TJ-005b** above: the files read, the JWT-shape claim corrected against `node_modules`, the two-`jwt`-callback trap named, schema drift checked live against Supabase, and every baseline measured rather than predicted.
 
+**Planning pass re-verified:** 2026-08-21 — master moved three commits since the pass (TJ-010a merged as `2271744`, plus the landing-page work and the Prisma pool cap `7d3156c`), so every anchor and every measured baseline below was re-measured on today’s tree rather than trusted.
+
+- All nine anchors still match **exactly once**: `schema.prisma` color line; `next-auth.d.ts` role at twelve spaces (the eight-space twin in `interface JWT` is distinct and untouched); all three `permissions.ts` lines; `auth.config.ts` lines 1, 4, 9, 17 and 57; `auth.ts` lines 24 and 71.
+- Baselines re-measured today, all unchanged from 2026-08-18: `npm run lint` → **55 problems (41 errors, 14 warnings)**; `npx eslint` on the four Scope files → **empty, exit 0**; `migrate diff` → **“This is an empty migration.”** so there is still no drift and `db push` should add one column and nothing else; `npm run build` → **green**; `grep -c 'role !== "ADMIN"' src/lib/auth.config.ts` → **3**.
+- Re-confirmed the two claims the instructions lean on: `permissions.ts:1` is `import type`, so the 5a import erases and stays Edge-safe; and `next-auth/lib/index.d.ts:45` types the callback parameter `auth: Session | null`, so `canManageContent(auth?.user)` needs no cast.
+- Confirmed `authorize()` still reads the row with `findUnique` and **no `select`** (`auth.ts:53-55`), so step 6a’s field is present on `user` once step 2 has run.
+
+**Found during this re-verification — not for this executor.** The claim is written into the token at sign-in and, unlike `status`, is never re-read. TJ-007 added a per-request database check to `auth.ts`’s `jwt` callback precisely so a RESIGNED user loses access at once instead of keeping it for up to eight hours; `canManageContent` will have exactly the staleness TJ-007 removed — revoke the grant and its holder keeps content access until their token expires. That is tolerable while nothing can set the flag, but it becomes real the moment TJ-005b2 ships a revoke button. Filed as a question TJ-005b2’s pass must answer; **out of scope here** and the executor must not widen the `select` to chase it.
+
+**Sequencing note:** TJ-017 also edits `src/lib/auth.config.ts`, at line 26. The two changes do not overlap textually, but whichever merges second will need the other’s line present.
+
 **Scope — touch only these:**
 - `prisma/schema.prisma` — the `User` model only
 - `src/types/next-auth.d.ts`
