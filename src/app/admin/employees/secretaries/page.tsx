@@ -14,6 +14,7 @@ interface Secretary {
     status: "ACTIVE" | "RESIGNED";
     pictureUrl: string | null;
     username: string;
+    canManageContent: boolean;
 }
 
 interface SecretaryForm {
@@ -25,6 +26,7 @@ interface SecretaryForm {
     password: string;
     confirmPassword: string;
     adminPassword: string;
+    canManageContent: boolean;
 }
 
 interface EmployeeDoc {
@@ -51,6 +53,7 @@ export default function SecretariesPage() {
     const [saving, setSaving] = useState(false);
     const [form, setForm] = useState<SecretaryForm>({
         name: "", email: "", phone: "", workingHours: "", username: "", password: "", confirmPassword: "", adminPassword: "",
+        canManageContent: false,
     });
     const [showPassword, setShowPassword] = useState(false);
     const [formError, setFormError] = useState("");
@@ -103,7 +106,7 @@ export default function SecretariesPage() {
 
     const openAdd = () => {
         setEditing(null);
-        setForm({ name: "", email: "", phone: "", workingHours: "", username: "", password: "", confirmPassword: "", adminPassword: "" });
+        setForm({ name: "", email: "", phone: "", workingHours: "", username: "", password: "", confirmPassword: "", adminPassword: "", canManageContent: false });
         setShowPassword(false);
         setFormError("");
         setHoursFrom("");
@@ -120,7 +123,7 @@ export default function SecretariesPage() {
         setForm({
             name: sec.name, email: sec.email || "", phone: sec.phone || "",
             workingHours: sec.workingHours || "", username: sec.username, password: "",
-            confirmPassword: "", adminPassword: "",
+            confirmPassword: "", adminPassword: "", canManageContent: sec.canManageContent,
         });
         setShowPassword(false);
         setFormError("");
@@ -160,16 +163,19 @@ export default function SecretariesPage() {
             : "/api/employees/secretaries";
         const method = editing ? "PUT" : "POST";
 
-        const body: Record<string, string> = {
+        const body: Record<string, string | boolean> = {
             name: form.name, email: form.email, phone: form.phone,
             workingHours: form.workingHours,
         };
         if (!editing) {
             body.username = form.username;
             body.password = form.password;
-        } else if (form.password) {
-            body.password = form.password;
-            body.adminPassword = form.adminPassword;
+        } else {
+            body.canManageContent = form.canManageContent;
+            if (form.password) {
+                body.password = form.password;
+                body.adminPassword = form.adminPassword;
+            }
         }
 
         const res = await fetch(url, {
@@ -459,6 +465,21 @@ export default function SecretariesPage() {
                         </div>
 
                         {editing && (
+                            <div className="form-group grant-section">
+                                <label>Content management</label>
+                                <label className="grant-row">
+                                    <input
+                                        type="checkbox"
+                                        checked={form.canManageContent}
+                                        onChange={(e) => setForm({ ...form, canManageContent: e.target.checked })}
+                                    />
+                                    <span>May manage Blog, public Doctor profiles, and Approvals</span>
+                                </label>
+                                <span className="field-hint">Takes effect at their next sign-in.</span>
+                            </div>
+                        )}
+
+                        {editing && (
                             <div className="form-group doc-section">
                                 <label>Documents</label>
                                 {docError && <div className="error-msg" role="alert">{docError}</div>}
@@ -673,6 +694,14 @@ export default function SecretariesPage() {
         a.doc-name:hover { text-decoration: underline; }
         .doc-row.uploading .doc-name { color: rgba(255,255,255,0.5); }
         .doc-empty { font-size: 0.8rem; color: rgba(255,255,255,0.35); padding: 0.25rem 0; }
+        .grant-section { margin-top: 1.25rem; }
+        .grant-row { display: flex; align-items: center; gap: 0.6rem; cursor: pointer; }
+        .grant-row input[type="checkbox"] {
+          width: 16px; height: 16px; flex-shrink: 0;
+          margin: 0; padding: 0; border: none; background: none;
+          border-radius: 0; accent-color: #10b981; cursor: pointer;
+        }
+        .grant-row span { font-size: 0.85rem; color: rgba(255,255,255,0.85); font-weight: 400; }
         .field-hint { font-size: 0.72rem; color: rgba(255,255,255,0.35); }
       `}</style>
         </div>
