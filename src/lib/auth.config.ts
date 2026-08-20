@@ -1,13 +1,13 @@
 import type { NextAuthConfig } from "next-auth";
 import { canManageContent } from "@/lib/permissions";
 
-// Auth config that does NOT import Prisma — safe for Edge runtime / middleware
 // Paths under /admin that a content grant admits its holder to. Every other
 // /admin path is ADMIN-only, and the direction of that default is the point:
 // a page added under /admin in future is closed because it is absent from
 // this list, not because someone remembered to exclude it. (TJ-005b1)
 const CONTENT_PATHS = ["/admin/blog", "/admin/doctors", "/admin/approvals"];
 
+// Auth config that does NOT import Prisma — safe for Edge runtime / middleware
 export const authConfig: NextAuthConfig = {
     providers: [], // providers are added in auth.ts (server-only)
     callbacks: {
@@ -32,7 +32,10 @@ export const authConfig: NextAuthConfig = {
             const pathname = nextUrl.pathname;
 
             // Public routes — accessible to everyone
-            const publicRoutes = ["/", "/api/auth", "/blog", "/api/public"];
+            // "/clinic" is served by the legacy clinical system at the proxy and should never
+            // reach this app. It is listed here so that if a proxy rule stops matching, the
+            // request 404s honestly instead of redirecting staff into this app's login.
+            const publicRoutes = ["/", "/api/auth", "/blog", "/api/public", "/clinic"];
             const isPublic = publicRoutes.some(
                 (route) => pathname === route || pathname.startsWith(route + "/")
             );
