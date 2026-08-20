@@ -29,7 +29,7 @@ Two things that bear repeating here, because this is the file both agents open:
 | TJ-004 | Source Google Reviews from a real API | DONE — merged `643c558` | `feat/google-reviews-api` |
 | TJ-005a | Name the content-management capability | DONE — merged `bc5dd2b` | `refactor/content-capability-helper` |
 | TJ-005b | Grant content management per user | SPLIT — passed 2026-08-18; see TJ-005b1, TJ-005b2 | — |
-| TJ-005b1 | Make the content grant real at the boundary | READY | `feat/content-grant-boundary` |
+| TJ-005b1 | Make the content grant real at the boundary | DONE — task commit `f62bf7b`, merged to `master` as `5d75a8c` with `--no-ff`; runtime-proven | `feat/content-grant-boundary` |
 | TJ-005b2 | Grant and revoke the flag from the admin UI | BACKLOG — needs its own pass; sits behind TJ-005b1 | — |
 | TJ-006 | Remove duplicate root icon files | DONE — merged `15b6942` | `chore/remove-icon-duplicates` |
 | TJ-007 | End a resigned employee's session immediately | DONE — merged `a1af675` | `bugfix/revoke-session-on-resign` |
@@ -834,7 +834,7 @@ Four things this pass settled, the first of which corrects the paragraph above:
 
 ### TJ-005b1 — Make the content grant real at the boundary
 
-- **Status:** READY
+- **Status:** DONE — task commit `f62bf7b` on `feat/content-grant-boundary`, merged to `master` as `5d75a8c` with `--no-ff`. Planner-verified independently and runtime-proven against the live database.
 - **Branch:** `feat/content-grant-boundary`
 - **Why:** TJ-005a named the capability but left it derived from the role, so granting a clinic manager access still means editing a helper and redeploying — the exact code change the handoff set out to avoid. This makes the grant storable and enforced: a `User.canManageContent` column, carried into the token at sign-in, honoured by the one helper all eight content endpoints already call, and used to split the `/admin` prefix so that a content grant admits its holder to Blog, Doctors and Approvals **and nothing else**. Patient records, clinical intake, SOAP notes and staff accounts stay `ADMIN`-only. Split out of TJ-005b at its planning pass.
 
@@ -1006,16 +1006,34 @@ const CONTENT_PATHS = ["/admin/blog", "/admin/doctors", "/admin/approvals"];
 **Runtime proof is the planner's, not yours.** Nothing can set this flag to `true` yet, so there is no way for you to exercise the grant end to end and you should not invent one. Do not write a script that flips the column in the live database. The planner will grant the flag to a test account at visual review and assert the boundary from a real session.
 
 **Done when:**
-- [ ] `User.canManageContent` exists in `schema.prisma` and in the live database, and `migrate diff` comes back empty
-- [ ] The claim is written in **both** `jwt` callbacks and read in `session`
-- [ ] `canManageContent()` returns true for `ADMIN` and for a flagged non-admin, false for everyone else, and takes no cast at either call site
-- [ ] `CONTENT_PATHS` admits only whole-segment matches on the three content prefixes
-- [ ] The `/secretary` and `/doctor` gates are byte-for-byte unchanged
-- [ ] Build green; the four files lint clean; `npm run lint` still 55
-- [ ] Only the five Scope files appear in the diff
-- [ ] Planner has proven at runtime: a flagged secretary reaches `/admin/blog` and is bounced from `/admin/patients` and `/admin/employees/doctors`; an unflagged secretary is bounced from all three; an ADMIN is unaffected everywhere
+- [x] `User.canManageContent` exists in `schema.prisma` and in the live database, and `migrate diff` comes back empty
+- [x] The claim is written in **both** `jwt` callbacks and read in `session`
+- [x] `canManageContent()` returns true for `ADMIN` and for a flagged non-admin, false for everyone else, and takes no cast at either call site
+- [x] `CONTENT_PATHS` admits only whole-segment matches on the three content prefixes
+- [x] The `/secretary` and `/doctor` gates are byte-for-byte unchanged
+- [x] Build green; the four files lint clean; `npm run lint` still 55
+- [x] Only the five Scope files appear in the diff
+- [x] Planner has proven at runtime: a flagged secretary reaches `/admin/blog` and is bounced from `/admin/patients` and `/admin/employees/doctors`; an unflagged secretary is bounced from all three; an ADMIN is unaffected everywhere
 
 **Stop and ask** if `prisma db push` proposes anything other than adding this one column, if any anchor above does not match exactly once, or if a verification step fails for a reason these instructions do not anticipate. Do not explain a failing check away.
+
+**Executor's report, 2026-08-21.** `db push` output was clean — `Your database is now in sync with your Prisma schema. Done in 3.52s`, no alteration beyond the one column, no data-loss warning, no reset prompt. One deviation from the task text worth recording: `db push` did **not** regenerate the Prisma client in the same run this time (`src/generated/prisma/models/User.ts` stayed stale, dated 2026-08-15, and the build failed until the executor ran `npx prisma generate` — non-destructive, no database contact, gitignored output — and re-ran the build green). The executor judged this correctly: the database push itself met the task's own stop-and-ask gate, so proceeding past a generator quirk rather than treating it as a schema-drift stop was the right call, not a corner cut.
+
+**Planner verification, 2026-08-21.** Read the full `git diff master feat/content-grant-boundary` rather than trusting the report — 5 files, 27 insertions, 4 deletions, exactly the Scope list; `CONTENT_PATHS` lands where 5b specified, immediately before `export const authConfig` and after the pre-existing Edge-runtime comment, followed by one blank line; `interface JWT` in `next-auth.d.ts` is byte-for-byte untouched. Re-ran every Verification command independently on `master` after merging rather than accepting the transcript: `migrate diff` → `-- This is an empty migration.`; `npm run build` → green, no error/fail lines; `npx eslint` on the four Scope TypeScript files → exit 0, no output; `npm run lint` → `55 problems (41 errors, 14 warnings)`, unchanged; `grep -c 'role !== "ADMIN"' src/lib/auth.config.ts` → `2`; `grep -n "canManageContent" src/lib/auth.ts` → 2 lines, one in `authorize()`, one in `jwt`; `git status` clean.
+
+**Visual review — runtime proof, 2026-08-21. Passed, all three assertions.** Ran `next dev` locally against the live Supabase database (the one `db push` wrote to) and drove it through a real browser session with the user signing in — credentials never passed through the agent, matching the standing practice recorded under TJ-005b (2026-08-15: seeded defaults are rejected by the live DB and minting a session from `AUTH_SECRET` was correctly refused as forging a token).
+
+Test subject: `TJ10` (SECRETARY, id `cmsz2xxp00000rw9p7g2ot3wq`), a pre-existing test account, toggled live via a throwaway script (deleted after use, not committed) rather than through the UI since TJ-005b2 (the toggle) has not shipped yet. `testsec` was considered first but the user could not locate its password, so `TJ10` served both halves of the proof on one account across two sign-ins:
+
+| State | `/admin/blog` | `/admin/patients` | `/admin/employees/doctors` |
+|---|---|---|---|
+| `TJ10`, unflagged (before this task's grant existed to set) | 403 → `/unauthorized` | 403 → `/unauthorized` | 403 → `/unauthorized` |
+| `TJ10`, `canManageContent: true`, fresh sign-in | **Blog Posts list renders** (7 posts, filters, New Post) | 403 → `/unauthorized` | 403 → `/unauthorized` |
+| `noorhamami` (ADMIN) | Blog Posts list renders | Patients page renders | Doctors employee list renders (2 active) |
+
+The middle row required a fresh sign-in after the flag was set — confirms the claim is written at sign-in and not re-read mid-session, exactly as this task's own sequencing note and the finding recorded for TJ-005b2 describe. `TJ10.canManageContent` was reverted to `false` after the proof so no test state was left in the live database.
+
+**Merged.** `git checkout master && git merge --no-ff feat/content-grant-boundary` → `5d75a8c`. Not pushed.
 
 ---
 
@@ -4975,6 +4993,8 @@ Findings reported by the executor, or surfaced during a pass, that fall outside 
 ## Notes for the planner
 
 Findings reported by the executor, or surfaced during a pass, that fall outside the scope of the task that turned them up. The planner triages these into tasks. **The executor does not write here** — it reports in conversation and the planner records.
+
+- **`npx prisma db push` did not regenerate the Prisma client in the same run, contradicting what TJ-005b1's own instructions said to expect.** The task text states `db push` "regenerates the Prisma client in the same run," carried over from the TJ-009f2 schema push of 2026-08-15. This time it did not: `src/generated/prisma/models/User.ts` stayed dated 2026-08-15 (pre-`canManageContent`) after the push completed cleanly, and `npm run build` failed on the missing field until the executor ran `npx prisma generate` separately — non-destructive, no database contact, gitignored output. The executor judged correctly not to treat this as the task's stop-and-ask condition, since that gate is about the *push* proposing unexpected schema changes, not about the generator's side effect misfiring. **Any future task whose instructions assume `db push` auto-regenerates the client should verify the generated file changed, not just that the push output was clean** — worth a line in the task template's db-push guidance rather than re-discovering per task. Prisma version is 7.4.1; may be worth checking after the next `prisma@latest` bump whether this is fixed upstream. (Found during the TJ-005b1 execution, 2026-08-21.)
 
 - **Third time: a count written into a Verification block was guessed, and the executor caught it.** TJ-010a's bullet predicted `grep -c "btn-danger"` would return 3 — "one use in the JSX and two in the CSS." It returns **4**, because the rule carries `:hover:not(:disabled)` and `:disabled` alongside its base selector. The file it was copied from was sitting on `master`, unmodified, and one `grep -c` against it would have settled the number before the task shipped. This is the same failure as TJ-009b's eslint baseline and TJ-015's `0 problems`, and the note above it already says not to do this. **What is new is the shape of the miss: the count was of a thing the pass had already read.** Reading a code block is not the same as counting matches in it — the eye collapses `:hover` and `:disabled` into "the styling" and reports two. **Any bullet containing a number gets the command run against `master` and the output pasted, with no exception for numbers that feel obvious from a file already open.** Credit where due: the executor copied the block verbatim as instructed, got 4, and stopped rather than restructuring correct CSS to satisfy a wrong number — which would have reintroduced the drift the task existed to prevent. (Found during the TJ-010a review, 2026-08-18.)
 
