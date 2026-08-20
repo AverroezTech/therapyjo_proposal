@@ -22,6 +22,7 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
             if (user) {
                 // Sign-in. authorize() has already proved the account is ACTIVE.
                 token.role = (user as { role: string }).role;
+                token.canManageContent = (user as { canManageContent?: boolean }).canManageContent === true;
                 token.id = user.id;
                 return token;
             }
@@ -69,6 +70,7 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
                     name: user.name,
                     email: user.email,
                     role: user.role,
+                    canManageContent: user.canManageContent,
                 };
             },
         }),

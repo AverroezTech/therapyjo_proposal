@@ -79,6 +79,7 @@ model User {
   pictureUrl     String?
   status         EmploymentStatus @default(ACTIVE)
   color          String?          // hex color for calendar (doctors only)
+  canManageContent Boolean        @default(false) // may manage Blog, public Doctor profiles, Approvals
   createdAt      DateTime         @default(now())
   updatedAt      DateTime         @updatedAt
 
