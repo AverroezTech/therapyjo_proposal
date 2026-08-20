@@ -4773,6 +4773,17 @@ Confirmed `src/generated/prisma` is already in `.gitignore` (last line), so that
 - Regression risk named: the edit sits three lines above the `/login` redirect branch and above every role gate. Those must be provably untouched, hence the two negative checks in Verification.
 - File is **CRLF**, like the rest of the tree. Match the anchor as one line.
 
+**Planning pass re-verified:** 2026-08-21 — TJ-005b1 landed in `src/lib/auth.config.ts` (merged `5d75a8c`) after this pass was written, rewriting the top of the very file this task edits. Everything above was re-measured against that new shape.
+
+- The anchor is **unchanged and still matches exactly once**, still indented twelve spaces. Only its line number moved, 26 → **35**, because TJ-005b1 inserted an import and the `CONTENT_PATHS` block above it. Match the string, not the line number.
+- The membership test on the two lines below it is byte-for-byte as the pass described, so one `"/clinic"` entry still covers the whole subtree.
+- Re-confirmed **no route named `clinic` exists** under `src/app/` (`find src/app -iname "*clinic*"` → nothing), so this still exposes nothing.
+- Re-confirmed `src/middleware.ts:16` still excludes `css`/`js`/image extensions, so legacy asset requests bypass auth regardless of this change.
+- Baselines on today’s master: `npm run lint` → **55 problems (41 errors, 14 warnings)**, unchanged — TJ-005b1 introduced no findings; `npx eslint src/lib/auth.config.ts` → **empty, exit 0**.
+- The new `mayEnterAdmin` gate TJ-005b1 added does **not** interact with this change: `isPublic` returns `true` at line 45, well before the admin gate is reached, so adding `/clinic` cannot widen the authenticated surface.
+
+**Step 2 added 2026-08-21.** TJ-005b1 was told to insert `CONTENT_PATHS` “immediately before `export const authConfig`” and did exactly that — but the one-line comment *describing* `authConfig` sat directly above it, so the insert landed between the comment and the thing it documents. The file now reads as a four-line `CONTENT_PATHS` comment with an unrelated Prisma sentence stuck on its front, and `authConfig` itself is undocumented. That is a real defect, it is cosmetic, and it is in the exact region of the exact file this task already opens — so it is folded in here as its own step rather than spawned as a task of its own. It is deliberately kept separate from Step 1 so the two concerns stay legible in the diff.
+
 **Scope — touch only these:**
 - `src/lib/auth.config.ts`
 
@@ -4797,6 +4808,22 @@ with exactly this:
             const publicRoutes = ["/", "/api/auth", "/blog", "/api/public", "/clinic"];
 ```
 
+**Step 2 — `src/lib/auth.config.ts`: re-unite the orphaned comment with `authConfig`.**
+
+Delete this line, which currently sits at line 4, immediately above the `CONTENT_PATHS` comment block — delete the line entirely, including its newline, leaving no blank line behind:
+
+```
+// Auth config that does NOT import Prisma — safe for Edge runtime / middleware
+```
+
+Then find this line (flush left, currently line 11) and insert that same sentence back immediately **above** it, so it once again documents what it describes:
+
+```
+export const authConfig: NextAuthConfig = {
+```
+
+The net effect is one line moved seven lines down. Do not reword it, do not touch the four `CONTENT_PATHS` comment lines, and do not touch `CONTENT_PATHS` itself.
+
 **Verification:**
 - `npm run build` passes.
 - Start the built app on a free port (`npx next start -p 3100`) and check, with no session cookie:
@@ -4804,11 +4831,16 @@ with exactly this:
   - `curl -s -o /dev/null -w "%{http_code}\n" http://localhost:3100/clinic/Login.aspx` → **404**, not `307`.
   - `curl -s -o /dev/null -w "%{http_code} %{redirect_url}\n" http://localhost:3100/admin` → still **307** to `/login?callbackUrl=%2Fadmin`. This is the regression check: protection must be unchanged.
   - `curl -s -o /dev/null -w "%{http_code}\n" http://localhost:3100/` → **200**.
+- `npx eslint src/lib/auth.config.ts` prints nothing, exit 0. That is what it printed on `master` on 2026-08-21.
+- `npm run lint` still reports **55 problems (41 errors, 14 warnings)**, the guard against introducing a finding elsewhere. Measured on `master` on 2026-08-21.
+- **Step 2 checks.** `grep -c "does NOT import Prisma" src/lib/auth.config.ts` returns **1** — not 0, not 2: the sentence was moved, not deleted and not duplicated. `grep -n -B1 "^export const authConfig" src/lib/auth.config.ts` shows that sentence directly above it. `grep -n -A1 "^// Paths under /admin" src/lib/auth.config.ts` shows the second line of the `CONTENT_PATHS` comment, proving nothing was left stranded above it.
+- `git diff --stat` lists **only** `src/lib/auth.config.ts`. Both steps live in one file; nothing else may appear.
 
 **Done when:**
 - [ ] `/clinic` and a path beneath it 404 instead of redirecting
 - [ ] `/admin` still redirects an anonymous request to `/login`
-- [ ] Build passes and the diff is the one line plus its comment
+- [ ] The `authConfig` comment sits directly above `authConfig` again, and the `CONTENT_PATHS` comment is intact and unreworded
+- [ ] Build passes, lint is still 55, and the diff is Step 1’s one line plus its comment and Step 2’s single moved line — in one file
 
 ---
 
