@@ -60,7 +60,7 @@ Two things that bear repeating here, because this is the file both agents open:
 | TJ-014e | Hard-deleting an employee leaks their uploads | BACKLOG — found during TJ-010a's pass; needs a pass | — |
 | TJ-015 | Scope ESLint to hand-written app code | DONE — merged `783b2d0`; `npm run lint` is now usable, 55 real findings | `chore/scope-eslint-to-app-code` |
 | TJ-016 | The patients Files tab is dead UI | BACKLOG — found during TJ-009f2's pass; needs a pass | — |
-| TJ-017 | Let a proxy fall-through fail cleanly | READY | `chore/clinic-path-public` |
+| TJ-017 | Let a proxy fall-through fail cleanly | DONE — task commit `33cb466`, merged to `master` as `68cc31d` with `--no-ff`; runtime-proven against a measured master baseline | `chore/clinic-path-public` |
 | TJ-018 | Document the production environment variables | READY | `docs/env-example` |
 | TJ-019 | Migrate the `middleware` file convention to `proxy` | BACKLOG — deferred until after the cutover; see `Production_Cutover.md` | — |
 
@@ -4760,7 +4760,7 @@ Confirmed `src/generated/prisma` is already in `.gitignore` (last line), so that
 
 ### TJ-017 — Let a proxy fall-through fail cleanly
 
-- **Status:** READY
+- **Status:** DONE — task commit `33cb466` on `chore/clinic-path-public`, merged to `master` as `68cc31d` with `--no-ff`. Planner-verified from the diff and runtime-proven on 2026-08-21.
 - **Branch:** `chore/clinic-path-public`
 - **Why:** The production cutover (`Production_Cutover.md`) routes `/clinic/*` to the legacy clinical system **at the proxy**, so those requests should never reach this application at all. If a proxy rule is mis-ordered, mistyped, or silently stops matching, they do reach it — and `authorized()` treats every path outside `publicRoutes` as protected, so an unauthenticated staff member typing `/clinic` is **redirected to this app's `/login`**. To a receptionist that looks exactly like the clinical system has been replaced by a login screen they have no account for, which is the most alarming way this cutover could appear to fail while nothing is actually wrong with the data. Adding `/clinic` to `publicRoutes` turns that into a plain 404 — the honest signal that a proxy rule is not matching, and a much cheaper thing to diagnose. This is defence in depth, not the mechanism: the proxy is still what serves `/clinic`.
 
@@ -4783,6 +4783,25 @@ Confirmed `src/generated/prisma` is already in `.gitignore` (last line), so that
 - The new `mayEnterAdmin` gate TJ-005b1 added does **not** interact with this change: `isPublic` returns `true` at line 45, well before the admin gate is reached, so adding `/clinic` cannot widen the authenticated surface.
 
 **Step 2 added 2026-08-21.** TJ-005b1 was told to insert `CONTENT_PATHS` “immediately before `export const authConfig`” and did exactly that — but the one-line comment *describing* `authConfig` sat directly above it, so the insert landed between the comment and the thing it documents. The file now reads as a four-line `CONTENT_PATHS` comment with an unrelated Prisma sentence stuck on its front, and `authConfig` itself is undocumented. That is a real defect, it is cosmetic, and it is in the exact region of the exact file this task already opens — so it is folded in here as its own step rather than spawned as a task of its own. It is deliberately kept separate from Step 1 so the two concerns stay legible in the diff.
+
+**Planner verification:** 2026-08-21 — read the full `git diff master..chore/clinic-path-public` rather than trusting a report. One file, 5 insertions, 2 deletions, both steps present and nothing else touched. The `/secretary` and `/doctor` gate blocks are **byte-identical to master** (`diff` of the extracted region, not eyeballed).
+
+Static checks: `npm run build` green; `npx eslint src/lib/auth.config.ts` empty, exit 0; `npm run lint` still **55 problems (41 errors, 14 warnings)**; all three Step 2 greps as specified.
+
+**A correction, and how it was nearly missed.** The first runtime run appeared to pass, but the server I backgrounded had never bound — its log showed `EADDRINUSE` on 3100, because a server from someone else’s run already held that port. Those curl results came from a build I did not produce and could not vouch for, and they would have read as a clean pass. The run was redone on ports **3177** (branch) and **3178** (master), each confirmed `✓ Ready` in its own log before a single request was sent. **Lesson for future tasks: `next start` exiting non-zero is invisible to `curl` — always read the server log before believing the checks.**
+
+Measured before/after, same four requests against both builds, no session cookie:
+
+| Request | `master` (before) | branch (after) |
+|---|---|---|
+| `/clinic` | 302 → `/login?callbackUrl=%2Fclinic` | **404** |
+| `/clinic/Login.aspx` | 302 → `/login?callbackUrl=%2Fclinic%2FLogin.aspx` | **404** |
+| `/admin` | 302 → `/login?callbackUrl=%2Fadmin` | 302 → `/login?callbackUrl=%2Fadmin` — **unchanged** |
+| `/` | 200 | 200 |
+
+That is exactly the behaviour the **Why** describes: the redirect this task exists to remove was real and is now a 404, and the protected surface did not move.
+
+**Two numbers in the Verification block above were wrong, and they were predictions, not measurements.** It expected `307`; the real code is `302` — on `master` **and** on the branch, so nothing regressed and the spec simply guessed the wrong redirect status. It also implied a same-origin redirect URL, but the redirect points at `http://localhost:3000` because `AUTH_URL` in `.env` names that origin; identical on both sides and unrelated to this change. Both are recorded here rather than quietly passed over, the same way TJ-015’s and TJ-009f2’s wrong checks were. **Future passes: do not write an expected HTTP status into Verification unless it was measured.**
 
 **Scope — touch only these:**
 - `src/lib/auth.config.ts`
