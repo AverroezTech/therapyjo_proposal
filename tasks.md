@@ -4723,20 +4723,511 @@ Diff read in full: exactly the four files in Scope. `Patient #{patient.id}` conf
 
 ---
 
-### TJ-022 — Uploading a patient document discards unsaved intake edits
+### TJ-023 — Stop serving clinical data to secretaries
 
-- **Status:** BACKLOG — no planning pass. Do not execute against this ID.
-- **Why:** Confirmed twice at runtime during TJ-011a, by the executor and again by the planner. `src/app/admin/patients/[id]/page.tsx` shares one `fetchPatient()` across all three tabs, and it unconditionally repopulates `infoForm` and `intakeForm` from the server. Uploading or removing a document on the Files tab calls it, so **any unsaved text in the Clinical Assessment tab is silently lost** — the tabs are separate views but not separate state, and nothing warns.
-- **Not introduced by TJ-011a**; that task simply added the second caller that makes it reachable. `saveInfo` and `saveIntake` already called `fetchPatient()`, but only *after* persisting, so the refresh was harmless.
-- **What its planning pass owes:** whether the fix is to refresh only the `files` slice after a document operation, to guard the intake repopulation behind a dirty check, or to warn before discarding. The first is smallest but splits the page's single source of truth; the pass should say which and why. Clinical text typed and lost without warning is the kind of defect a physiotherapist notices once and stops trusting the form over.
+- **Status:** READY
+- **Branch:** `feat/clinical-read-boundary`
+- **Why:** The user's role decision of 2026-08-21: **secretaries may edit patient information and attach files, but may not access or modify clinical notes or diagnosis.** The *modify* half already holds. The *access* half does not — a secretary's own session is served the full `ClinicalIntake` (including `diagnosis`) and every `SOAPNote`, in the very payload their patient page already fetches. The UI does not render it, which is why nobody noticed; the data is in the browser regardless, one devtools tab away.
+
+**Planning pass:** 2026-08-21 — read `src/app/api/patients/[id]/route.ts`, `src/app/api/patients/[id]/intake/route.ts`, `src/app/api/reservations/[id]/route.ts`, `src/app/api/reservations/[id]/soap/route.ts`, `src/app/api/reservations/route.ts`, `src/lib/permissions.ts`, `src/app/secretary/patients/[id]/page.tsx`, `src/app/admin/patients/[id]/page.tsx`, `src/app/doctor/session/[id]/page.tsx`, and the `ClinicalIntake` / `SOAPNote` / `Note` models.
+
+**Audited live, with a real secretary session and a fixture patient carrying real clinical text — not inferred from the code:**
+
+| Probe as SECRETARY | Result |
+|---|---|
+| `GET /api/patients/<id>` | **200** — `intake` present with all 16 columns including `diagnosis`, `assessment`, `medicalHistory` |
+| …its `reservations[].soapNote` | **present in full** — `subjective`, `objective`, `assessment`, `plan` |
+| `GET /api/patients/<id>/intake` | **200**, full body |
+| `GET /api/reservations/<id>/soap` | **200**, full body |
+| `PUT /api/patients/<id>/intake` | **403** — already blocked |
+| `PUT /api/reservations/<id>/soap` | **403** — already blocked |
+
+So this task is **read enforcement only**. The two write guards already exist at `intake/route.ts:39-40` and `soap/route.ts:30-31`; do not duplicate them, refactor them onto the shared helper.
+
+**Confirmed, and it is what makes this safe:**
+- **No secretary screen reads either field.** `grep -rn "soapNote\|intake" src/app/secretary/` returns exactly one hit, and it is a *comment*: `{/* Tabs — NO clinical intake tab for secretary */}`. Stripping these fields cannot break a secretary view, because no secretary view consumes them.
+- **There are exactly five server-side sites**, established by `grep -rn "soapNote\|clinicalIntake\|intake: true" src/app/api/`. Two are the intake route's own queries, and the rest are listed in Scope. `src/app/api/reservations/route.ts` (the list) does **not** include `soapNote` — checked, so it is deliberately absent from Scope.
+- **`Note` is not clinical and stays untouched** — the user's decision of 2026-08-21, and the model agrees: `name`, `noteDate`, `doctorId`, `doctorCheckNote`, `details`, with **no patient relation and no clinical field**. The new-note form's own placeholder is "e.g. Patient follow-up…". It is a front-desk reminder board. `/secretary/notes` and `/api/notes` are explicitly out of Scope.
+- **Doctors are unaffected.** The user chose to leave doctors working through `/doctor/session/[id]`, which reads `/api/reservations/[id]`, `/api/reservations/[id]/soap` and `/api/patients/[id]` — all three of which this task must keep whole for a DOCTOR. That is the regression this task can most easily cause.
+
+**Where the rule goes.** `src/lib/permissions.ts`, next to `canManageContent`, whose own doc comment already states the reason: the rule lives there "rather than inline at each handler so it can be granted without a code change at every call site." One predicate, used by both the reads added here and the two writes that already exist.
+
+**Scope — touch only these:**
+- `src/lib/permissions.ts`
+- `src/app/api/patients/[id]/route.ts`
+- `src/app/api/patients/[id]/intake/route.ts`
+- `src/app/api/reservations/[id]/route.ts`
+- `src/app/api/reservations/[id]/soap/route.ts`
+
+**Do not touch:** any page component (no UI change is needed — the secretary UI already hides these tabs, and hiding was never the boundary), `src/app/api/notes/*`, `src/app/secretary/notes/*`, `src/app/api/reservations/route.ts`, `prisma/schema.prisma`, and `src/lib/auth.config.ts`.
+
+**Instructions:**
+
+*1. `src/lib/permissions.ts` — add the predicate.* Append to the end of the file:
+
+```ts
+/**
+ * May this user see and edit clinical records — the ClinicalIntake (diagnosis,
+ * assessment, medical history, treatment plan) and per-session SOAP notes?
+ *
+ * ADMIN and DOCTOR may; SECRETARY may not. Front-desk staff book, register and
+ * file for patients, and that does not require reading their diagnosis.
+ *
+ * This covers reading as well as writing, and the reading half is the point:
+ * the two PUT handlers have refused secretaries since they were written, but
+ * the GET handlers served the same records to anyone signed in, so the data
+ * reached the browser and only the UI declined to draw it. (TJ-023)
+ */
+export function canAccessClinical(
+    user: Session["user"] | undefined | null
+): boolean {
+    if (!user) return false;
+    return user.role === "ADMIN" || user.role === "DOCTOR";
+}
+```
+
+*2. `src/app/api/patients/[id]/intake/route.ts` — refuse the read, and put the write on the helper.*
+
+Replace the import block line `import { auth } from "@/lib/auth";` with:
+
+```ts
+import { auth } from "@/lib/auth";
+import { canAccessClinical } from "@/lib/permissions";
+```
+
+In `GET`, replace:
+
+```ts
+    const session = await auth();
+    if (!session) {
+        return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    const { id } = await params;
+    const patientId = parseInt(id, 10);
+    if (isNaN(patientId)) {
+        return NextResponse.json({ error: "Invalid patient ID" }, { status: 400 });
+    }
+
+    const intake = await prisma.clinicalIntake.findUnique({
+```
+
+with:
+
+```ts
+    const session = await auth();
+    if (!session) {
+        return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+    if (!canAccessClinical(session.user)) {
+        return NextResponse.json({ error: "Not permitted to view clinical records" }, { status: 403 });
+    }
+
+    const { id } = await params;
+    const patientId = parseInt(id, 10);
+    if (isNaN(patientId)) {
+        return NextResponse.json({ error: "Invalid patient ID" }, { status: 400 });
+    }
+
+    const intake = await prisma.clinicalIntake.findUnique({
+```
+
+Then in `PUT`, replace:
+
+```ts
+    // Only admin and doctors can edit clinical intake
+    const role = (session.user as { role?: string })?.role;
+    if (role === "SECRETARY") {
+        return NextResponse.json({ error: "Secretaries cannot edit clinical intake" }, { status: 403 });
+    }
+```
+
+with:
+
+```ts
+    // Same predicate as the GET above, so read and write cannot drift apart.
+    if (!canAccessClinical(session.user)) {
+        return NextResponse.json({ error: "Secretaries cannot edit clinical intake" }, { status: 403 });
+    }
+```
+
+Keep the message string exactly as it is — it is what the UI surfaces today.
+
+*3. `src/app/api/reservations/[id]/soap/route.ts` — the same two changes.*
+
+Add the same import line after `import { auth } from "@/lib/auth";`.
+
+In `GET`, replace:
+
+```ts
+    const session = await auth();
+    if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+    const { id } = await params;
+    const soap = await prisma.sOAPNote.findUnique({
+```
+
+with:
+
+```ts
+    const session = await auth();
+    if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    if (!canAccessClinical(session.user)) {
+        return NextResponse.json({ error: "Not permitted to view clinical records" }, { status: 403 });
+    }
+
+    const { id } = await params;
+    const soap = await prisma.sOAPNote.findUnique({
+```
+
+In `PUT`, replace:
+
+```ts
+    // Only admin and doctors can write clinical SOAP documentation
+    const role = (session.user as { role?: string })?.role;
+    if (role === "SECRETARY") {
+        return NextResponse.json({ error: "Secretaries cannot edit SOAP notes" }, { status: 403 });
+    }
+```
+
+with:
+
+```ts
+    // Same predicate as the GET above, so read and write cannot drift apart.
+    if (!canAccessClinical(session.user)) {
+        return NextResponse.json({ error: "Secretaries cannot edit SOAP notes" }, { status: 403 });
+    }
+```
+
+*4. `src/app/api/patients/[id]/route.ts` — strip the fields rather than refusing the request.*
+
+A secretary legitimately needs this endpoint: it carries the patient's name, phones, files and session list, and their whole patient page is built from it. Refusing it would break them. Omit the two clinical branches instead.
+
+Add the import after `import { auth } from "@/lib/auth";`:
+
+```ts
+import { canAccessClinical } from "@/lib/permissions";
+```
+
+In `GET`, replace:
+
+```ts
+    const patient = await prisma.patient.findUnique({
+        where: { id: patientId },
+        include: {
+            intake: true,
+            files: {
+                orderBy: { uploadedAt: "desc" },
+            },
+            reservations: {
+                include: {
+                    doctor: { select: { id: true, name: true, color: true } },
+                    soapNote: true,
+                },
+                orderBy: { sessionDate: "desc" },
+            },
+        },
+    });
+```
+
+with:
+
+```ts
+    // A secretary needs this endpoint — it carries the name, phones, files and
+    // session list their whole patient page is built from — so the clinical
+    // branches are omitted rather than the request refused. Prisma accepts a
+    // boolean here, the same idiom `username: isAdmin` already uses in the
+    // employee routes. (TJ-023)
+    const clinical = canAccessClinical(session.user);
+
+    const patient = await prisma.patient.findUnique({
+        where: { id: patientId },
+        include: {
+            intake: clinical,
+            files: {
+                orderBy: { uploadedAt: "desc" },
+            },
+            reservations: {
+                include: {
+                    doctor: { select: { id: true, name: true, color: true } },
+                    soapNote: clinical,
+                },
+                orderBy: { sessionDate: "desc" },
+            },
+        },
+    });
+```
+
+*5. `src/app/api/reservations/[id]/route.ts` — the same treatment for its one branch.*
+
+Add the same import line. Then find the `GET` handler's query containing `soapNote: true` (line ~32) and change that single line to `soapNote: canAccessClinical(session.user),`. If the surrounding handler does not already have `session` in scope under that name, stop and report rather than renaming anything.
+
+**Verification:**
+- `npm run build` passes and `npx tsc --noEmit` is clean.
+- `npx eslint src/app/api/patients src/app/api/reservations src/lib` — compare against `master` and report only what is **new**; several pre-existing failures exist across the app.
+- **The whole point, proven with real data, not an empty record.** Seed a throwaway patient with a `ClinicalIntake` (put a recognisable string in `diagnosis`) and a reservation carrying a `SOAPNote` (recognisable strings in all four fields). Then, **as a SECRETARY**:
+
+  | Probe | Required |
+  |---|---|
+  | `GET /api/patients/<id>` | 200, and `intake` **absent**, and no `soapNote` on any reservation |
+  | `GET /api/patients/<id>/intake` | **403** |
+  | `GET /api/reservations/<id>/soap` | **403** |
+  | `GET /api/reservations/<id>` | 200, `soapNote` **absent** |
+  | `PUT` on both clinical routes | still **403** |
+
+  Grep the raw response bodies for your recognisable strings — **none may appear anywhere.** A missing key is the check; a present-but-null key is a failure.
+- **And the regression, which matters just as much.** Repeat every one of those reads **as a DOCTOR** and **as an ADMIN**: all must return **200** with the clinical content **intact**. A boundary that also locks out the people who need the data is not a fix.
+- **Runtime, in a browser:** load `/secretary/patients/<id>` as a secretary and confirm the page still renders — header, Sessions tab with its rows, Files tab. Then load `/doctor/session/<id>` as the doctor who owns that reservation and confirm the **SOAP** and **Clinical Intake** tabs still populate. That second one is the regression this task is most likely to cause, so do not skip it.
+- Delete every fixture afterwards and report the counts.
+
+**Done when:**
+- [ ] One predicate in `permissions.ts` governs both reading and writing clinical records
+- [ ] A secretary receives **no** intake and **no** SOAP content from any of the four endpoints
+- [ ] A secretary's patient page still works
+- [ ] A doctor and an admin still receive everything, and the session page still populates
+- [ ] The two pre-existing write guards were refactored onto the helper, not duplicated
+- [ ] Nothing outside the five files in Scope changed
 
 ---
+
+### TJ-022 — Warn before unsaved clinical text is discarded
+
+- **Status:** READY
+- **Branch:** `feat/unsaved-changes-warning`
+- **Why:** Clinical text typed into a long form is silently thrown away by an ordinary click elsewhere on the page. The user's decision of 2026-08-21: **warn before anything is discarded; no autosave.**
+
+**Planning pass:** 2026-08-21 — read `src/app/admin/patients/[id]/page.tsx` and `src/app/doctor/session/[id]/page.tsx` in full, plus `src/app/secretary/patients/[id]/page.tsx` and every existing `confirm()` call site in `src/app`.
+
+**The defect is in two pages, and the second is worse than the one that was filed.**
+
+1. **`admin/patients/[id]`** — `fetchPatient()` repopulates `intakeForm` from the server, and TJ-011a added two new callers: uploading and removing a document. Reproduced twice at runtime. Typing in Clinical Assessment, switching to Files, uploading, and switching back loses the text.
+2. **`doctor/session/[id]` — not previously filed, found during this pass.** `fetchData()` repopulates **both** `soapForm` and `intakeForm`, and it is called by `handleSaveDetails` (line ~147) **and by `handleStatusChange` (line ~181)**. Status changes are the one-click buttons a doctor uses every session. **A doctor who types SOAP notes and then clicks "Check Out" loses them.** This is the more damaging of the two: it is the doctor's primary clinical surface, and per the user's decision of 2026-08-21 it is the *only* one they have.
+
+Note what is **not** broken: switching tabs does not discard anything on either page — the state is shared across tabs and survives. Do not add a prompt there; it would fire constantly and teach people to dismiss it.
+
+**The alternative that was not taken, recorded so the choice is visible.** The smaller engineering fix is to stop `fetchData()` / `fetchPatient()` from overwriting a form the user has edited, which would lose nothing and prompt never. The user asked for a warning instead, explicitly and with autosave declined. Implement the warning. If the prompts prove noisy in use, that is the change to make, and it is not this task.
+
+**Confirmed:**
+- **`confirm()` is the house pattern** — ten call sites across `src/app`, including `handleArchiveToggle` in the very file being edited. Use it; do not introduce a custom modal.
+- **`beforeunload` cannot carry a custom message** in any current browser; setting `returnValue` triggers the browser's own generic dialog. That is expected — do not try to style or word it.
+- **The secretary patient page needs nothing.** It has no clinical form, and its Edit Info modal has explicit Save and Cancel. Out of Scope.
+
+**Scope — touch only these:**
+- `src/lib/useUnsavedChanges.ts` *(new)*
+- `src/app/admin/patients/[id]/page.tsx`
+- `src/app/doctor/session/[id]/page.tsx`
+
+**Do not touch:** `src/app/secretary/patients/[id]/page.tsx`, any API route, and the tab-switching handlers on either page.
+
+**Instructions:**
+
+*1. Create `src/lib/useUnsavedChanges.ts`.* `src/lib/` already holds shared client-safe modules (`storageUrl.ts`, `workingHours.ts`), so it is the right home. Note there is no `"server-only"` import here, deliberately.
+
+```ts
+"use client";
+
+import { useEffect, useRef, useCallback } from "react";
+
+/**
+ * Guards unsaved form text against being thrown away.
+ *
+ * `dirty` is computed by the caller — this hook does not know what a form is.
+ * It does two things: warns on browser close/reload while dirty, and hands
+ * back a `confirmDiscard()` the caller must call before any action that would
+ * overwrite the form (a refetch) or leave the page.
+ *
+ * There is no autosave, by decision: a warning was judged enough. (TJ-022)
+ */
+export function useUnsavedChanges(dirty: boolean) {
+    // Kept in a ref so the beforeunload listener is registered once and still
+    // reads the current value; re-binding on every keystroke would be wasteful.
+    const dirtyRef = useRef(dirty);
+    dirtyRef.current = dirty;
+
+    useEffect(() => {
+        const onBeforeUnload = (e: BeforeUnloadEvent) => {
+            if (!dirtyRef.current) return;
+            // The browser shows its own generic wording; a custom message has
+            // been ignored by every major browser for years. Both lines are
+            // required for cross-browser coverage.
+            e.preventDefault();
+            e.returnValue = "";
+        };
+        window.addEventListener("beforeunload", onBeforeUnload);
+        return () => window.removeEventListener("beforeunload", onBeforeUnload);
+    }, []);
+
+    const confirmDiscard = useCallback(
+        (message: string) => !dirtyRef.current || window.confirm(message),
+        []
+    );
+
+    return { confirmDiscard };
+}
+```
+
+*2. `src/app/admin/patients/[id]/page.tsx`.*
+
+Add the import after `import { publicUploadUrl } from "@/lib/storageUrl";`:
+
+```tsx
+import { useUnsavedChanges } from "@/lib/useUnsavedChanges";
+```
+
+Add a baseline ref and the dirty check. After the line `    const [fileError, setFileError] = useState("");` insert:
+
+```tsx
+    // The intake form as the server last gave it to us. Anything typed since
+    // makes the form dirty, and dirty is what the guard below acts on.
+    const intakeBaseline = useRef<string>("");
+    const intakeDirty = JSON.stringify(intakeForm) !== intakeBaseline.current;
+    const { confirmDiscard } = useUnsavedChanges(intakeDirty);
+```
+
+and add `useRef` to the React import on line 3.
+
+In `fetchPatient`, immediately after `        setIntakeForm(intake);` insert:
+
+```tsx
+        intakeBaseline.current = JSON.stringify(intake);
+```
+
+In `saveIntake`, immediately after the `await fetch(...)` call completes and before `fetchPatient()`, the baseline is refreshed by `fetchPatient` itself — no change needed there.
+
+Guard the two discarding actions. At the top of `handleUpload`, immediately after `        if (!file) return;` insert:
+
+```tsx
+        if (!confirmDiscard("Uploading will reload this patient and discard your unsaved Clinical Assessment edits. Continue?")) {
+            e.target.value = "";
+            return;
+        }
+```
+
+At the top of `handleRemoveFile`, as the first statement, insert:
+
+```tsx
+        if (!confirmDiscard("Removing this file will reload this patient and discard your unsaved Clinical Assessment edits. Continue?")) return;
+```
+
+Guard leaving the page. Replace the Back button:
+
+```tsx
+                <button className="btn-back" onClick={() => router.push("/admin/patients")}>← Back</button>
+```
+
+with:
+
+```tsx
+                <button
+                    className="btn-back"
+                    onClick={() => {
+                        if (confirmDiscard("You have unsaved Clinical Assessment edits. Leave without saving?")) {
+                            router.push("/admin/patients");
+                        }
+                    }}
+                >← Back</button>
+```
+
+*3. `src/app/doctor/session/[id]/page.tsx`.*
+
+Add `useRef` to the React import on line 3 and add:
+
+```tsx
+import { useUnsavedChanges } from "@/lib/useUnsavedChanges";
+```
+
+After the line `    const [activeTab, setActiveTab] = useState<"details" | "history" | "soap" | "intake">("details");` insert:
+
+```tsx
+    // Both clinical forms are guarded together: fetchData() repopulates both,
+    // so either being dirty is enough to lose work.
+    const soapBaseline = useRef<string>("");
+    const intakeBaseline = useRef<string>("");
+    const clinicalDirty =
+        JSON.stringify(soapForm) !== soapBaseline.current ||
+        JSON.stringify(intakeForm) !== intakeBaseline.current;
+    const { confirmDiscard } = useUnsavedChanges(clinicalDirty);
+```
+
+In `fetchData`, immediately after the `setSoapForm({ ... })` call insert:
+
+```tsx
+        soapBaseline.current = JSON.stringify({
+            subjective: soapData?.subjective || "",
+            objective: soapData?.objective || "",
+            assessment: soapData?.assessment || "",
+            plan: soapData?.plan || "",
+        });
+```
+
+and immediately after `            setIntakeForm(intake);` insert:
+
+```tsx
+            intakeBaseline.current = JSON.stringify(intake);
+```
+
+**Note that `setIntakeForm(intake)` sits inside an `if` branch that only runs when the reservation has a patient.** If that branch does not run, `intakeBaseline` stays `""` while `intakeForm` stays `{}` — and `JSON.stringify({})` is `"{}"`, not `""`, which would read as permanently dirty. Initialise both refs to `"{}"`-safe values by setting `intakeBaseline.current = JSON.stringify(intakeForm)` at the end of `fetchData` if the branch was skipped, **or** simply initialise `useRef<string>(JSON.stringify({}))`. Use the second — it is one character of thought and cannot drift.
+
+Guard the two discarding callers. At the top of `handleSaveDetails` insert:
+
+```tsx
+        if (!confirmDiscard("Saving the session details will reload this page and discard your unsaved SOAP or Clinical Intake text. Continue?")) return;
+```
+
+At the top of `handleStatusChange` insert:
+
+```tsx
+        if (!confirmDiscard("Changing the session status will reload this page and discard your unsaved SOAP or Clinical Intake text. Continue?")) return;
+```
+
+Guard leaving the page. Replace:
+
+```tsx
+            <button className="back-btn" onClick={() => router.push("/doctor")}>← Back to Schedule</button>
+```
+
+with:
+
+```tsx
+            <button
+                className="back-btn"
+                onClick={() => {
+                    if (confirmDiscard("You have unsaved SOAP or Clinical Intake text. Leave without saving?")) {
+                        router.push("/doctor");
+                    }
+                }}
+            >← Back to Schedule</button>
+```
+
+**Verification:**
+- `npm run build` passes, `npx tsc --noEmit` clean, and eslint reports nothing **new** versus `master`.
+- **The no-false-positive check, and run it first** — a noisy guard is worse than none, because people learn to click through. On a freshly loaded page, having typed **nothing**: clicking Back must navigate with **no prompt**; uploading a file must proceed with **no prompt**; a status change must proceed with **no prompt**; switching tabs must never prompt. If any of these prompts, the baseline is being set wrongly and the task has failed even though the warning "works".
+- **Then the real cases.** `admin/patients/<id>`: type into Medical History without saving, go to Files, upload a document → **prompted**; cancel → the upload does not happen and the text is still there; accept → the upload happens and the text is gone as warned. Repeat for Remove and for the Back button.
+- **`doctor/session/<id>`, which is the one that matters most:** type into a SOAP field without saving, then click a status button → **prompted**; cancel → status unchanged and text intact. Then type into a Clinical Intake field and click Save Details → **prompted**. Both forms must arm the guard.
+- **Saving clears the guard:** type, click the form's own Save, then click Back → **no prompt**, because the baseline moved.
+- **Browser close:** with unsaved text, a reload attempt must raise the browser's own leave-site dialog; with nothing typed, it must not. Note that automation usually cannot see this dialog — assert `beforeunload` fires and `returnValue` is set, or say plainly that it was checked by hand.
+- Driving `confirm()` from automation: override `window.confirm` to record its calls and return a chosen value. **Do not leave a real dialog open** — an unhandled one freezes the page and every later step.
+
+**Done when:**
+- [ ] Nothing prompts when nothing has been typed
+- [ ] The upload and remove paths on the patient page prompt when intake is dirty, and cancelling aborts the action
+- [ ] Save Details and every status change on the session page prompt when SOAP or intake is dirty
+- [ ] Both Back buttons prompt when dirty and go straight through when clean
+- [ ] Saving a form clears its guard
+- [ ] Tab switching never prompts
+- [ ] Nothing outside the three files in Scope changed
 
 ---
 
 ### TJ-011b — Stop printing the primary key as a patient number
 
-- **Status:** BLOCKED — needs a decision from the user. Verified, not planned.
+- **Status:** BLOCKED — the user asked what this refers to on 2026-08-21 and the answer is recorded below; still awaiting the choice itself.
+
+**Where it appears, confirmed 2026-08-21.** Exactly two places, both the header meta row of the patient profile, sitting beside the phone number and last-visit date: `src/app/admin/patients/[id]/page.tsx:232` and `src/app/secretary/patients/[id]/page.tsx:107`, both reading `<span>Patient #{patient.id}</span>`.
+
+**What it does when a record is missing.** Nothing dramatic — `fetchPatient()` bounces to the patient list on a non-OK response, so a deleted patient's URL just returns you to the index. The number never renders as broken. **The defect is not failure, it is that it reads as a count when it is a row id.** The live database is the illustration: three patients at ids **2, 3 and 4**. There is no patient #1 and there never will be, because PostgreSQL does not roll a sequence back on `DELETE` — deliberately, so concurrent inserts cannot collide. Every future deletion widens the gap, and TJ-011c's decision to keep archiving as the only route makes deletions rare but not impossible.
+
+
 - **Why:** The reported symptom ("I added the first patient after the cleanup and it still said Patient #2") was **misdiagnosed — the cleanup was fine.** The live database holds exactly one `Patient` row at `id = 2`, with `Patient_id_seq` at `last_value = 2, is_called = true`. PostgreSQL never rolls a sequence back on `DELETE`; that is deliberate, so concurrent inserts cannot collide. What the user is seeing is `src/app/admin/patients/[id]/page.tsx:172` printing the raw primary key as `Patient #{patient.id}`, and `src/app/secretary/patients/[id]/page.tsx:106` doing the same.
 - **The decision:** reset the sequence once and keep showing the primary key — simple, but the gap reappears after the next deletion and is **guaranteed** to reappear once TJ-011c ships a hard delete — or stop showing the primary key as a patient number at all. **Recommend the latter; the first is a treatment, not a fix.** Blocked because "stop showing it" has a second half nobody has chosen: whether the header shows nothing there, or a real patient-facing identifier that does not exist yet.
 
@@ -4744,7 +5235,8 @@ Diff read in full: exactly the four files in Scope. `Patient #{patient.id}` conf
 
 ### TJ-011c — Patients — hard delete
 
-- **Status:** BLOCKED — needs the same product decision as the doctor case. Verified, not planned.
+- **Status:** CLOSED — **no change needed.** The user's decision of 2026-08-21: keep the current behaviour. A patient record with any reservation attached is not hard-deletable, and archiving stays the only route for a patient with history. That is what the code already does, so nothing ships. Recorded rather than deleted so the question is not re-opened by someone re-reading the finding below.
+- **Superseded status:** was BLOCKED — needed the same product decision as the doctor case. Verified, not planned.
 - **Why:** Only `PATCH { archived }` exists. `ClinicalIntake` and `PatientFile` both cascade cleanly, but **`Reservation_patientId_fkey` is `RESTRICT`** — so any patient who has ever been booked cannot be deleted until their reservations are dealt with, and reservations are clinical records that are never thrown away.
 - **The decision, and it is the same one TJ-009g and TJ-010a answered for employees:** refuse the delete while any reservation exists, naming the count, and leave archiving as the only route for a patient with history. That is the house pattern and is almost certainly right — but for a *patient* it means a patient can effectively never be hard-deleted once they have attended once, which is a different practical outcome than it was for staff, and the user should say so out loud before it ships.
 - **Two things its pass will owe once unblocked:** the storage objects behind `PatientFile` cascade away as rows and leak their uploads exactly as TJ-014e records for employees; and whether the confirm gate types the patient's name (the employee pattern) or a fixed word (what TJ-012 adopted, because a name can be Arabic or empty).
