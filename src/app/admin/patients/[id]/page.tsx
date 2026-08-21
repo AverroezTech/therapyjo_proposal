@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback, use } from "react";
 import { useRouter } from "next/navigation";
+import { publicUploadUrl } from "@/lib/storageUrl";
 
 interface PatientData {
     id: number;
@@ -78,6 +79,9 @@ export default function PatientProfilePage({ params }: { params: Promise<{ id: s
     const [savingIntake, setSavingIntake] = useState(false);
     const [intakeMsg, setIntakeMsg] = useState("");
     const [activeTab, setActiveTab] = useState<"intake" | "sessions" | "files">("intake");
+    const [uploadingName, setUploadingName] = useState("");
+    const [removingId, setRemovingId] = useState<number | null>(null);
+    const [fileError, setFileError] = useState("");
 
     const fetchPatient = useCallback(async () => {
         const res = await fetch(`/api/patients/${id}`);
@@ -136,6 +140,62 @@ export default function PatientProfilePage({ params }: { params: Promise<{ id: s
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ archived: !patient?.archived }),
         });
+        fetchPatient();
+    };
+
+    const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+        e.target.value = "";   // let the same file be picked again after a failure
+        setFileError("");
+        setUploadingName(file.name);
+
+        const fd = new FormData();
+        fd.append("file", file);
+        fd.append("folder", "patient-files");
+        const up = await fetch("/api/upload", { method: "POST", body: fd });
+        if (!up.ok) {
+            setUploadingName("");
+            setFileError("Upload failed.");
+            return;
+        }
+        const { path, contentType } = await up.json();
+
+        // fileType comes from the response, not the picked file: /api/upload
+        // re-encodes images to WebP, so file.type would be a lie. fileSize is
+        // the size as picked — the endpoint does not report the stored length,
+        // so it is exact for documents and approximate for a re-encoded image.
+        const res = await fetch(`/api/patients/${id}/files`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+                fileName: file.name,
+                filePath: path,
+                fileType: contentType,
+                fileSize: file.size,
+            }),
+        });
+        setUploadingName("");
+        if (!res.ok) {
+            setFileError("Could not attach the document.");
+            return;
+        }
+        fetchPatient();
+    };
+
+    const handleRemoveFile = async (fileId: number) => {
+        setFileError("");
+        setRemovingId(fileId);
+        // res.ok is the only success signal. The response also carries
+        // objectRemoved, which is false whenever SUPABASE_SERVICE_ROLE_KEY is
+        // unset — the row is still gone, so surfacing it would report a
+        // failure that did not happen. Do not read it.
+        const res = await fetch(`/api/patients/${id}/files/${fileId}`, { method: "DELETE" });
+        setRemovingId(null);
+        if (!res.ok) {
+            setFileError("Could not remove the document.");
+            return;
+        }
         fetchPatient();
     };
 
@@ -292,16 +352,46 @@ export default function PatientProfilePage({ params }: { params: Promise<{ id: s
             {/* Files Tab */}
             {activeTab === "files" && (
                 <div className="section-card">
-                    {patient.files.length === 0 ? (
+                    {fileError && <div className="error-msg" role="alert">{fileError}</div>}
+
+                    <div className="file-upload-row">
+                        <input
+                            type="file"
+                            className="file-input"
+                            aria-label="Upload a document"
+                            disabled={!!uploadingName}
+                            onChange={handleUpload}
+                        />
+                        <span className="field-hint">
+                            {uploadingName ? `Uploading ${uploadingName}…` : "Saved immediately — no separate Save step."}
+                        </span>
+                    </div>
+
+                    {patient.files.length === 0 && !uploadingName ? (
                         <p className="empty-text">No files uploaded yet</p>
                     ) : (
                         <div className="files-grid">
                             {patient.files.map((f) => (
-                                <a key={f.id} href={f.filePath} target="_blank" rel="noreferrer" className="file-card">
-                                    <span className="file-icon">{f.fileType.includes("image") ? "🖼" : "📄"}</span>
-                                    <span className="file-name">{f.fileName}</span>
-                                    <span className="file-date">{formatDate(f.uploadedAt)}</span>
-                                </a>
+                                <div key={f.id} className="file-card">
+                                    <a
+                                        href={publicUploadUrl(f.filePath)}
+                                        target="_blank"
+                                        rel="noreferrer"
+                                        className="file-open"
+                                    >
+                                        <span className="file-icon">{f.fileType.includes("image") ? "🖼" : "📄"}</span>
+                                        <span className="file-name">{f.fileName}</span>
+                                        <span className="file-date">{formatDate(f.uploadedAt)}</span>
+                                    </a>
+                                    <button
+                                        type="button"
+                                        className="btn-sm btn-remove"
+                                        disabled={removingId === f.id}
+                                        onClick={() => handleRemoveFile(f.id)}
+                                    >
+                                        {removingId === f.id ? "Removing…" : "Remove"}
+                                    </button>
+                                </div>
                             ))}
                         </div>
                     )}
@@ -399,10 +489,31 @@ export default function PatientProfilePage({ params }: { params: Promise<{ id: s
                 .file-card {
                     display: flex; flex-direction: column; align-items: center; gap: 0.35rem;
                     padding: 1rem; background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.06);
-                    border-radius: var(--radius-sm, 2px); text-decoration: none; color: #fff;
+                    border-radius: var(--radius-sm, 2px); color: #fff;
                     transition: background 0.15s;
                 }
                 .file-card:hover { background: rgba(255,255,255,0.08); }
+                .file-open {
+                    display: flex; flex-direction: column; align-items: center; gap: 0.35rem;
+                    text-decoration: none; color: #fff; width: 100%; min-width: 0;
+                }
+                .file-upload-row {
+                    display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap;
+                    margin-bottom: 1rem; padding-bottom: 1rem;
+                    border-bottom: 1px solid rgba(255,255,255,0.06);
+                }
+                .file-input { font-size: 0.82rem; color: rgba(255,255,255,0.6); max-width: 100%; }
+                .field-hint { font-size: 0.72rem; color: rgba(255,255,255,0.35); }
+                .btn-remove {
+                    background: rgba(239,68,68,0.15); color: #fca5a5; margin-top: 0.5rem;
+                }
+                .btn-remove:hover:not(:disabled) { background: rgba(239,68,68,0.25); }
+                .btn-remove:disabled { opacity: 0.5; cursor: not-allowed; }
+                .error-msg {
+                    background: rgba(220,38,38,0.1); border: 1px solid rgba(220,38,38,0.2);
+                    color: #fca5a5; padding: 0.5rem 0.75rem; border-radius: var(--radius-sm, 2px);
+                    font-size: 0.82rem; margin-bottom: 1rem;
+                }
                 .file-icon { font-size: 1.5rem; }
                 .file-name { font-size: 0.78rem; text-align: center; word-break: break-all; }
                 .file-date { font-size: 0.7rem; color: rgba(255,255,255,0.3); }

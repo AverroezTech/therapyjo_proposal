@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback, use } from "react";
 import { useRouter } from "next/navigation";
+import { publicUploadUrl } from "@/lib/storageUrl";
 
 interface PatientData {
     id: number;
@@ -172,7 +173,7 @@ export default function SecretaryPatientProfile({ params }: { params: Promise<{ 
                     ) : (
                         <div className="files-grid">
                             {patient.files.map((f) => (
-                                <a key={f.id} href={f.filePath} target="_blank" rel="noreferrer" className="file-card">
+                                <a key={f.id} href={publicUploadUrl(f.filePath)} target="_blank" rel="noreferrer" className="file-card">
                                     <span className="file-icon">{f.fileType.includes("image") ? "🖼" : "📄"}</span>
                                     <span className="file-name">{f.fileName}</span>
                                     <span className="file-date">{formatDate(f.uploadedAt)}</span>
