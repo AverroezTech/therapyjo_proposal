@@ -15,6 +15,7 @@ interface Doctor {
     color: string | null;
     pictureUrl: string | null;
     username: string;
+    canManageContent: boolean;
 }
 
 interface DoctorForm {
@@ -27,6 +28,7 @@ interface DoctorForm {
     confirmPassword: string;
     adminPassword: string;
     color: string;
+    canManageContent: boolean;
 }
 
 const COLORS = [
@@ -60,6 +62,7 @@ export default function DoctorsPage() {
     const [form, setForm] = useState<DoctorForm>({
         name: "", email: "", phone: "", workingHours: "",
         username: "", password: "", confirmPassword: "", adminPassword: "", color: COLORS[0],
+        canManageContent: false,
     });
     const [showPassword, setShowPassword] = useState(false);
     const [formError, setFormError] = useState("");
@@ -128,7 +131,7 @@ export default function DoctorsPage() {
 
     const openAdd = () => {
         setEditingDoctor(null);
-        setForm({ name: "", email: "", phone: "", workingHours: "", username: "", password: "", confirmPassword: "", adminPassword: "", color: COLORS[0] });
+        setForm({ name: "", email: "", phone: "", workingHours: "", username: "", password: "", confirmPassword: "", adminPassword: "", color: COLORS[0], canManageContent: false });
         setShowPassword(false);
         setFormError("");
         setHoursFrom("");
@@ -146,6 +149,7 @@ export default function DoctorsPage() {
             name: doc.name, email: doc.email || "", phone: doc.phone || "",
             workingHours: doc.workingHours || "", username: doc.username,
             password: "", confirmPassword: "", adminPassword: "", color: doc.color || COLORS[0],
+            canManageContent: doc.canManageContent,
         });
         setShowPassword(false);
         setFormError("");
@@ -185,16 +189,19 @@ export default function DoctorsPage() {
             : "/api/employees/doctors";
         const method = editingDoctor ? "PUT" : "POST";
 
-        const body: Record<string, string> = {
+        const body: Record<string, string | boolean> = {
             name: form.name, email: form.email, phone: form.phone,
             workingHours: form.workingHours, color: form.color,
         };
         if (!editingDoctor) {
             body.username = form.username;
             body.password = form.password;
-        } else if (form.password) {
-            body.password = form.password;
-            body.adminPassword = form.adminPassword;
+        } else {
+            body.canManageContent = form.canManageContent;
+            if (form.password) {
+                body.password = form.password;
+                body.adminPassword = form.adminPassword;
+            }
         }
 
         const res = await fetch(url, {
@@ -517,6 +524,21 @@ export default function DoctorsPage() {
                         </div>
 
                         {editingDoctor && (
+                            <div className="form-group grant-section">
+                                <label>Content management</label>
+                                <label className="grant-row">
+                                    <input
+                                        type="checkbox"
+                                        checked={form.canManageContent}
+                                        onChange={(e) => setForm({ ...form, canManageContent: e.target.checked })}
+                                    />
+                                    <span>May manage Blog, public Doctor profiles, and Approvals</span>
+                                </label>
+                                <span className="field-hint">Takes effect at their next sign-in.</span>
+                            </div>
+                        )}
+
+                        {editingDoctor && (
                             <div className="form-group doc-section">
                                 <label>Documents</label>
                                 {docError && <div className="error-msg" role="alert">{docError}</div>}
@@ -749,6 +771,14 @@ export default function DoctorsPage() {
         a.doc-name:hover { text-decoration: underline; }
         .doc-row.uploading .doc-name { color: rgba(255,255,255,0.5); }
         .doc-empty { font-size: 0.8rem; color: rgba(255,255,255,0.35); padding: 0.25rem 0; }
+        .grant-section { margin-top: 1.25rem; }
+        .grant-row { display: flex; align-items: center; gap: 0.6rem; cursor: pointer; }
+        .grant-row input[type="checkbox"] {
+          width: 16px; height: 16px; flex-shrink: 0;
+          margin: 0; padding: 0; border: none; background: none;
+          border-radius: 0; accent-color: #10b981; cursor: pointer;
+        }
+        .grant-row span { font-size: 0.85rem; color: rgba(255,255,255,0.85); font-weight: 400; }
         .field-hint { font-size: 0.72rem; color: rgba(255,255,255,0.35); }
       `}</style>
         </div>

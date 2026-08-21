@@ -52,7 +52,7 @@ export async function PUT(
 
     const { id } = await params;
     const body = await req.json();
-    const { name, email, phone, workingHours, password, color, pictureUrl, status, adminPassword } = body;
+    const { name, email, phone, workingHours, password, color, pictureUrl, status, adminPassword, canManageContent } = body;
 
     // Build update data
     const updateData: Record<string, unknown> = {};
@@ -91,6 +91,13 @@ export async function PUT(
         updateData.pictureUrl = pictureUrl;
     }
     if (status !== undefined) updateData.status = status;
+    // Only ADMIN reaches this handler at all — the guard at the top of PUT is
+    // the gate, and the column is inert for an ADMIN anyway (permissions.ts
+    // short-circuits on role), so no one can revoke their own access here.
+    // Coerced rather than passed through: a JSON body could carry a string.
+    if (canManageContent !== undefined) {
+        updateData.canManageContent = canManageContent === true;
+    }
     if (password) {
         if (password.length < 8) {
             return NextResponse.json(

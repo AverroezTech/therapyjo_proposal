@@ -22,6 +22,7 @@ export async function GET() {
             status: true,
             pictureUrl: true,
             username: isAdmin,
+            canManageContent: isAdmin,
             createdAt: true,
         },
         orderBy: { name: "asc" },
