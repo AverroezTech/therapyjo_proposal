@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
+import { canAccessClinical } from "@/lib/permissions";
 import { removeUpload } from "@/lib/uploads";
 
 // GET /api/patients/[id] — single patient with intake + reservations
@@ -19,17 +20,24 @@ export async function GET(
         return NextResponse.json({ error: "Invalid patient ID" }, { status: 400 });
     }
 
+    // A secretary needs this endpoint — it carries the name, phones, files and
+    // session list their whole patient page is built from — so the clinical
+    // branches are omitted rather than the request refused. Prisma accepts a
+    // boolean here, the same idiom `username: isAdmin` already uses in the
+    // employee routes. (TJ-023)
+    const clinical = canAccessClinical(session.user);
+
     const patient = await prisma.patient.findUnique({
         where: { id: patientId },
         include: {
-            intake: true,
+            intake: clinical,
             files: {
                 orderBy: { uploadedAt: "desc" },
             },
             reservations: {
                 include: {
                     doctor: { select: { id: true, name: true, color: true } },
-                    soapNote: true,
+                    soapNote: clinical,
                 },
                 orderBy: { sessionDate: "desc" },
             },

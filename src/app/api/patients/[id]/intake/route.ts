@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
+import { canAccessClinical } from "@/lib/permissions";
 
 // GET /api/patients/[id]/intake — get clinical intake
 export async function GET(
@@ -10,6 +11,9 @@ export async function GET(
     const session = await auth();
     if (!session) {
         return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+    if (!canAccessClinical(session.user)) {
+        return NextResponse.json({ error: "Not permitted to view clinical records" }, { status: 403 });
     }
 
     const { id } = await params;
@@ -35,9 +39,8 @@ export async function PUT(
         return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    // Only admin and doctors can edit clinical intake
-    const role = (session.user as { role?: string })?.role;
-    if (role === "SECRETARY") {
+    // Same predicate as the GET above, so read and write cannot drift apart.
+    if (!canAccessClinical(session.user)) {
         return NextResponse.json({ error: "Secretaries cannot edit clinical intake" }, { status: 403 });
     }
 

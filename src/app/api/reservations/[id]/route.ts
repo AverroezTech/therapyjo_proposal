@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
+import { canAccessClinical } from "@/lib/permissions";
 
 // Valid status transitions (state machine)
 const VALID_TRANSITIONS: Record<string, string[]> = {
@@ -29,7 +30,7 @@ export async function GET(
                 select: { id: true, name: true, phone1: true, phone2: true, archived: true },
             },
             doctor: { select: { id: true, name: true, color: true } },
-            soapNote: true,
+            soapNote: canAccessClinical(session.user),
         },
     });
 
