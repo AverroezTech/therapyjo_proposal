@@ -80,6 +80,8 @@ model User {
   status         EmploymentStatus @default(ACTIVE)
   color          String?          // hex color for calendar (doctors only)
   canManageContent Boolean        @default(false) // may manage Blog, public Doctor profiles, Approvals
+  failedLoginAttempts Int         @default(0)     // consecutive bad passwords; resets on success (TJ-024)
+  lockedUntil    DateTime?                        // set once failedLoginAttempts crosses the threshold
   createdAt      DateTime         @default(now())
   updatedAt      DateTime         @updatedAt
 
@@ -88,6 +90,12 @@ model User {
   notes          Note[]           // notes linked to doctor
   doctorProfile  DoctorProfile?   // public-site profile, if this user has one
   files          EmployeeFile[]   // identification documents
+
+  // Accountability — who touched what, and when (TJ-024)
+  patientUpdates      Patient[]         @relation("PatientUpdatedBy")
+  intakeUpdates       ClinicalIntake[]  @relation("IntakeUpdatedBy")
+  patientFileUploads  PatientFile[]     @relation("FileUploadedBy")
+  patientAuditEntries PatientAuditLog[]
 }
 
 // ─── Employee Files (identification documents) ────────
@@ -105,6 +113,8 @@ model EmployeeFile {
   uploadedAt     DateTime         @default(now())
 
   user           User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
 }
 
 // ─── Patient ──────────────────────────────────────────
@@ -119,11 +129,16 @@ model Patient {
   lastVisitDate  DateTime?
   createdAt      DateTime         @default(now())
   updatedAt      DateTime         @updatedAt
+  updatedById    String?          // last staff member to touch this record (TJ-024)
 
   // Relations
   files          PatientFile[]
   intake         ClinicalIntake?
   reservations   Reservation[]
+  auditLog       PatientAuditLog[]
+  updatedBy      User?            @relation("PatientUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
+
+  @@index([updatedById])
 }
 
 // ─── Patient Files (images, PDFs, X-rays) ─────────────
@@ -136,8 +151,13 @@ model PatientFile {
   fileType       String           // mime type
   fileSize       Int              // bytes
   uploadedAt     DateTime         @default(now())
+  uploadedById   String?
 
   patient        Patient          @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  uploadedBy     User?            @relation("FileUploadedBy", fields: [uploadedById], references: [id], onDelete: SetNull)
+
+  @@index([patientId])
+  @@index([uploadedById])
 }
 
 // ─── Clinical Intake / Assessment ─────────────────────
@@ -159,8 +179,32 @@ model ClinicalIntake {
   nextSessionTreatment  String?
   createdAt             DateTime  @default(now())
   updatedAt             DateTime  @updatedAt
+  updatedById           String?
 
   patient               Patient   @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  updatedBy             User?     @relation("IntakeUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
+
+  @@index([updatedById])
+}
+
+// ─── Patient Audit Log (who did what, and when) ───────
+// One row per meaningful write against a patient's record. Exists so an
+// admin can answer "who changed this" without trusting the anonymous
+// createdAt/updatedAt timestamps already on the models above. (TJ-024)
+
+model PatientAuditLog {
+  id        Int      @id @default(autoincrement())
+  patientId Int
+  userId    String?
+  action    String   // "DEMOGRAPHICS_UPDATED" | "CLINICAL_INTAKE_UPDATED" | "FILE_ADDED" | "FILE_REMOVED" | "ARCHIVED" | "RESTORED"
+  summary   String?
+  createdAt DateTime @default(now())
+
+  patient   Patient  @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  user      User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([patientId])
+  @@index([userId])
 }
 
 // ─── Reservation (Session) ────────────────────────────
@@ -189,6 +233,9 @@ model Reservation {
   patient             Patient        @relation(fields: [patientId], references: [id])
   doctor              User           @relation(fields: [doctorId], references: [id])
   soapNote            SOAPNote?
+
+  @@index([patientId])
+  @@index([doctorId])
 }
 
 // ─── SOAP Note (Physio documentation) ─────────────────
@@ -219,6 +266,8 @@ model Note {
   createdAt       DateTime     @default(now())
 
   doctor          User         @relation(fields: [doctorId], references: [id])
+
+  @@index([doctorId])
 }
 
 // ─── Blog (public content) ────────────────────────────
@@ -276,4 +325,6 @@ model PendingChange {
   status      ChangeStatus  @default(PENDING)
   reviewedBy  String?
   reviewedAt  DateTime?
+
+  @@index([doctorId])
 }

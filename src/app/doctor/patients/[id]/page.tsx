@@ -21,14 +21,6 @@ interface PatientData {
     reservations: Reservation[];
 }
 
-interface AuditEntry {
-    id: number;
-    action: string;
-    summary: string | null;
-    createdAt: string;
-    user: { name: string; role: string } | null;
-}
-
 interface Intake {
     id: number;
     injuryPlace: string | null;
@@ -63,21 +55,6 @@ interface Reservation {
     doctor: { id: string; name: string; color: string | null };
 }
 
-const ACTION_LABELS: Record<string, string> = {
-    DEMOGRAPHICS_UPDATED: "Info updated",
-    CLINICAL_INTAKE_UPDATED: "Clinical assessment updated",
-    FILE_ADDED: "File added",
-    FILE_REMOVED: "File removed",
-    ARCHIVED: "Archived",
-    RESTORED: "Restored",
-    SESSION_CREATED: "Session booked",
-    SESSION_UPDATED: "Session edited",
-    SESSION_STATUS_CHANGED: "Session status changed",
-    SESSION_DUPLICATED: "Session duplicated",
-    SESSION_DELETED: "Session deleted",
-    SOAP_NOTE_UPDATED: "SOAP note updated",
-};
-
 const INTAKE_FIELDS = [
     { key: "injuryPlace", label: "Injury Place", type: "text" },
     { key: "enrollDate", label: "Enrollment Date", type: "date" },
@@ -93,7 +70,7 @@ const INTAKE_FIELDS = [
     { key: "nextSessionTreatment", label: "Next Session Treatment", type: "textarea" },
 ];
 
-export default function PatientProfilePage({ params }: { params: Promise<{ id: string }> }) {
+export default function DoctorPatientProfilePage({ params }: { params: Promise<{ id: string }> }) {
     const { id } = use(params);
     const router = useRouter();
     const [patient, setPatient] = useState<PatientData | null>(null);
@@ -104,12 +81,10 @@ export default function PatientProfilePage({ params }: { params: Promise<{ id: s
     const [intakeForm, setIntakeForm] = useState<Record<string, string>>({});
     const [savingIntake, setSavingIntake] = useState(false);
     const [intakeMsg, setIntakeMsg] = useState("");
-    const [activeTab, setActiveTab] = useState<"intake" | "sessions" | "files" | "history">("intake");
+    const [activeTab, setActiveTab] = useState<"intake" | "sessions" | "files">("intake");
     const [uploadingName, setUploadingName] = useState("");
     const [removingId, setRemovingId] = useState<number | null>(null);
     const [fileError, setFileError] = useState("");
-    const [auditLog, setAuditLog] = useState<AuditEntry[]>([]);
-    const [auditLoading, setAuditLoading] = useState(false);
 
     // The intake form as the server last gave it to us. Anything typed since
     // makes the form dirty, and dirty is what the guard below acts on.
@@ -119,7 +94,7 @@ export default function PatientProfilePage({ params }: { params: Promise<{ id: s
 
     const fetchPatient = useCallback(async () => {
         const res = await fetch(`/api/patients/${id}`);
-        if (!res.ok) { router.push("/admin/patients"); return; }
+        if (!res.ok) { router.push("/doctor/patients"); return; }
         const data = await res.json();
         setPatient(data);
         setInfoForm({ name: data.name, phone1: data.phone1, phone2: data.phone2 || "" });
@@ -140,18 +115,6 @@ export default function PatientProfilePage({ params }: { params: Promise<{ id: s
     }, [id, router]);
 
     useEffect(() => { fetchPatient(); }, [fetchPatient]);
-
-    const fetchAuditLog = useCallback(async () => {
-        setAuditLoading(true);
-        const res = await fetch(`/api/patients/${id}/audit`);
-        const data = await res.json();
-        setAuditLog(Array.isArray(data) ? data : []);
-        setAuditLoading(false);
-    }, [id]);
-
-    useEffect(() => {
-        if (activeTab === "history" && auditLog.length === 0) fetchAuditLog();
-    }, [activeTab, auditLog.length, fetchAuditLog]);
 
     const saveInfo = async () => {
         setSavingInfo(true);
@@ -212,10 +175,6 @@ export default function PatientProfilePage({ params }: { params: Promise<{ id: s
         }
         const { path, contentType } = await up.json();
 
-        // fileType comes from the response, not the picked file: /api/upload
-        // re-encodes images to WebP, so file.type would be a lie. fileSize is
-        // the size as picked — the endpoint does not report the stored length,
-        // so it is exact for documents and approximate for a re-encoded image.
         const res = await fetch(`/api/patients/${id}/files`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -238,10 +197,6 @@ export default function PatientProfilePage({ params }: { params: Promise<{ id: s
         if (!confirmDiscard("Removing this file will reload this patient and discard your unsaved Clinical Assessment edits. Continue?")) return;
         setFileError("");
         setRemovingId(fileId);
-        // res.ok is the only success signal. The response also carries
-        // objectRemoved, which is false whenever SUPABASE_SERVICE_ROLE_KEY is
-        // unset — the row is still gone, so surfacing it would report a
-        // failure that did not happen. Do not read it.
         const res = await fetch(`/api/patients/${id}/files/${fileId}`, { method: "DELETE" });
         setRemovingId(null);
         if (!res.ok) {
@@ -277,7 +232,7 @@ export default function PatientProfilePage({ params }: { params: Promise<{ id: s
                     className="btn-back"
                     onClick={() => {
                         if (confirmDiscard("You have unsaved Clinical Assessment edits. Leave without saving?")) {
-                            router.push("/admin/patients");
+                            router.push("/doctor/patients");
                         }
                     }}
                 >← Back</button>
@@ -340,7 +295,6 @@ export default function PatientProfilePage({ params }: { params: Promise<{ id: s
                 <button className={`tab ${activeTab === "intake" ? "active" : ""}`} onClick={() => setActiveTab("intake")}>Clinical Assessment</button>
                 <button className={`tab ${activeTab === "sessions" ? "active" : ""}`} onClick={() => setActiveTab("sessions")}>Sessions ({patient.reservations.length})</button>
                 <button className={`tab ${activeTab === "files" ? "active" : ""}`} onClick={() => setActiveTab("files")}>Files ({patient.files.length})</button>
-                <button className={`tab ${activeTab === "history" ? "active" : ""}`} onClick={() => setActiveTab("history")}>History</button>
             </div>
 
             {/* Clinical Intake Tab */}
@@ -459,38 +413,6 @@ export default function PatientProfilePage({ params }: { params: Promise<{ id: s
                                 </div>
                             ))}
                         </div>
-                    )}
-                </div>
-            )}
-
-            {/* History Tab — admin-only */}
-            {activeTab === "history" && (
-                <div className="section-card">
-                    {auditLoading ? (
-                        <p className="empty-text">Loading…</p>
-                    ) : auditLog.length === 0 ? (
-                        <p className="empty-text">No recorded activity yet</p>
-                    ) : (
-                        <table className="data-table">
-                            <thead>
-                                <tr>
-                                    <th>When</th>
-                                    <th>By</th>
-                                    <th>Action</th>
-                                    <th>Detail</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {auditLog.map((e) => (
-                                    <tr key={e.id}>
-                                        <td>{new Date(e.createdAt).toLocaleString("en-US", { year: "numeric", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}</td>
-                                        <td>{e.user ? `${e.user.name} (${e.user.role})` : "—"}</td>
-                                        <td>{ACTION_LABELS[e.action] || e.action}</td>
-                                        <td>{e.summary || "—"}</td>
-                                    </tr>
-                                ))}
-                            </tbody>
-                        </table>
                     )}
                 </div>
             )}

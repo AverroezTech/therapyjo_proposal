@@ -6,6 +6,12 @@ import { useRouter } from "next/navigation";
 import Calendar from "@/app/components/Calendar";
 import DatePickerCalendar from "@/app/components/DatePicker";
 
+interface Doctor {
+    id: string;
+    name: string;
+    color: string | null;
+}
+
 interface Reservation {
     id: number;
     sessionTime: string;
@@ -25,6 +31,7 @@ export default function DoctorDashboard() {
     const [selectedDate, setSelectedDate] = useState(today());
     const [reservations, setReservations] = useState<Reservation[]>([]);
     const [loading, setLoading] = useState(true);
+    const [doctors, setDoctors] = useState<Doctor[]>([]);
 
     // Duplicate modal
     const [dupeId, setDupeId] = useState<number | null>(null);
@@ -34,16 +41,29 @@ export default function DoctorDashboard() {
 
     const doctorId = (session?.user as { id?: string })?.id;
 
+    // Defaults to "my schedule only" — the toggle below lets a doctor opt
+    // into seeing the whole clinic's schedule, same as admin/secretary. (TJ-024)
+    const [doctorFilter, setDoctorFilter] = useState("");
+    useEffect(() => { if (doctorId) setDoctorFilter(doctorId); }, [doctorId]);
+
+    const fetchDoctors = useCallback(async () => {
+        const res = await fetch("/api/employees/doctors");
+        const data = await res.json();
+        setDoctors(Array.isArray(data) ? data.filter((d: Doctor & { status: string }) => d.status === "ACTIVE") : []);
+    }, []);
+
     const fetchReservations = useCallback(async () => {
-        if (!doctorId) return;
+        if (!doctorFilter) return;
         setLoading(true);
-        const params = new URLSearchParams({ date: selectedDate, doctorId });
+        const params = new URLSearchParams({ date: selectedDate });
+        if (doctorFilter !== "all") params.set("doctorId", doctorFilter);
         const res = await fetch(`/api/reservations?${params}`);
         const data = await res.json();
         setReservations(Array.isArray(data) ? data : []);
         setLoading(false);
-    }, [selectedDate, doctorId]);
+    }, [selectedDate, doctorFilter]);
 
+    useEffect(() => { fetchDoctors(); }, [fetchDoctors]);
     useEffect(() => { fetchReservations(); }, [fetchReservations]);
 
     const handleStatusChange = async (id: number, status: string) => {
@@ -104,6 +124,13 @@ export default function DoctorDashboard() {
                     <button className="btn-nav btn-today" onClick={() => setSelectedDate(today())}>Today</button>
                     <button className="btn-nav" onClick={() => goDay(1)}>Tomorrow →</button>
                 </div>
+                <select className="doctor-select" value={doctorFilter} onChange={(e) => setDoctorFilter(e.target.value)}>
+                    {doctorId && <option value={doctorId}>My Schedule</option>}
+                    <option value="all">All Doctors</option>
+                    {doctors.filter((d) => d.id !== doctorId).map((d) => (
+                        <option key={d.id} value={d.id}>{d.name}</option>
+                    ))}
+                </select>
             </div>
             <p className="current-date">{formatDate()} — {reservations.length} session{reservations.length !== 1 ? "s" : ""}</p>
 
@@ -122,7 +149,7 @@ export default function DoctorDashboard() {
                     )}
                 </div>
                 <div className="sidebar-col">
-                    <DatePickerCalendar selectedDate={selectedDate} onDateSelect={setSelectedDate} doctorId={doctorId} />
+                    <DatePickerCalendar selectedDate={selectedDate} onDateSelect={setSelectedDate} doctorId={doctorFilter} />
                 </div>
             </div>
 
@@ -150,6 +177,8 @@ export default function DoctorDashboard() {
                 .btn-nav { background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.1); color: rgba(255,255,255,0.7); padding: 0.35rem 0.75rem; border-radius: var(--radius-sm, 2px); font-size: 0.78rem; cursor: pointer; font-family: inherit; }
                 .btn-nav:hover { background: rgba(255,255,255,0.1); color: #fff; }
                 .btn-today { font-weight: 600; color: var(--primary, #4CAF93); border-color: var(--primary, #4CAF93); }
+                .doctor-select { background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.1); color: #fff; padding: 0.4rem 0.75rem; border-radius: var(--radius-sm, 2px); font-size: 0.82rem; font-family: inherit; margin-left: auto; }
+                .doctor-select option { background: #1a2e35; }
                 .current-date { color: rgba(255,255,255,0.5); font-size: 0.9rem; margin-bottom: 1rem; }
                 .main-layout { display: flex; gap: 1rem; align-items: flex-start; }
                 .calendar-col { flex: 1; min-width: 0; }

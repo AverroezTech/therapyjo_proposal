@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
+import { logPatientActivity } from "@/lib/audit";
+
+const WRITE_ROLES = ["ADMIN", "DOCTOR", "SECRETARY"];
 
 // POST /api/patients/[id]/files — attach a document to a patient.
 // The file itself is uploaded separately via POST /api/upload (folder:
@@ -14,6 +17,9 @@ export async function POST(
     const session = await auth();
     if (!session) {
         return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+    if (!WRITE_ROLES.includes(session.user.role)) {
+        return NextResponse.json({ error: "Not permitted to upload patient files" }, { status: 403 });
     }
 
     const { id } = await params;
@@ -38,7 +44,15 @@ export async function POST(
     }
 
     const file = await prisma.patientFile.create({
-        data: { patientId, fileName, filePath, fileType, fileSize },
+        data: { patientId, fileName, filePath, fileType, fileSize, uploadedById: session.user.id },
+    });
+
+    await prisma.patient.update({ where: { id: patientId }, data: { updatedById: session.user.id } });
+    await logPatientActivity({
+        patientId,
+        userId: session.user.id,
+        action: "FILE_ADDED",
+        summary: fileName,
     });
 
     return NextResponse.json(file, { status: 201 });

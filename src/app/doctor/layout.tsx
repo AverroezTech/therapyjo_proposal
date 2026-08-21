@@ -7,6 +7,7 @@ import Link from "next/link";
 
 const navItems = [
     { href: "/doctor", label: "My Schedule", icon: "📅" },
+    { href: "/doctor/patients", label: "Patients", icon: "🧑‍⚕️" },
     { href: "/doctor/notes", label: "Notes", icon: "📝" },
     { href: "/doctor/profile", label: "My Profile", icon: "👤" },
 ];

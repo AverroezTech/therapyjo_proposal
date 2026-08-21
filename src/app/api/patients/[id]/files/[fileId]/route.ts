@@ -2,6 +2,9 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
 import { removeUpload } from "@/lib/uploads";
+import { logPatientActivity } from "@/lib/audit";
+
+const WRITE_ROLES = ["ADMIN", "DOCTOR", "SECRETARY"];
 
 // DELETE /api/patients/[id]/files/[fileId] — detach a document from a patient
 export async function DELETE(
@@ -11,6 +14,9 @@ export async function DELETE(
     const session = await auth();
     if (!session) {
         return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+    if (!WRITE_ROLES.includes(session.user.role)) {
+        return NextResponse.json({ error: "Not permitted to remove patient files" }, { status: 403 });
     }
 
     const { id, fileId } = await params;
@@ -34,7 +40,15 @@ export async function DELETE(
     // want an orphaned object, not a row pointing at a file that is gone. The
     // helper never throws, so a storage problem cannot fail this request.
     await prisma.patientFile.delete({ where: { id: numericFileId } });
-    const objectRemoved = await removeUpload(file.filePath);
+    const objectRemoved = await removeUpload(file.filePath, "clinical-files");
+
+    await prisma.patient.update({ where: { id: patientId }, data: { updatedById: session.user.id } });
+    await logPatientActivity({
+        patientId,
+        userId: session.user.id,
+        action: "FILE_REMOVED",
+        summary: file.fileName,
+    });
 
     return NextResponse.json({ message: "File removed", objectRemoved });
 }

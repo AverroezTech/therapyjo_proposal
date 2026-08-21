@@ -3,6 +3,12 @@ import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
 import { canAccessClinical } from "@/lib/permissions";
 import { removeUpload } from "@/lib/uploads";
+import { logPatientActivity } from "@/lib/audit";
+
+// Staff roles allowed to write a patient record. All three roles that can
+// reach a patient page today — anyone else (should a 4th role ever exist)
+// is refused rather than implicitly allowed. (TJ-024)
+const WRITE_ROLES = ["ADMIN", "DOCTOR", "SECRETARY"];
 
 // GET /api/patients/[id] — single patient with intake + reservations
 export async function GET(
@@ -41,6 +47,7 @@ export async function GET(
                 },
                 orderBy: { sessionDate: "desc" },
             },
+            updatedBy: { select: { id: true, name: true, role: true } },
         },
     });
 
@@ -59,6 +66,9 @@ export async function PUT(
     const session = await auth();
     if (!session) {
         return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+    if (!WRITE_ROLES.includes(session.user.role)) {
+        return NextResponse.json({ error: "Not permitted to edit patients" }, { status: 403 });
     }
 
     const { id } = await params;
@@ -89,6 +99,7 @@ export async function PUT(
             ...(phone1 !== undefined && { phone1 }),
             ...(phone2 !== undefined && { phone2 }),
             ...(pictureUrl !== undefined && { pictureUrl }),
+            updatedById: session.user.id,
         },
     });
 
@@ -97,6 +108,19 @@ export async function PUT(
     if (previousPicture && previousPicture !== pictureUrl) {
         await removeUpload(previousPicture);
     }
+
+    const changedFields = [
+        name !== undefined && "name",
+        phone1 !== undefined && "phone1",
+        phone2 !== undefined && "phone2",
+        pictureUrl !== undefined && "picture",
+    ].filter(Boolean);
+    await logPatientActivity({
+        patientId,
+        userId: session.user.id,
+        action: "DEMOGRAPHICS_UPDATED",
+        summary: changedFields.length ? `Updated ${changedFields.join(", ")}` : undefined,
+    });
 
     return NextResponse.json(patient);
 }
@@ -110,6 +134,9 @@ export async function PATCH(
     if (!session) {
         return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
+    if (!WRITE_ROLES.includes(session.user.role)) {
+        return NextResponse.json({ error: "Not permitted to edit patients" }, { status: 403 });
+    }
 
     const { id } = await params;
     const patientId = parseInt(id, 10);
@@ -122,7 +149,13 @@ export async function PATCH(
 
     const patient = await prisma.patient.update({
         where: { id: patientId },
-        data: { archived: Boolean(archived) },
+        data: { archived: Boolean(archived), updatedById: session.user.id },
+    });
+
+    await logPatientActivity({
+        patientId,
+        userId: session.user.id,
+        action: patient.archived ? "ARCHIVED" : "RESTORED",
     });
 
     return NextResponse.json({

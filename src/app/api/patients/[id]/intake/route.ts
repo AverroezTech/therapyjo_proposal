@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
 import { canAccessClinical } from "@/lib/permissions";
+import { logPatientActivity } from "@/lib/audit";
 
 // GET /api/patients/[id]/intake — get clinical intake
 export async function GET(
@@ -68,8 +69,14 @@ export async function PUT(
 
     const intake = await prisma.clinicalIntake.upsert({
         where: { patientId },
-        update: data,
-        create: { patientId, ...data },
+        update: { ...data, updatedById: session.user.id },
+        create: { patientId, ...data, updatedById: session.user.id },
+    });
+
+    await logPatientActivity({
+        patientId,
+        userId: session.user.id,
+        action: "CLINICAL_INTAKE_UPDATED",
     });
 
     return NextResponse.json(intake);
