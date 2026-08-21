@@ -16,7 +16,11 @@ export function useUnsavedChanges(dirty: boolean) {
     // Kept in a ref so the beforeunload listener is registered once and still
     // reads the current value; re-binding on every keystroke would be wasteful.
     const dirtyRef = useRef(dirty);
-    dirtyRef.current = dirty;
+    // Written in an effect, not during render: assigning to a ref while
+    // rendering is what react-hooks/refs flags, and the rule is right —
+    // a ref write does not re-render, so anything derived from it can go
+    // stale. The listener below reads it, and only ever after paint.
+    useEffect(() => { dirtyRef.current = dirty; }, [dirty]);
 
     useEffect(() => {
         const onBeforeUnload = (e: BeforeUnloadEvent) => {

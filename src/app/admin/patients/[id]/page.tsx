@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback, useRef, use } from "react";
+import { useState, useEffect, useCallback, use } from "react";
 import { useRouter } from "next/navigation";
 import { publicUploadUrl } from "@/lib/storageUrl";
 import { useUnsavedChanges } from "@/lib/useUnsavedChanges";
@@ -86,8 +86,8 @@ export default function PatientProfilePage({ params }: { params: Promise<{ id: s
 
     // The intake form as the server last gave it to us. Anything typed since
     // makes the form dirty, and dirty is what the guard below acts on.
-    const intakeBaseline = useRef<string>("");
-    const intakeDirty = JSON.stringify(intakeForm) !== intakeBaseline.current;
+    const [intakeBaseline, setIntakeBaseline] = useState<string>("");
+    const intakeDirty = JSON.stringify(intakeForm) !== intakeBaseline;
     const { confirmDiscard } = useUnsavedChanges(intakeDirty);
 
     const fetchPatient = useCallback(async () => {
@@ -108,7 +108,7 @@ export default function PatientProfilePage({ params }: { params: Promise<{ id: s
             }
         }
         setIntakeForm(intake);
-        intakeBaseline.current = JSON.stringify(intake);
+        setIntakeBaseline(JSON.stringify(intake));
         setLoading(false);
     }, [id, router]);
 
