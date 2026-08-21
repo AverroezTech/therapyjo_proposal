@@ -4725,7 +4725,7 @@ Diff read in full: exactly the four files in Scope. `Patient #{patient.id}` conf
 
 ### TJ-023 — Stop serving clinical data to secretaries
 
-- **Status:** READY
+- **Status:** DONE — task commit `ff80ad2` on `feat/clinical-read-boundary`, merged to `master` as `c86985b` with `--no-ff`. Planner-verified from the diff, runtime-proven, and visually reviewed on 2026-08-21.
 - **Branch:** `feat/clinical-read-boundary`
 - **Why:** The user's role decision of 2026-08-21: **secretaries may edit patient information and attach files, but may not access or modify clinical notes or diagnosis.** The *modify* half already holds. The *access* half does not — a secretary's own session is served the full `ClinicalIntake` (including `diagnosis`) and every `SOAPNote`, in the very payload their patient page already fetches. The UI does not render it, which is why nobody noticed; the data is in the browser regardless, one devtools tab away.
 
@@ -4981,12 +4981,36 @@ Add the same import line. Then find the `GET` handler's query containing `soapNo
 - Delete every fixture afterwards and report the counts.
 
 **Done when:**
-- [ ] One predicate in `permissions.ts` governs both reading and writing clinical records
-- [ ] A secretary receives **no** intake and **no** SOAP content from any of the four endpoints
-- [ ] A secretary's patient page still works
-- [ ] A doctor and an admin still receive everything, and the session page still populates
-- [ ] The two pre-existing write guards were refactored onto the helper, not duplicated
-- [ ] Nothing outside the five files in Scope changed
+- [x] One predicate in `permissions.ts` governs both reading and writing clinical records
+- [x] A secretary receives **no** intake and **no** SOAP content from any of the four endpoints
+- [x] A secretary's patient page still works
+- [x] A doctor and an admin still receive everything, and the session page still populates
+- [x] The two pre-existing write guards were refactored onto the helper, not duplicated
+- [x] Nothing outside the five files in Scope changed
+
+**Verification — 2026-08-21, performed by the planner, independently of the executor's report.**
+
+Diff read in full: exactly the five files in Scope, no page components touched. Build clean, `tsc` clean, and `npx eslint src/app/api/patients src/app/api/reservations src/lib` produced **no output at all** — unusually, these paths are clean on both sides.
+
+**Runtime, 30 assertions, all passing**, against a fixture patient whose every clinical field carried a marker string, with real credential logins for all three roles.
+
+| Probe | SECRETARY | DOCTOR / ADMIN |
+|---|---|---|
+| `GET /api/patients/<id>` | 200, marker **absent** | 200, marker **present** |
+| `GET /api/patients/<id>/intake` | **403** | 200, marker present |
+| `GET /api/reservations/<id>` | 200, marker **absent** | 200, marker present |
+| `GET /api/reservations/<id>/soap` | **403** | 200, marker present |
+| `PUT` on both clinical routes | **403**, diagnosis byte-identical after | doctor's `PUT` still **200** |
+
+**The keys are absent, not present-and-null** — checked by dumping each payload's full key list rather than testing for a falsy value. A `soapNote: null` would have satisfied a naive check while still telling a secretary that a note exists.
+
+**What a secretary still receives was checked as hard as what they don't,** because a boundary that breaks the front desk is not a fix: name, phones, `files` array, session list, and each session's doctor all intact.
+
+**Visual review.** `/secretary/patients/<id>` renders its header, its Sessions tab with the session row and doctor name, and its Files tab — with the marker absent from the served HTML, from the payload the page fetched, **and** from the DOM after visiting each tab. `/doctor/session/<id>` as the owning doctor still shows all four tabs, with all four SOAP fields and all three seeded intake fields populated, diagnosis included. That second check was the named regression risk and it did not occur.
+
+Fixtures deleted; database back to baseline exactly (3 patients, 10 reservations, 0 SOAP, 0 intake).
+
+**One residue worth noting, not a defect:** the executor signed out a stale browser session while testing. It belonged to a throwaway admin account from the planner's earlier audit, already deleted, so nothing real was lost — but a shared Chrome profile is shared state, and an executor driving it can disturb whatever a person left signed in.
 
 ---
 
