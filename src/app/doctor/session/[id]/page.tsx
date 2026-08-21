@@ -1,8 +1,9 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { use } from "react";
+import { useUnsavedChanges } from "@/lib/useUnsavedChanges";
 
 interface Doctor {
     id: string;
@@ -80,6 +81,15 @@ export default function DoctorSessionPage({ params }: { params: Promise<{ id: st
     // Tabs
     const [activeTab, setActiveTab] = useState<"details" | "history" | "soap" | "intake">("details");
 
+    // Both clinical forms are guarded together: fetchData() repopulates both,
+    // so either being dirty is enough to lose work.
+    const soapBaseline = useRef<string>("");
+    const intakeBaseline = useRef<string>(JSON.stringify({}));
+    const clinicalDirty =
+        JSON.stringify(soapForm) !== soapBaseline.current ||
+        JSON.stringify(intakeForm) !== intakeBaseline.current;
+    const { confirmDiscard } = useUnsavedChanges(clinicalDirty);
+
     const fetchData = useCallback(async () => {
         setLoading(true);
         const [resData, soapData, docData] = await Promise.all([
@@ -95,6 +105,12 @@ export default function DoctorSessionPage({ params }: { params: Promise<{ id: st
         setEditDoctor(resData.doctor?.id || "");
         setEditInjury(resData.injuryPlace || "");
         setSoapForm({
+            subjective: soapData?.subjective || "",
+            objective: soapData?.objective || "",
+            assessment: soapData?.assessment || "",
+            plan: soapData?.plan || "",
+        });
+        soapBaseline.current = JSON.stringify({
             subjective: soapData?.subjective || "",
             objective: soapData?.objective || "",
             assessment: soapData?.assessment || "",
@@ -126,6 +142,7 @@ export default function DoctorSessionPage({ params }: { params: Promise<{ id: st
                 }
             }
             setIntakeForm(intake);
+            intakeBaseline.current = JSON.stringify(intake);
         }
         setLoading(false);
     }, [id]);
@@ -133,6 +150,7 @@ export default function DoctorSessionPage({ params }: { params: Promise<{ id: st
     useEffect(() => { fetchData(); }, [fetchData]);
 
     const handleSaveDetails = async () => {
+        if (!confirmDiscard("Saving the session details will reload this page and discard your unsaved SOAP or Clinical Intake text. Continue?")) return;
         setSaving(true);
         await fetch(`/api/reservations/${id}`, {
             method: "PUT",
@@ -174,6 +192,7 @@ export default function DoctorSessionPage({ params }: { params: Promise<{ id: st
     };
 
     const handleStatusChange = async (status: string) => {
+        if (!confirmDiscard("Changing the session status will reload this page and discard your unsaved SOAP or Clinical Intake text. Continue?")) return;
         await fetch(`/api/reservations/${id}`, {
             method: "PATCH",
             headers: { "Content-Type": "application/json" },
@@ -195,7 +214,14 @@ export default function DoctorSessionPage({ params }: { params: Promise<{ id: st
     return (
         <div>
             {/* Back + Header */}
-            <button className="back-btn" onClick={() => router.push("/doctor")}>← Back to Schedule</button>
+            <button
+                className="back-btn"
+                onClick={() => {
+                    if (confirmDiscard("You have unsaved SOAP or Clinical Intake text. Leave without saving?")) {
+                        router.push("/doctor");
+                    }
+                }}
+            >← Back to Schedule</button>
 
             <div className="header">
                 <div className="header-left">
