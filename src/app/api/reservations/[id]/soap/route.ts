@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
+import { canAccessClinical } from "@/lib/permissions";
 
 // GET /api/reservations/[id]/soap — get SOAP note for a reservation
 export async function GET(
@@ -9,6 +10,9 @@ export async function GET(
 ) {
     const session = await auth();
     if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    if (!canAccessClinical(session.user)) {
+        return NextResponse.json({ error: "Not permitted to view clinical records" }, { status: 403 });
+    }
 
     const { id } = await params;
     const soap = await prisma.sOAPNote.findUnique({
@@ -26,9 +30,8 @@ export async function PUT(
     const session = await auth();
     if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-    // Only admin and doctors can write clinical SOAP documentation
-    const role = (session.user as { role?: string })?.role;
-    if (role === "SECRETARY") {
+    // Same predicate as the GET above, so read and write cannot drift apart.
+    if (!canAccessClinical(session.user)) {
         return NextResponse.json({ error: "Secretaries cannot edit SOAP notes" }, { status: 403 });
     }
 
