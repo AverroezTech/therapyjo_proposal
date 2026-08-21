@@ -4716,7 +4716,7 @@ with
 
 ### TJ-012 — Blog — hard delete a post
 
-- **Status:** READY
+- **Status:** DONE — task commit `d5805fd` on `feat/blog-hard-delete`, merged to `master` as `fb94e81` with `--no-ff`. Planner-verified from the diff, runtime-proven, and visually reviewed on 2026-08-21.
 - **Branch:** `feat/blog-hard-delete`
 - **Why:** `src/app/api/blog/[id]/route.ts` exports `GET` and `PUT` and **no `DELETE` at all**. The admin list's *Archive* button is a `PUT` setting `status: "ARCHIVED"`, and *Restore* sets it back to `DRAFT`. Nothing has ever removed a post; the live database holds 7. This adds the endpoint and the one button that reaches it.
 
@@ -4980,11 +4980,49 @@ This page has **no modal styles at all** — it has `.btn-edit`, `.btn-archive` 
 - **Visual:** `/admin/blog` on the Archived filter — the modal opens, is legible at 320px and at 1440px, the button stays disabled until `DELETE` is typed, and Cancel closes without deleting.
 
 **Done when:**
-- [ ] `DELETE /api/blog/[id]` exists, gated by `canManageContent`, and 409s on a non-archived post
-- [ ] A linked translation survives the delete, unlinked, with its status intact
-- [ ] A shared cover image is **not** removed; an unshared one is
-- [ ] The button appears only on archived rows and is armed only by typing `DELETE`
-- [ ] Nothing outside the two files in Scope changed
+- [x] `DELETE /api/blog/[id]` exists, gated by `canManageContent`, and 409s on a non-archived post
+- [x] A linked translation survives the delete, unlinked, with its status intact
+- [x] A shared cover image is **not** removed; an unshared one is
+- [x] The button appears only on archived rows and is armed only by typing `DELETE`
+- [x] Nothing outside the two files in Scope changed
+
+**Verification — 2026-08-21, performed by the planner, independently of the executor's report.**
+
+The diff was read in full: exactly the two files in Scope, no scratch files, working tree clean. `npm run build` and `npx tsc --noEmit` were re-run rather than taken on trust; both clean. The database was inspected **before** starting and the executor's cleanup claim held exactly — 7 posts, all pre-existing, no fixture rows, no fixture users.
+
+**Runtime, 20 assertions, all passing,** against a dev server started fresh after the build (building under a live dev server corrupts `.next`, which is how the previous task's server died).
+
+**The crux was proven in both directions, and that is what makes it evidence rather than assertion:**
+
+| # | Check | Result |
+|---|---|---|
+| 1 | `Translate` spawns a pair sharing one `coverImage`, linked **both** ways | confirmed — the premise the whole design rests on |
+| 2 | `DELETE` on a `DRAFT` | **409**, row survives |
+| 3 | `DELETE` by a signed-in SECRETARY without the grant | **401**, row survives |
+| 4 | Delete one half of the pair | survivor kept, `linkedId` **NULL**, `coverImage` **unchanged**, status still `DRAFT` |
+| 5 | …and **no `[uploads]` line** — the object is still referenced | none logged |
+| 6 | Delete the survivor, now the sole reference | **exactly one** `[uploads]` line, naming that object |
+| 7 | `DELETE` a missing id | **404** |
+| 8 | The 7 pre-existing posts | byte-identical in status, title and `linkedId` throughout |
+
+Checks 5 and 6 together are the point: the same object is withheld while shared and released once unshared, so the reference count is live rather than decorative.
+
+**Visual review.** The button appears only on archived rows — non-archived rows still offer `Edit` / `Archive` and nothing else — and the modal names the translation that will be unlinked. The confirm gate is **exact**: `delete`, `Delete`, `DELETE ` with a trailing space, and the post's own title all leave the button disabled; only `DELETE` arms it. At a genuine 320px (measured in a pinned iframe, because `resize_window` floors at the OS minimum and silently leaves the viewport at 1920) the card sits 16→289 inside the viewport with no overflow, the `1rem` overlay padding doing its job.
+
+**A Verification line in this task was wrong when the planner wrote it, and the executor caught it.** "The same request with no session returns 401" cannot happen: `authorized()` redirects an unauthenticated caller to `/login` before any `/api/blog` route runs — as it already did for the pre-existing `GET` and `PUT`. The 401 branch is real and reachable, but only by a signed-in user lacking the grant, and that is how it was proven. **This is the second Verification check in two tasks that the planner wrote without running** — see the same note on TJ-005b2a, where "eslint is clean" was never true either. The pattern is checks written from expectation rather than from the code.
+
+**One pre-existing defect surfaced during the 320px pass and was deliberately not touched:** every admin page overflows to 415px at a 320px viewport. Filed as TJ-021. It is **not** from this change, and the proof is that `document.scrollWidth` is 415 on both the `All` and `Archived` filters — two buttons per row and three — because `.table-container` already absorbs the table's growth (629px → 732px) through `overflow-x: auto`.
+
+---
+
+### TJ-021 — Every admin page overflows horizontally at 320px
+
+- **Status:** BACKLOG — no planning pass. Do not execute against this ID.
+- **Why:** Found during TJ-012's visual review and confirmed by measurement, not by eye. At a 320px viewport every page under `/admin` reports `document.scrollWidth` of **415px**. The cause is in the shared shell, `src/app/admin/layout.tsx`: the nav's `.dropdown-panel` / `.dropdown-inner` elements are `min-width: 180px`, absolutely positioned with `translateX(-50%)`, and — because they are hidden with `visibility: hidden` rather than removed — they are still laid out and still contribute to the document's scroll width. Three of them (Employees, Patients, Notes) hang past the right edge at 320px; enumerating every element whose right edge exceeded the viewport returned **53** hits, all of them dropdown descendants.
+- **Distinct from TJ-020,** which is the `.form-grid` inside the two employee modals. This one is the page shell and affects every admin route, including ones with no modal at all. The two should not be merged into one task: different files, different mechanisms.
+- **What its planning pass owes:** whether the fix is `display: none` under a media query, clamping `min-width`, or constraining the panel's inline position to the viewport — and whether any of those breaks the open-dropdown animation, which currently transitions `opacity`/`transform` on an element that must stay laid out. The Definition of Done has required 320px since it was written; this has never met it.
+
+---
 
 ---
 
