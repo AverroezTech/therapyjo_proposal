@@ -9,7 +9,7 @@ interface Note {
     noteDate: string;
     doctorCheckNote: boolean;
     details: string | null;
-    doctor: { id: string; name: string };
+    doctor: { id: string; name: string } | null;
 }
 
 export default function DoctorNotesPage() {

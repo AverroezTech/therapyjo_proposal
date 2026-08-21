@@ -61,7 +61,10 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
     return NextResponse.json(profile);
 }
 
-// DELETE /api/doctor-profiles/[id] — archive (soft delete) or restore
+// DELETE /api/doctor-profiles/[id]
+//   default        → archive (soft delete)
+//   ?hard=true     → permanent removal; PendingChange rows cascade, the photo
+//                    is removed from storage (TJ-025)
 export async function DELETE(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
     const session = await requireContentManager();
     if (!session) {
@@ -74,10 +77,24 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
         return NextResponse.json({ error: "Doctor not found" }, { status: 404 });
     }
 
-    const profile = await prisma.doctorProfile.update({
-        where: { id },
-        data: { archived: true },
-    });
+    const hard = req.nextUrl.searchParams.get("hard") === "true";
 
-    return NextResponse.json(profile);
+    if (!hard) {
+        const profile = await prisma.doctorProfile.update({
+            where: { id },
+            data: { archived: true },
+        });
+        return NextResponse.json(profile);
+    }
+
+    // No blockers: PendingChange already cascades (onDelete: Cascade), and
+    // nothing else references a DoctorProfile row. Not shared across rows the
+    // way a blog cover image can be, so the photo is removed unconditionally.
+    await prisma.doctorProfile.delete({ where: { id } });
+
+    if (existing.photo) {
+        await removeUpload(existing.photo);
+    }
+
+    return NextResponse.json({ message: "Doctor profile deleted permanently" });
 }

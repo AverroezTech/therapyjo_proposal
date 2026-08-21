@@ -14,7 +14,8 @@ interface Note {
     noteDate: string;
     doctorCheckNote: boolean;
     details: string | null;
-    doctor: { id: string; name: string; color: string | null };
+    doctor: { id: string; name: string; color: string | null } | null;
+    doctorNameSnapshot: string | null;
 }
 
 export default function SecretaryNotesPage() {
@@ -91,7 +92,7 @@ export default function SecretaryNotesPage() {
                             <tr key={n.id}>
                                 <td>{formatDate(n.noteDate)}</td>
                                 <td style={{ fontWeight: 600 }}>{n.name}</td>
-                                <td><span style={{ borderLeft: `3px solid ${n.doctor.color || "#666"}`, paddingLeft: "0.5rem" }}>{n.doctor.name}</span></td>
+                                <td><span style={{ borderLeft: `3px solid ${n.doctor?.color || "#666"}`, paddingLeft: "0.5rem" }}>{n.doctor?.name ?? n.doctorNameSnapshot ?? "—"}</span></td>
                                 <td>{n.doctorCheckNote ? "✅" : "—"}</td>
                                 <td className="note-details">{n.details || "—"}</td>
                             </tr>

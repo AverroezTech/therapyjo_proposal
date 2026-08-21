@@ -18,7 +18,9 @@ interface Reservation {
     showNoteOnCalendar: boolean;
     isTwoHours: boolean;
     patient: { id: number; name: string; phone1: string; phone2: string | null };
-    doctor: { id: string; name: string; color: string | null };
+    doctor: { id: string; name: string; color: string | null } | null;
+    doctorNameSnapshot: string | null;
+    doctorColorSnapshot: string | null;
 }
 
 interface PatientResult {

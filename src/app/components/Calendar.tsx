@@ -10,7 +10,9 @@ interface Reservation {
     showNoteOnCalendar: boolean;
     isTwoHours: boolean;
     patient: { id: number; name: string; phone1: string; phone2: string | null };
-    doctor: { id: string; name: string; color: string | null };
+    doctor: { id: string; name: string; color: string | null } | null;
+    doctorNameSnapshot: string | null;
+    doctorColorSnapshot: string | null;
 }
 
 interface CalendarProps {
@@ -65,8 +67,8 @@ export default function Calendar({
                                 id={r.id}
                                 patientName={r.patient.name}
                                 patientPhone={r.patient.phone1}
-                                doctorName={r.doctor.name}
-                                doctorColor={r.doctor.color || "#666"}
+                                doctorName={r.doctor?.name ?? r.doctorNameSnapshot ?? "Deleted doctor"}
+                                doctorColor={r.doctor?.color ?? r.doctorColorSnapshot ?? "#666"}
                                 status={r.status}
                                 time={new Date(r.sessionTime).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}
                                 note={r.note}

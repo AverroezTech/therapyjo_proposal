@@ -156,7 +156,9 @@ export async function PUT(
 
 // DELETE /api/employees/doctors/[id]
 //   default        → soft delete (set status to RESIGNED)
-//   ?hard=true     → permanent removal, refused if the doctor is referenced
+//   ?hard=true     → permanent removal; reservations/notes survive with the
+//                    doctor's name snapshotted, refused only if a public
+//                    profile is still linked
 export async function DELETE(
     req: NextRequest,
     { params }: { params: Promise<{ id: string }> }
@@ -179,17 +181,22 @@ export async function DELETE(
         return NextResponse.json({ message: "Doctor marked as resigned" });
     }
 
-    // Hard delete. Reservations and notes are RESTRICT at the database level and
-    // are clinical records besides — they are never reassigned and never cascade
-    // away with the doctor. DoctorProfile.userId is SET NULL, which would leave a
-    // live public profile silently unlinked, so that is refused too rather than
-    // left to the default.
+    // Hard delete. Reservations and notes are clinical/scheduling records that
+    // belong to the patient and the clinic, not to the doctor's employment —
+    // deleting the doctor must not delete or reassign them. Reservation.doctorId
+    // and Note.doctorId are nullable with onDelete: SetNull, and their name (and,
+    // for reservations, calendar colour) is snapshotted onto every row just
+    // before the doctor goes, so they keep reading correctly on the calendar and
+    // notes list afterward. DoctorProfile.userId is still RESTRICT — a linked
+    // public profile blocks this until it is hard-deleted separately (TJ-025).
     const doctor = await prisma.user.findFirst({
         where: { id, role: "DOCTOR" },
         select: {
             name: true,
-            _count: { select: { reservations: true, notes: true } },
+            color: true,
+            pictureUrl: true,
             doctorProfile: { select: { id: true } },
+            files: { select: { filePath: true } },
         },
     });
 
@@ -197,27 +204,34 @@ export async function DELETE(
         return NextResponse.json({ error: "Doctor not found" }, { status: 404 });
     }
 
-    const blockers: string[] = [];
-    if (doctor._count.reservations > 0) {
-        blockers.push(`${doctor._count.reservations} reservation(s)`);
-    }
-    if (doctor._count.notes > 0) {
-        blockers.push(`${doctor._count.notes} note(s)`);
-    }
     if (doctor.doctorProfile) {
-        blockers.push("a linked public profile");
-    }
-
-    if (blockers.length > 0) {
         return NextResponse.json(
-            {
-                error: `Cannot delete ${doctor.name}: they have ${blockers.join(" and ")}. Resign them instead.`,
-            },
+            { error: `Cannot delete ${doctor.name}: they have a linked public profile. Delete that first.` },
             { status: 409 }
         );
     }
 
-    await prisma.user.delete({ where: { id } });
+    await prisma.$transaction([
+        prisma.reservation.updateMany({
+            where: { doctorId: id },
+            data: { doctorNameSnapshot: doctor.name, doctorColorSnapshot: doctor.color },
+        }),
+        prisma.note.updateMany({
+            where: { doctorId: id },
+            data: { doctorNameSnapshot: doctor.name },
+        }),
+        prisma.user.delete({ where: { id } }),
+    ]);
+
+    // Only after the row is safely gone. EmployeeFile rows have already
+    // cascaded away in the transaction above — their storage objects have not,
+    // which is exactly the leak this cleans up. removeUpload never throws.
+    if (doctor.pictureUrl) {
+        await removeUpload(doctor.pictureUrl);
+    }
+    for (const file of doctor.files) {
+        await removeUpload(file.filePath, "clinical-files");
+    }
 
     return NextResponse.json({ message: "Doctor deleted permanently" });
 }

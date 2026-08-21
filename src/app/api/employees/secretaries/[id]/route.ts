@@ -137,7 +137,8 @@ export async function PUT(
 
 // DELETE /api/employees/secretaries/[id]
 //   default        → soft delete (set status to RESIGNED)
-//   ?hard=true     → permanent removal, refused if the secretary is referenced
+//   ?hard=true     → permanent removal, refused only if a public profile is
+//                    still linked
 export async function DELETE(
     req: NextRequest,
     { params }: { params: Promise<{ id: string }> }
@@ -163,15 +164,18 @@ export async function DELETE(
     // Hard delete. The foreign keys that point at User are not role-aware, so a
     // secretary can in principle hold reservations or notes even though no UI
     // flow creates them that way — check rather than assume. Reservations and
-    // notes are RESTRICT and are clinical records besides; DoctorProfile.userId
-    // is SET NULL, which would leave a live public profile silently unlinked, so
-    // that is refused too. EmployeeFile cascades, which is intended.
+    // notes are now nullable/SET NULL (see the doctor route for why), so they
+    // are no longer blockers for anyone; DoctorProfile.userId is still RESTRICT
+    // and would leave a live public profile silently unlinked, so that is
+    // refused. EmployeeFile cascades in the DB — its storage objects do not,
+    // which is what the removeUpload calls below clean up.
     const secretary = await prisma.user.findFirst({
         where: { id, role: "SECRETARY" },
         select: {
             name: true,
-            _count: { select: { reservations: true, notes: true } },
+            pictureUrl: true,
             doctorProfile: { select: { id: true } },
+            files: { select: { filePath: true } },
         },
     });
 
@@ -179,27 +183,21 @@ export async function DELETE(
         return NextResponse.json({ error: "Secretary not found" }, { status: 404 });
     }
 
-    const blockers: string[] = [];
-    if (secretary._count.reservations > 0) {
-        blockers.push(`${secretary._count.reservations} reservation(s)`);
-    }
-    if (secretary._count.notes > 0) {
-        blockers.push(`${secretary._count.notes} note(s)`);
-    }
     if (secretary.doctorProfile) {
-        blockers.push("a linked public profile");
-    }
-
-    if (blockers.length > 0) {
         return NextResponse.json(
-            {
-                error: `Cannot delete ${secretary.name}: they have ${blockers.join(" and ")}. Resign them instead.`,
-            },
+            { error: `Cannot delete ${secretary.name}: they have a linked public profile. Delete that first.` },
             { status: 409 }
         );
     }
 
     await prisma.user.delete({ where: { id } });
+
+    if (secretary.pictureUrl) {
+        await removeUpload(secretary.pictureUrl);
+    }
+    for (const file of secretary.files) {
+        await removeUpload(file.filePath, "clinical-files");
+    }
 
     return NextResponse.json({ message: "Secretary deleted permanently" });
 }

@@ -52,7 +52,9 @@ interface Reservation {
     status: string;
     paymentType: string | null;
     injuryPlace: string | null;
-    doctor: { id: string; name: string; color: string | null };
+    doctor: { id: string; name: string; color: string | null } | null;
+    doctorNameSnapshot: string | null;
+    doctorColorSnapshot: string | null;
 }
 
 const INTAKE_FIELDS = [
@@ -350,8 +352,8 @@ export default function DoctorPatientProfilePage({ params }: { params: Promise<{
                                     <tr key={r.id}>
                                         <td>{formatDate(r.sessionDate)}</td>
                                         <td>
-                                            <span className="doctor-tag" style={{ borderColor: r.doctor.color || "#666" }}>
-                                                {r.doctor.name}
+                                            <span className="doctor-tag" style={{ borderColor: r.doctor?.color || "#666" }}>
+                                                {r.doctor?.name ?? r.doctorNameSnapshot ?? "—"}
                                             </span>
                                         </td>
                                         <td>

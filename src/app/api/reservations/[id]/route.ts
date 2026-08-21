@@ -68,6 +68,19 @@ export async function PUT(
     const { id } = await params;
     const body = await req.json();
 
+    // Doctors can update everything else about a session (injury place, note,
+    // payment) but not when it happens or who it belongs to — only admin and
+    // secretary reschedule or reassign.
+    if (
+        session.user.role === "DOCTOR" &&
+        (body.sessionDate !== undefined || body.sessionTime !== undefined || body.doctorId !== undefined)
+    ) {
+        return NextResponse.json(
+            { error: "Doctors cannot change a session's time or reassign it to another doctor" },
+            { status: 403 }
+        );
+    }
+
     const data: Record<string, unknown> = {};
     if (body.doctorId !== undefined) data.doctorId = body.doctorId;
     if (body.sessionDate !== undefined) data.sessionDate = new Date(body.sessionDate);
@@ -93,7 +106,7 @@ export async function PUT(
         patientId: reservation.patientId,
         userId: session.user.id,
         action: "SESSION_UPDATED",
-        summary: `Session with ${reservation.doctor.name} edited`,
+        summary: `Session with ${reservation.doctor?.name ?? reservation.doctorNameSnapshot ?? "a deleted doctor"} edited`,
     });
 
     return NextResponse.json(reservation);
@@ -219,7 +232,7 @@ export async function DELETE(
         patientId: deleted.patientId,
         userId: session.user.id,
         action: "SESSION_DELETED",
-        summary: `Session with ${deleted.doctor.name} on ${deleted.sessionDate.toISOString().split("T")[0]}`,
+        summary: `Session with ${deleted.doctor?.name ?? deleted.doctorNameSnapshot ?? "a deleted doctor"} on ${deleted.sessionDate.toISOString().split("T")[0]}`,
     });
 
     return NextResponse.json({ message: "Reservation deleted" });

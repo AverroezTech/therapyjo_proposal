@@ -139,7 +139,7 @@ export async function POST(req: NextRequest) {
         patientId: reservation.patientId,
         userId: session.user.id,
         action: "SESSION_CREATED",
-        summary: `Booked with ${reservation.doctor.name} on ${sessionDate}`,
+        summary: `Booked with ${reservation.doctor?.name ?? "a doctor"} on ${sessionDate}`,
     });
 
     return NextResponse.json(reservation, { status: 201 });

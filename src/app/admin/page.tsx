@@ -18,7 +18,9 @@ interface Reservation {
     showNoteOnCalendar: boolean;
     isTwoHours: boolean;
     patient: { id: number; name: string; phone1: string; phone2: string | null };
-    doctor: { id: string; name: string; color: string | null };
+    doctor: { id: string; name: string; color: string | null } | null;
+    doctorNameSnapshot: string | null;
+    doctorColorSnapshot: string | null;
 }
 
 interface PatientResult {
@@ -407,7 +409,7 @@ export default function AdminDashboard() {
                         <h2>{detail.patient.name}</h2>
                         <div className="detail-grid">
                             <div className="detail-item"><span className="detail-label">Phone</span><span>{detail.patient.phone1}</span></div>
-                            <div className="detail-item"><span className="detail-label">Doctor</span><span>{detail.doctor.name}</span></div>
+                            <div className="detail-item"><span className="detail-label">Doctor</span><span>{detail.doctor?.name ?? detail.doctorNameSnapshot ?? "—"}</span></div>
                             <div className="detail-item"><span className="detail-label">Status</span><span>{detail.status.replace("_", " ")}</span></div>
                             <div className="detail-item"><span className="detail-label">Payment</span><span>{detail.paymentType || "—"}</span></div>
                             {detail.note && <div className="detail-item full"><span className="detail-label">Note</span><span>{detail.note}</span></div>}

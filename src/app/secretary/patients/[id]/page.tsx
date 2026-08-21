@@ -34,7 +34,9 @@ interface Reservation {
     status: string;
     paymentType: string | null;
     injuryPlace: string | null;
-    doctor: { id: string; name: string; color: string | null };
+    doctor: { id: string; name: string; color: string | null } | null;
+    doctorNameSnapshot: string | null;
+    doctorColorSnapshot: string | null;
 }
 
 export default function SecretaryPatientProfile({ params }: { params: Promise<{ id: string }> }) {
@@ -212,7 +214,7 @@ export default function SecretaryPatientProfile({ params }: { params: Promise<{ 
                                 {patient.reservations.map((r) => (
                                     <tr key={r.id}>
                                         <td>{formatDate(r.sessionDate)}</td>
-                                        <td><span className="doctor-tag" style={{ borderColor: r.doctor.color || "#666" }}>{r.doctor.name}</span></td>
+                                        <td><span className="doctor-tag" style={{ borderColor: r.doctor?.color || "#666" }}>{r.doctor?.name ?? r.doctorNameSnapshot ?? "—"}</span></td>
                                         <td><span className="status-dot" style={{ background: statusColors[r.status] || "#666" }} />{r.status.replace("_", " ")}</td>
                                         <td>{r.paymentType || "—"}</td>
                                         <td>{r.injuryPlace || "—"}</td>

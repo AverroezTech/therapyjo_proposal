@@ -5,12 +5,6 @@ import { useRouter } from "next/navigation";
 import { use } from "react";
 import { useUnsavedChanges } from "@/lib/useUnsavedChanges";
 
-interface Doctor {
-    id: string;
-    name: string;
-    color: string | null;
-}
-
 interface ReservationDetail {
     id: number;
     sessionDate: string;
@@ -24,7 +18,8 @@ interface ReservationDetail {
     previousSessionNote: string | null;
     previousSessionDate: string | null;
     patient: { id: number; name: string; phone1: string; phone2: string | null; archived: boolean };
-    doctor: { id: string; name: string; color: string | null };
+    doctor: { id: string; name: string; color: string | null } | null;
+    doctorNameSnapshot: string | null;
     soapNote: { subjective: string | null; objective: string | null; assessment: string | null; plan: string | null } | null;
 }
 
@@ -35,7 +30,9 @@ interface PastSession {
     status: string;
     injuryPlace: string | null;
     paymentType: string | null;
-    doctor: { name: string; color: string | null };
+    doctor: { name: string; color: string | null } | null;
+    doctorNameSnapshot: string | null;
+    doctorColorSnapshot: string | null;
 }
 
 const INTAKE_FIELDS = [
@@ -57,15 +54,12 @@ export default function DoctorSessionPage({ params }: { params: Promise<{ id: st
     const { id } = use(params);
     const router = useRouter();
     const [reservation, setReservation] = useState<ReservationDetail | null>(null);
-    const [doctors, setDoctors] = useState<Doctor[]>([]);
     const [pastSessions, setPastSessions] = useState<PastSession[]>([]);
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
 
-    // Editable fields
-    const [editDate, setEditDate] = useState("");
-    const [editTime, setEditTime] = useState("");
-    const [editDoctor, setEditDoctor] = useState("");
+    // Editable fields — session date, time, and doctor are not editable by a
+    // doctor (only admin/secretary reschedule or reassign); Injury Place is.
     const [editInjury, setEditInjury] = useState("");
 
     // SOAP form
@@ -92,17 +86,12 @@ export default function DoctorSessionPage({ params }: { params: Promise<{ id: st
 
     const fetchData = useCallback(async () => {
         setLoading(true);
-        const [resData, soapData, docData] = await Promise.all([
+        const [resData, soapData] = await Promise.all([
             fetch(`/api/reservations/${id}`).then((r) => r.json()),
             fetch(`/api/reservations/${id}/soap`).then((r) => r.json()),
-            fetch("/api/employees/doctors").then((r) => r.json()),
         ]);
 
         setReservation(resData);
-        setDoctors(docData.filter((d: Doctor & { status: string }) => d.status === "ACTIVE"));
-        setEditDate(resData.sessionDate?.split("T")[0] || "");
-        setEditTime(resData.sessionTime ? new Date(resData.sessionTime).toLocaleTimeString("en-US", { hour12: false, hour: "2-digit", minute: "2-digit" }) : "09:00");
-        setEditDoctor(resData.doctor?.id || "");
         setEditInjury(resData.injuryPlace || "");
         setSoapForm({
             subjective: soapData?.subjective || "",
@@ -155,12 +144,7 @@ export default function DoctorSessionPage({ params }: { params: Promise<{ id: st
         await fetch(`/api/reservations/${id}`, {
             method: "PUT",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-                sessionDate: editDate,
-                sessionTime: editTime,
-                doctorId: editDoctor,
-                injuryPlace: editInjury,
-            }),
+            body: JSON.stringify({ injuryPlace: editInjury }),
         });
         setSaving(false);
         fetchData();
@@ -277,23 +261,22 @@ export default function DoctorSessionPage({ params }: { params: Promise<{ id: st
                     <div className="form-grid">
                         <div className="form-group">
                             <label>Session Date</label>
-                            <input type="date" value={editDate} onChange={(e) => setEditDate(e.target.value)} />
+                            <p className="readonly-value">{formatDate(reservation.sessionDate)}</p>
                         </div>
                         <div className="form-group">
                             <label>Session Time</label>
-                            <input type="time" value={editTime} onChange={(e) => setEditTime(e.target.value)} />
+                            <p className="readonly-value">{formatTime(reservation.sessionTime)}</p>
                         </div>
                         <div className="form-group">
                             <label>Doctor</label>
-                            <select value={editDoctor} onChange={(e) => setEditDoctor(e.target.value)}>
-                                {doctors.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
-                            </select>
+                            <p className="readonly-value">{reservation.doctor?.name ?? reservation.doctorNameSnapshot ?? "—"}</p>
                         </div>
                         <div className="form-group">
                             <label>Injury Place</label>
                             <input value={editInjury} onChange={(e) => setEditInjury(e.target.value)} placeholder="e.g. Lower back, Knee…" />
                         </div>
                     </div>
+                    <p className="field-hint">Date, time, and doctor are set by front-desk staff — contact them to reschedule or reassign this session.</p>
                     <div className="card-actions">
                         <button className="btn-save" onClick={handleSaveDetails} disabled={saving}>{saving ? "Saving…" : "Update Session"}</button>
                     </div>
@@ -372,7 +355,7 @@ export default function DoctorSessionPage({ params }: { params: Promise<{ id: st
                                         <tr key={s.id}>
                                             <td>{formatDate(s.sessionDate)}</td>
                                             <td>{formatTime(s.sessionTime)}</td>
-                                            <td><span style={{ borderLeft: `3px solid ${s.doctor.color || "#666"}`, paddingLeft: "0.5rem" }}>{s.doctor.name}</span></td>
+                                            <td><span style={{ borderLeft: `3px solid ${s.doctor?.color ?? s.doctorColorSnapshot ?? "#666"}`, paddingLeft: "0.5rem" }}>{s.doctor?.name ?? s.doctorNameSnapshot ?? "—"}</span></td>
                                             <td><span className="mini-status" style={{ color: statusColors[s.status] || "#fff" }}>{s.status.replace("_", " ")}</span></td>
                                             <td>{s.injuryPlace || "—"}</td>
                                             <td>{s.paymentType || "—"}</td>
@@ -416,6 +399,8 @@ export default function DoctorSessionPage({ params }: { params: Promise<{ id: st
                 .form-group input, .form-group textarea, .form-group select { background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.08); border-radius: var(--radius-sm, 2px); padding: 0.5rem 0.7rem; color: #fff; font-size: 0.85rem; outline: none; font-family: inherit; resize: vertical; }
                 .form-group select option { background: #1a2e35; }
                 .form-group input:focus, .form-group textarea:focus { border-color: var(--primary, #4CAF93); }
+                .readonly-value { margin: 0; padding: 0.5rem 0.7rem; color: rgba(255,255,255,0.7); font-size: 0.85rem; }
+                .field-hint { font-size: 0.76rem; color: rgba(255,255,255,0.35); margin: 0.75rem 0 0; }
                 .card-actions { display: flex; justify-content: flex-end; margin-top: 1.25rem; }
                 .btn-save { background: var(--primary, #4CAF93); color: #fff; border: none; border-radius: var(--radius-sm, 2px); padding: 0.5rem 1.2rem; font-size: 0.85rem; font-weight: 600; cursor: pointer; font-family: inherit; }
                 .btn-save:disabled { opacity: 0.5; cursor: not-allowed; }

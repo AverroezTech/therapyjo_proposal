@@ -212,7 +212,9 @@ model PatientAuditLog {
 model Reservation {
   id                  Int            @id @default(autoincrement())
   patientId           Int
-  doctorId            String
+  doctorId            String?
+  doctorNameSnapshot  String?        // set once, at doctor hard-delete time (TJ-025)
+  doctorColorSnapshot String?        // same
   sessionDate         DateTime       // date only
   sessionTime         DateTime       // time within the day
   status              SessionStatus  @default(SCHEDULED)
@@ -231,7 +233,7 @@ model Reservation {
 
   // Relations
   patient             Patient        @relation(fields: [patientId], references: [id])
-  doctor              User           @relation(fields: [doctorId], references: [id])
+  doctor              User?          @relation(fields: [doctorId], references: [id], onDelete: SetNull)
   soapNote            SOAPNote?
 
   @@index([patientId])
@@ -257,15 +259,16 @@ model SOAPNote {
 // ─── General Notes ────────────────────────────────────
 
 model Note {
-  id              Int          @id @default(autoincrement())
-  name            String
-  noteDate        DateTime
-  doctorId        String
-  doctorCheckNote Boolean      @default(false)
-  details         String?
-  createdAt       DateTime     @default(now())
+  id                 Int          @id @default(autoincrement())
+  name               String
+  noteDate           DateTime
+  doctorId           String?
+  doctorNameSnapshot String?      // set once, at doctor hard-delete time (TJ-025)
+  doctorCheckNote    Boolean      @default(false)
+  details            String?
+  createdAt          DateTime     @default(now())
 
-  doctor          User         @relation(fields: [doctorId], references: [id])
+  doctor             User?        @relation(fields: [doctorId], references: [id], onDelete: SetNull)
 
   @@index([doctorId])
 }

@@ -12,11 +12,12 @@ interface Note {
     id: number;
     name: string;
     noteDate: string;
-    doctorId: string;
+    doctorId: string | null;
     doctorCheckNote: boolean;
     details: string | null;
     createdAt: string;
-    doctor: { id: string; name: string; color: string | null };
+    doctor: { id: string; name: string; color: string | null } | null;
+    doctorNameSnapshot: string | null;
 }
 
 export default function NotesPage() {
@@ -158,8 +159,8 @@ export default function NotesPage() {
                                 <td>{formatDate(n.noteDate)}</td>
                                 <td className="note-name">{n.name}</td>
                                 <td>
-                                    <span className="doctor-tag" style={{ borderColor: n.doctor.color || "#666" }}>
-                                        {n.doctor.name}
+                                    <span className="doctor-tag" style={{ borderColor: n.doctor?.color || "#666" }}>
+                                        {n.doctor?.name ?? n.doctorNameSnapshot ?? "—"}
                                     </span>
                                 </td>
                                 <td>{n.doctorCheckNote ? "✅" : "—"}</td>
