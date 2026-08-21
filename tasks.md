@@ -5016,7 +5016,7 @@ Fixtures deleted; database back to baseline exactly (3 patients, 10 reservations
 
 ### TJ-022 — Warn before unsaved clinical text is discarded
 
-- **Status:** READY
+- **Status:** DONE — task commits `d67a522` and `043044f` on `feat/unsaved-changes-warning`, merged to `master` as `6467b39` with `--no-ff`. Sent back once at `REVIEW`; planner-verified, runtime-proven and visually reviewed after the correction, on 2026-08-21.
 - **Branch:** `feat/unsaved-changes-warning`
 - **Why:** Clinical text typed into a long form is silently thrown away by an ordinary click elsewhere on the page. The user's decision of 2026-08-21: **warn before anything is discarded; no autosave.**
 
@@ -5233,13 +5233,61 @@ with:
 - Driving `confirm()` from automation: override `window.confirm` to record its calls and return a chosen value. **Do not leave a real dialog open** — an unhandled one freezes the page and every later step.
 
 **Done when:**
-- [ ] Nothing prompts when nothing has been typed
-- [ ] The upload and remove paths on the patient page prompt when intake is dirty, and cancelling aborts the action
-- [ ] Save Details and every status change on the session page prompt when SOAP or intake is dirty
-- [ ] Both Back buttons prompt when dirty and go straight through when clean
-- [ ] Saving a form clears its guard
-- [ ] Tab switching never prompts
-- [ ] Nothing outside the three files in Scope changed
+- [x] Nothing prompts when nothing has been typed
+- [x] The upload and remove paths on the patient page prompt when intake is dirty, and cancelling aborts the action
+- [x] Save Details and every status change on the session page prompt when SOAP or intake is dirty
+- [x] Both Back buttons prompt when dirty and go straight through when clean
+- [x] Saving a form clears its guard
+- [x] Tab switching never prompts
+- [x] Nothing outside the three files in Scope changed
+
+**Sent back once — and the fault was the planner's, in this very task.** The executor implemented these Instructions literally, tested honestly, and reported two defects rather than quietly correcting them. Both were real, both were confirmed independently, and both were introduced above:
+
+1. **The baseline was specified as a `useRef` read during render.** eslint flagged it (`Cannot access refs during render`, 8 errors on `master` → 10 on the branch) and **the rule was right**: a ref write does not trigger a re-render, so `dirty` could be computed against a baseline that was already stale. It appeared to work only because `setSoapForm` happens to re-render for unrelated reasons.
+2. **The session page's own Save buttons never cleared the guard.** `handleSaveSoap` and `handleSaveIntake` do not call `fetchData()` — and `fetchData` is where these Instructions put the baseline refresh. So a doctor who typed a SOAP note, **saved it**, and clicked Back was blocked by a browser dialog over work that was already persisted. That is the "worse than no guard" failure this task's own Why warns about, reached from the opposite direction.
+
+**The correction, applied on the same branch as a second commit** so the reasoning stays legible: baselines moved from `useRef` to `useState` (fixing both the lint and the staleness in one change), and `handleSaveSoap` / `handleSaveIntake` refresh their own baseline — **only when `res.ok`**, so a failed save leaves the warning armed.
+
+**Verification — 2026-08-21, performed by the planner after the correction.**
+
+Three files, clean tree. Build and `tsc` clean. **eslint back to parity: 10 problems (8 errors, 2 warnings) on both `master` and the branch, with zero `Cannot access refs during render`.**
+
+Runtime, in a browser, with `window.confirm` spied on and returning **false** — a hostile default, so an unexpected prompt would visibly block the action.
+
+**The no-false-positive pass ran first, because it is the one that matters most:**
+
+| Nothing typed | Result |
+|---|---|
+| Session page: all four tab switches | `confirm()` never called |
+| Session page: status change | proceeded, never called |
+| Patient page: all three tab switches | never called |
+| Patient page: fresh load, Back | never called |
+| `beforeunload` while clean | **not** prevented |
+
+**Then the real cases:**
+
+| Dirty | Result |
+|---|---|
+| `beforeunload` | **prevented** |
+| Status change | prompts once, correct message; cancel → status unchanged, text intact |
+| Back (both pages) | prompts; cancel → stayed on the page, text intact |
+| File upload | prompts; cancel → **file count stayed 0**, so the abort happens before anything is stored |
+
+**The case that failed in round one, proven fixed rather than assumed:** typed into SOAP → clicked **Save SOAP Note** → clicked Back → **no prompt** — and the guard cleared because `GET /api/reservations/18/soap` really returned the text, not because a re-render happened to clear it. The same held for **Update Assessment** on both the session and patient pages, each corroborated against the server. Typing again **re-arms** the guard.
+
+**One pre-existing flaw found and deliberately not touched:** `setSoapSaved(true)` and `setIntakeSaved(true)` fire unconditionally, so those pages display "Saved!" even on a failed request. The guard does **not** follow that lie — it clears only on `res.ok` — so a failed save now leaves the warning armed while the page claims success. Filed as **TJ-024**.
+
+Fixtures deleted; database back to baseline exactly.
+
+---
+
+### TJ-024 — The session page claims "Saved!" on a failed request
+
+- **Status:** BACKLOG — no planning pass. Do not execute against this ID.
+- **Why:** Found during TJ-022 and pre-existing. In `src/app/doctor/session/[id]/page.tsx`, `handleSaveSoap` and `handleSaveIntake` both `await fetch(...)` and then set `setSoapSaved(true)` / `setIntakeSaved(true)` **without checking `res.ok`**. A rejected or failed request therefore shows the doctor a success confirmation while their clinical text was never persisted. TJ-022 read the same response and deliberately did *not* follow it — the unsaved-changes guard clears only on `res.ok` — so the two indicators now disagree on failure, which is the safe direction but an obviously confusing one.
+- **What its planning pass owes:** whether the fix is an error state on those two handlers alone, or whether the same unchecked-`await fetch` pattern exists elsewhere (`handleSaveDetails` and `handleStatusChange` on the same page do not check either, and neither does `saveInfo` / `saveIntake` on the admin patient page). Count them before deciding the shape — a one-file fix and an app-wide pattern are different tasks.
+
+
 
 ---
 
