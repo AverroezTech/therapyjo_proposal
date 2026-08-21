@@ -4308,7 +4308,7 @@ Two obstacles, both of which need the user:
 
 ### TJ-011a — Attach documents to a patient
 
-- **Status:** READY
+- **Status:** DONE — task commit `bc6e54f` on `feat/patient-documents`, merged to `master` as `ae40183` with `--no-ff`. Planner-verified from the diff, runtime-proven, and visually reviewed on 2026-08-21.
 - **Branch:** `feat/patient-documents`
 - **Why:** The `PatientFile` model exists, `GET /api/patients/[id]` already returns `files` ordered by `uploadedAt desc`, both patient profile pages already render a **Files** tab and grid, and `patient-files` is already allow-listed in `POST /api/upload`. What is missing is an endpoint that writes a `PatientFile` row after an upload — `grep -rn "patientFile\." src/` outside `src/generated/` returns **nothing**. The tab has shown "No files uploaded yet" since it shipped and structurally always would. This is TJ-016's problems 1 and 2 closed together, and it is the smallest task in the batch relative to its value.
 
@@ -4687,13 +4687,50 @@ with
 - **Visual:** the Files tab at 320px and at 1440px — the upload row wraps rather than overflowing, and the file cards do not spill out of the grid.
 
 **Done when:**
-- [ ] A document can be attached to a patient and appears in the tab
-- [ ] Its link opens the real file on both the admin and the secretary page
-- [ ] `fileType` records the stored type, not the picked one
-- [ ] Remove deletes the row and reaches `removeUpload`
-- [ ] A file id belonging to another patient 404s
-- [ ] The secretary tab is still read-only
-- [ ] Nothing outside the four files in Scope changed, and `Patient #{patient.id}` is untouched
+- [x] A document can be attached to a patient and appears in the tab
+- [x] Its link opens the real file on both the admin and the secretary page
+- [x] `fileType` records the stored type, not the picked one
+- [x] Remove deletes the row and reaches `removeUpload`
+- [x] A file id belonging to another patient 404s
+- [x] The secretary tab is still read-only
+- [x] Nothing outside the four files in Scope changed, and `Patient #{patient.id}` is untouched
+
+**Verification — 2026-08-21, performed by the planner, independently of the executor's report.**
+
+Diff read in full: exactly the four files in Scope. `Patient #{patient.id}` confirmed **absent from the diff**. Build clean with both new routes registered as `ƒ`; `tsc` clean; eslint **identical on branch and master** at 9 problems (7 errors, 2 warnings), so nothing new was introduced. The database was inspected before starting and the executor's cleanup held — patients 5/6/7 gone, **zero** `PatientFile` rows anywhere.
+
+**Runtime, 19 assertions, all passing.** The link was proven with a **real object**, not a synthetic path, because the link is the half that has never worked:
+
+| # | Check | Result |
+|---|---|---|
+| 1 | A real `.jpg` through `/api/upload` | returns `contentType: image/webp` |
+| 2 | The stored row's `fileType` | `image/webp`, **not** `image/jpeg` |
+| 3 | The rendered public URL | **200**, `content-type: image/webp` |
+| 4 | The raw `filePath` the old code used as `href` | a bare path — would have resolved relative to the page and 404'd |
+| 5 | `GET /api/patients/[id]` | hands the page its `files` |
+| 6 | `DELETE .../<otherPatientId>/files/<fileId>` | **404**, row survives |
+| 7 | Remove | row gone, **exactly one** `[uploads]` line naming that object |
+| 8 | Deleting the patient | `PatientFile` rows cascade away |
+| 9 | Unauthenticated `POST` | **302** to `/login`, as the task predicted |
+
+**Visual review, both pages.** The admin Files tab renders **absolute** Supabase URLs in the DOM, and there is **no button nested inside an anchor** — the click-target conflict the pass named. At 320px the upload row wraps to two lines (86px) and both cards sit at 57→248 inside a section card ending at 273, no overflow; at 1440px the row is single-line and the cards sit side by side. The secretary tab renders the same absolute URLs and has **no upload input and no Remove button** — read-only held.
+
+*A note on my own method:* the first secretary-page reading returned zero cards, and it was my test clicking the tab before React had hydrated, not a defect. Re-measured with a proper wait, the tab activates and both cards render. A premature assertion looks exactly like a broken feature.
+
+**Two things recorded rather than fixed.** The named regression reproduces exactly: `fetchPatient()` repopulates `intakeForm`, so uploading a file **discards unsaved Clinical Assessment edits**. And a **DOCTOR can attach a document to any patient** (201) — the `auth()`-only gate recorded on TJ-011's parent, confirmed live rather than inferred.
+
+**Storage residue for TJ-014d's purge list:** `patient-files/1787306057449-1636e20oacc.webp` — one real object uploaded to prove the link, now orphaned because `SUPABASE_SERVICE_ROLE_KEY` is unset and `removeUpload` correctly no-opped. Same acceptable trade TJ-014b's verification made, and recorded here so it cannot be forgotten.
+
+---
+
+### TJ-022 — Uploading a patient document discards unsaved intake edits
+
+- **Status:** BACKLOG — no planning pass. Do not execute against this ID.
+- **Why:** Confirmed twice at runtime during TJ-011a, by the executor and again by the planner. `src/app/admin/patients/[id]/page.tsx` shares one `fetchPatient()` across all three tabs, and it unconditionally repopulates `infoForm` and `intakeForm` from the server. Uploading or removing a document on the Files tab calls it, so **any unsaved text in the Clinical Assessment tab is silently lost** — the tabs are separate views but not separate state, and nothing warns.
+- **Not introduced by TJ-011a**; that task simply added the second caller that makes it reachable. `saveInfo` and `saveIntake` already called `fetchPatient()`, but only *after* persisting, so the refresh was harmless.
+- **What its planning pass owes:** whether the fix is to refresh only the `files` slice after a document operation, to guard the intake repopulation behind a dirty check, or to warn before discarding. The first is smallest but splits the page's single source of truth; the pass should say which and why. Clinical text typed and lost without warning is the kind of defect a physiotherapist notices once and stops trusting the form over.
+
+---
 
 ---
 
@@ -5578,7 +5615,9 @@ import { removeUpload } from "@/lib/uploads";
   1. **The runtime proof TJ-014a never got.** Delete an employee file with the key set: the response must return `objectRemoved: true` and the object's public URL must flip from **HTTP 200 to 404**. Until that is observed, the app has never actually removed a storage object and nobody should claim it can.
   2. **The existing orphans** — inventoried above at 7, **now 9 objects of which 8 are orphaned.** Two were added by TJ-014b's runtime verification on 2026-08-16: `doctor-profiles/1786827542816-fd5ty9u6sqb.webp` (orphaned — its removal was correctly attempted and no-opped for want of the key) and `doctor-profiles/1786827700210-awg4o66008.webp` (still referenced by the archived fixture row `cmsuuzgns0000p49p1v4kfrbd`). **Delete that row and both objects as part of this purge.** Like `employee-files/1786824800278-qatraogyrqh.pdf` from the TJ-009f1 review, these are leaks created by proving the leak — acceptable only because this purge task exists to collect them.
 
-  **Four more added by TJ-009f2's visual review on 2026-08-17, all orphaned, all under `employee-files/`:** `1786991529255-ygxdcih8dmf.pdf` and `1786991565099-6fy0b5a0nz9.webp` (doctors modal), one `.pdf` from the secretaries modal, and `1786991888319-xlxjb82np2.pdf` from the post-fix re-check. Every one had its row deleted through the UI and its object left behind, which is exactly the degradation working as designed. **Running count is therefore 13 objects, 12 orphaned** — but do not act on that number: the pre-flight gate below requires re-deriving the list at deletion time, and it exists precisely because counts written here go stale.
+  **Four more added by TJ-009f2's visual review on 2026-08-17, all orphaned, all under `employee-files/`:** `1786991529255-ygxdcih8dmf.pdf` and `1786991565099-6fy0b5a0nz9.webp` (doctors modal), one `.pdf` from the secretaries modal, and `1786991888319-xlxjb82np2.pdf` from the post-fix re-check. Every one had its row deleted through the UI and its object left behind, which is exactly the degradation working as designed.
+
+  **One more added by TJ-011a's verification on 2026-08-21:** `patient-files/1787306057449-1636e20oacc.webp`. A real image was uploaded rather than a synthetic path because the *only* way to prove TJ-016's broken link was genuinely fixed is to fetch the URL the page now renders and see a 200 come back. Its patient row was hard-deleted afterwards, the `PatientFile` row cascaded, and `removeUpload` was reached and correctly no-opped for want of the key — so the object is orphaned by the very mechanism this task exists to close. **Running count is therefore 14 objects, 13 orphaned** — but do not act on that number: the pre-flight gate below requires re-deriving the list at deletion time, and it exists precisely because counts written here go stale.
 
 **The pre-flight gate is mandatory and it is not a formality.** The delete list in the inventory above was written on 2026-08-15 and **must be re-derived at the moment of deletion** — re-list the bucket, re-read all six referencing columns, diff again, and delete only what is still unreferenced *then*. TJ-006 and the 2026-08-15 cleanup both used this gate. By the time the key arrives, TJ-014b will have shipped and may itself have removed some of these objects; the list will be stale by construction.
 
