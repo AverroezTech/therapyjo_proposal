@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback, use } from "react";
 import { useRouter } from "next/navigation";
 import { publicUploadUrl } from "@/lib/storageUrl";
+import { useUnsavedChanges } from "@/lib/useUnsavedChanges";
 
 interface PatientData {
     id: number;
@@ -83,6 +84,12 @@ export default function PatientProfilePage({ params }: { params: Promise<{ id: s
     const [removingId, setRemovingId] = useState<number | null>(null);
     const [fileError, setFileError] = useState("");
 
+    // The intake form as the server last gave it to us. Anything typed since
+    // makes the form dirty, and dirty is what the guard below acts on.
+    const [intakeBaseline, setIntakeBaseline] = useState<string>("");
+    const intakeDirty = JSON.stringify(intakeForm) !== intakeBaseline;
+    const { confirmDiscard } = useUnsavedChanges(intakeDirty);
+
     const fetchPatient = useCallback(async () => {
         const res = await fetch(`/api/patients/${id}`);
         if (!res.ok) { router.push("/admin/patients"); return; }
@@ -101,6 +108,7 @@ export default function PatientProfilePage({ params }: { params: Promise<{ id: s
             }
         }
         setIntakeForm(intake);
+        setIntakeBaseline(JSON.stringify(intake));
         setLoading(false);
     }, [id, router]);
 
@@ -146,6 +154,10 @@ export default function PatientProfilePage({ params }: { params: Promise<{ id: s
     const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
         if (!file) return;
+        if (!confirmDiscard("Uploading will reload this patient and discard your unsaved Clinical Assessment edits. Continue?")) {
+            e.target.value = "";
+            return;
+        }
         e.target.value = "";   // let the same file be picked again after a failure
         setFileError("");
         setUploadingName(file.name);
@@ -184,6 +196,7 @@ export default function PatientProfilePage({ params }: { params: Promise<{ id: s
     };
 
     const handleRemoveFile = async (fileId: number) => {
+        if (!confirmDiscard("Removing this file will reload this patient and discard your unsaved Clinical Assessment edits. Continue?")) return;
         setFileError("");
         setRemovingId(fileId);
         // res.ok is the only success signal. The response also carries
@@ -221,7 +234,14 @@ export default function PatientProfilePage({ params }: { params: Promise<{ id: s
         <div>
             {/* Header */}
             <div className="profile-header">
-                <button className="btn-back" onClick={() => router.push("/admin/patients")}>← Back</button>
+                <button
+                    className="btn-back"
+                    onClick={() => {
+                        if (confirmDiscard("You have unsaved Clinical Assessment edits. Leave without saving?")) {
+                            router.push("/admin/patients");
+                        }
+                    }}
+                >← Back</button>
                 <div className="header-main">
                     <div className="header-info">
                         <h1>{patient.name}</h1>

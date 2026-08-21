@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { use } from "react";
+import { useUnsavedChanges } from "@/lib/useUnsavedChanges";
 
 interface Doctor {
     id: string;
@@ -80,6 +81,15 @@ export default function DoctorSessionPage({ params }: { params: Promise<{ id: st
     // Tabs
     const [activeTab, setActiveTab] = useState<"details" | "history" | "soap" | "intake">("details");
 
+    // Both clinical forms are guarded together: fetchData() repopulates both,
+    // so either being dirty is enough to lose work.
+    const [soapBaseline, setSoapBaseline] = useState<string>("");
+    const [intakeBaseline, setIntakeBaseline] = useState<string>(JSON.stringify({}));
+    const clinicalDirty =
+        JSON.stringify(soapForm) !== soapBaseline ||
+        JSON.stringify(intakeForm) !== intakeBaseline;
+    const { confirmDiscard } = useUnsavedChanges(clinicalDirty);
+
     const fetchData = useCallback(async () => {
         setLoading(true);
         const [resData, soapData, docData] = await Promise.all([
@@ -100,6 +110,12 @@ export default function DoctorSessionPage({ params }: { params: Promise<{ id: st
             assessment: soapData?.assessment || "",
             plan: soapData?.plan || "",
         });
+        setSoapBaseline(JSON.stringify({
+            subjective: soapData?.subjective || "",
+            objective: soapData?.objective || "",
+            assessment: soapData?.assessment || "",
+            plan: soapData?.plan || "",
+        }));
 
         // Fetch all past sessions + intake for this patient
         if (resData.patient?.id) {
@@ -126,6 +142,7 @@ export default function DoctorSessionPage({ params }: { params: Promise<{ id: st
                 }
             }
             setIntakeForm(intake);
+            setIntakeBaseline(JSON.stringify(intake));
         }
         setLoading(false);
     }, [id]);
@@ -133,6 +150,7 @@ export default function DoctorSessionPage({ params }: { params: Promise<{ id: st
     useEffect(() => { fetchData(); }, [fetchData]);
 
     const handleSaveDetails = async () => {
+        if (!confirmDiscard("Saving the session details will reload this page and discard your unsaved SOAP or Clinical Intake text. Continue?")) return;
         setSaving(true);
         await fetch(`/api/reservations/${id}`, {
             method: "PUT",
@@ -150,11 +168,14 @@ export default function DoctorSessionPage({ params }: { params: Promise<{ id: st
 
     const handleSaveSoap = async () => {
         setSavingSoap(true);
-        await fetch(`/api/reservations/${id}/soap`, {
+        const res = await fetch(`/api/reservations/${id}/soap`, {
             method: "PUT",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify(soapForm),
         });
+        // Only a save that actually landed may clear the guard. If the request
+        // failed, the text really is unsaved and the warning must still fire.
+        if (res.ok) setSoapBaseline(JSON.stringify(soapForm));
         setSavingSoap(false);
         setSoapSaved(true);
         setTimeout(() => setSoapSaved(false), 2000);
@@ -163,17 +184,19 @@ export default function DoctorSessionPage({ params }: { params: Promise<{ id: st
     const handleSaveIntake = async () => {
         if (!reservation) return;
         setSavingIntake(true);
-        await fetch(`/api/patients/${reservation.patient.id}/intake`, {
+        const res = await fetch(`/api/patients/${reservation.patient.id}/intake`, {
             method: "PUT",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify(intakeForm),
         });
+        if (res.ok) setIntakeBaseline(JSON.stringify(intakeForm));
         setSavingIntake(false);
         setIntakeSaved(true);
         setTimeout(() => setIntakeSaved(false), 2000);
     };
 
     const handleStatusChange = async (status: string) => {
+        if (!confirmDiscard("Changing the session status will reload this page and discard your unsaved SOAP or Clinical Intake text. Continue?")) return;
         await fetch(`/api/reservations/${id}`, {
             method: "PATCH",
             headers: { "Content-Type": "application/json" },
@@ -195,7 +218,14 @@ export default function DoctorSessionPage({ params }: { params: Promise<{ id: st
     return (
         <div>
             {/* Back + Header */}
-            <button className="back-btn" onClick={() => router.push("/doctor")}>← Back to Schedule</button>
+            <button
+                className="back-btn"
+                onClick={() => {
+                    if (confirmDiscard("You have unsaved SOAP or Clinical Intake text. Leave without saving?")) {
+                        router.push("/doctor");
+                    }
+                }}
+            >← Back to Schedule</button>
 
             <div className="header">
                 <div className="header-left">
