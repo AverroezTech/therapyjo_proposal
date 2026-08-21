@@ -21,9 +21,16 @@ export function storagePathFrom(value: string | null | undefined): string | null
  * Best-effort removal of a stored object. Never throws: a failure here must
  * not turn a successful row deletion into a 500, and a host without the
  * service-role key configured must keep working.
+ *
+ * `bucket` defaults to the public "uploads" bucket (pictureUrl/photo/
+ * coverImage assets). Patient and employee documents live in the private
+ * "clinical-files" bucket instead — pass it explicitly for those. (TJ-024)
  */
-export async function removeUpload(value: string | null | undefined): Promise<boolean> {
-    const path = storagePathFrom(value);
+export async function removeUpload(
+    value: string | null | undefined,
+    bucket: string = BUCKET
+): Promise<boolean> {
+    const path = bucket === BUCKET ? storagePathFrom(value) : value || null;
     if (!path) return false;
 
     if (!supabaseAdmin) {
@@ -31,7 +38,7 @@ export async function removeUpload(value: string | null | undefined): Promise<bo
         return false;
     }
 
-    const { error } = await supabaseAdmin.storage.from(BUCKET).remove([path]);
+    const { error } = await supabaseAdmin.storage.from(bucket).remove([path]);
     if (error) {
         console.error(`[uploads] failed to remove ${path}: ${error.message}`);
         return false;

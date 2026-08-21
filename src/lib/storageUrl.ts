@@ -12,3 +12,13 @@ export function publicUploadUrl(path: string): string {
     const base = (process.env.NEXT_PUBLIC_SUPABASE_URL ?? "").replace(/\/+$/, "");
     return `${base}/storage/v1/object/public/uploads/${path}`;
 }
+
+/**
+ * URL for a patient or employee document — objects that hold PHI/personal
+ * data and live in the private "clinical-files" bucket, never the public
+ * one. Routes through the session-checked API proxy rather than building a
+ * Supabase URL directly, since the bucket has no public access at all. (TJ-024)
+ */
+export function clinicalFileUrl(path: string): string {
+    return `/api/storage/clinical/${path}`;
+}

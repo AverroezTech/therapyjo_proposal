@@ -1,7 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
-import { supabase } from "@/lib/supabase";
+import { supabase, supabaseAdmin } from "@/lib/supabase";
 import sharp from "sharp";
+
+// Patient documents and employee ID documents hold real PHI/personal data and
+// go to the private "clinical-files" bucket via the service-role client.
+// Everything else (avatars, blog covers, doctor profile photos) is meant to
+// be publicly viewable and keeps using the public "uploads" bucket. (TJ-024)
+const CLINICAL_FOLDERS = ["patient-files", "employee-files"];
 
 // POST /api/upload — upload an image, convert to WebP, store in Supabase Storage
 export async function POST(req: NextRequest) {
@@ -43,6 +49,32 @@ export async function POST(req: NextRequest) {
         const ext = file.name.split(".").pop() || "bin";
         fileName = `${folder}/${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;
         contentType = file.type || "application/octet-stream";
+    }
+
+    const isClinical = CLINICAL_FOLDERS.includes(folder);
+
+    if (isClinical) {
+        if (!supabaseAdmin) {
+            return NextResponse.json(
+                { error: "Storage not configured for clinical documents (SUPABASE_SERVICE_ROLE_KEY unset)" },
+                { status: 503 }
+            );
+        }
+        const { error } = await supabaseAdmin.storage
+            .from("clinical-files")
+            .upload(fileName, uploadBuffer, { contentType, upsert: false });
+
+        if (error) {
+            console.error("Supabase upload error:", error);
+            return NextResponse.json(
+                { error: "Upload failed: " + error.message },
+                { status: 500 }
+            );
+        }
+
+        // No public URL for a private bucket — the caller reaches the file
+        // through the session-checked /api/storage/clinical/[...path] route.
+        return NextResponse.json({ path: fileName, contentType });
     }
 
     const { error } = await supabase.storage

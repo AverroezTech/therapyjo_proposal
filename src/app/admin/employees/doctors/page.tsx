@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { parseWorkingHours, formatWorkingHours, isLegacyWorkingHours } from "@/lib/workingHours";
-import { publicUploadUrl } from "@/lib/storageUrl";
+import { clinicalFileUrl } from "@/lib/storageUrl";
 
 interface Doctor {
     id: string;
@@ -564,7 +564,7 @@ export default function DoctorsPage() {
                                                 <span className="doc-icon">{d.fileType.includes("image") ? "🖼" : "📄"}</span>
                                                 <a
                                                     className="doc-name"
-                                                    href={publicUploadUrl(d.filePath)}
+                                                    href={clinicalFileUrl(d.filePath)}
                                                     target="_blank"
                                                     rel="noreferrer"
                                                 >

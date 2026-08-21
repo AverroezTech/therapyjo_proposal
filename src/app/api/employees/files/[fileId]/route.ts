@@ -28,7 +28,7 @@ export async function DELETE(
     // want an orphaned object, not a row pointing at a file that is gone. The
     // helper never throws, so a storage problem cannot fail this request.
     await prisma.employeeFile.delete({ where: { id } });
-    const objectRemoved = await removeUpload(file.filePath);
+    const objectRemoved = await removeUpload(file.filePath, "clinical-files");
 
     return NextResponse.json({ message: "File removed", objectRemoved });
 }
