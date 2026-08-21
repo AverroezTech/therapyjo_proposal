@@ -1047,7 +1047,7 @@ The middle row required a fresh sign-in after the flag was set — confirms the 
 
 ### TJ-005b2a — Grant and revoke the flag from the employee edit screens
 
-- **Status:** READY
+- **Status:** DONE — task commit `e32d546` on `feat/content-grant-toggle`, merged to `master` as `5d44d91` with `--no-ff`. Planner-verified from the diff, runtime-proven, and visually reviewed on 2026-08-21.
 - **Branch:** `feat/content-grant-toggle`
 - **Why:** `User.canManageContent` shipped with TJ-005b1 and is enforced at `authorized()` and at every content API, but **no screen writes it** — the only way to grant it today is by hand in the database. This task gives ADMIN a checkbox on the two employee edit modals and carries the field through the two PUT routes, so the capability TJ-005b1 made real becomes reachable.
 
@@ -1221,11 +1221,36 @@ The existing `.form-group input` rule gives every input a filled background, a b
 - Report the modal's appearance at 320px and at 1440px: the checkbox row must not overflow the modal card. (The pre-existing `.form-grid` overflow above it is TJ-020 and is **not** yours to fix — report it, do not touch it.)
 
 **Done when:**
-- [ ] Both list routes return `canManageContent` to ADMIN only, and no non-admin surface receives it
-- [ ] Both PUT routes accept and coerce it, and ignore it when absent
-- [ ] The checkbox reflects the stored value on reopen and survives an unrelated save
-- [ ] A non-ADMIN PUT is refused 401
-- [ ] Nothing outside the six files in Scope changed
+- [x] Both list routes return `canManageContent` to ADMIN only, and no non-admin surface receives it
+- [x] Both PUT routes accept and coerce it, and ignore it when absent
+- [x] The checkbox reflects the stored value on reopen and survives an unrelated save
+- [x] A non-ADMIN PUT is refused 401
+- [x] Nothing outside the six files in Scope changed
+
+**Verification — 2026-08-21, performed by the planner, independently of the executor's report.**
+
+The diff was read in full: exactly the six files in Scope, symmetric across the doctor and secretary halves, no stray files, working tree clean. `npm run build` passed and `npx tsc --noEmit` was silent, both re-run rather than taken on trust.
+
+**Runtime, against the live database, through real NextAuth credential logins.** The dev server was killed and restarted first — `npm run build` had just written `.next` underneath the running one, which is exactly what corrupted the executor's server mid-run — and the code under test was confirmed live before anything was concluded (`grant-row` present in the served document; a dev server on the wrong branch looks identical). Two throwaway accounts, deleted afterwards, count re-checked at zero. **12 assertions, all passing:**
+
+| # | Check | Result |
+|---|---|---|
+| 1 | List route returns the column to ADMIN | present |
+| 2 | List route hides it from a SECRETARY | absent — key list confirmed |
+| 3 | Grant round-trips: PUT → column `true` → list says `true` | 200, `true`, `true` |
+| 4 | **Phone-only save leaves an existing grant intact** | still `true` |
+| 5 | Body carrying the **string** `"false"` | lands `false` |
+| 6 | Body carrying the **string** `"true"` | lands `false` |
+| 7 | SECRETARY PUT `{canManageContent:true}` | **401**, column unchanged |
+| 8 | Revocation | `false` |
+
+**Checks 5 and 6 were added by the planner and the executor never ran them.** They are the ones that prove `=== true` rather than a truthy test — a JSON body can carry a string, and `"false"` is truthy.
+
+**Visual review — both modals, real browser.** The checkbox renders **16×16** with `accent-color` applied, rather than inheriting the `background`/`border`/`8px radius`/`0.65rem` padding that `.form-group input` gives every other field — that inheritance was the specific risk the pass named, and it did not happen. On the doctor modal the DOM child order is `form-grid` → Calendar Colour → **grant-section** → Documents → actions, as specified. Opened against a secretary flagged **directly in the database**, the box came up **ticked** — the end-to-end proof of the list-route half.
+
+**At 320px:** `resize_window` floors at the OS minimum and left `innerWidth` at 1920, so that reading was discarded rather than reported. Re-measured in a same-origin iframe pinned to 320px (`innerWidth` 316, slightly stricter than the target): the grant section spans 33→253 inside a card ending at 301, no overflow of its own. **The pre-existing `.form-grid` overflow is severe and now has a number: `.hours-row` runs to 550, spilling 249px past the card edge.** That is TJ-020, in code this diff never touches, and it is visible at 1920 too.
+
+**A Verification line in this task was wrong when the planner wrote it.** "`npx eslint …` is clean" was never true: `master` carries the same two `react-hooks/set-state-in-effect` errors, in the same untouched `useEffect(() => { fetchX(); }, [fetchX])` statements, at lines 78 and 87 before this diff and 81 and 90 after it. Confirmed by checking out `master` and running eslint there — identical counts, identical rules. The planner wrote the check without ever running the command on those paths. The executor was right to report it as a failure rather than quietly pass it, and right not to "fix" untouched code to make a bad check go green.
 
 ---
 
@@ -4274,24 +4299,692 @@ Two obstacles, both of which need the user:
 
 ### TJ-011 — Patients — reported issues
 
-- **Status:** BACKLOG — no planning pass. Do not execute against this ID.
+- **Status:** SPLIT — the planning pass of 2026-08-21 ran and split it into three. **TJ-011a** (documents) is `READY`; **TJ-011b** (the patient number) and **TJ-011c** (hard delete) are `BLOCKED` on decisions only the user can make. Do not execute against this parent ID.
+- **The three items were verified in an earlier pass against the live database and that work stands.** What the 2026-08-21 pass added was the split, the gate decision below, and the instructions for §1.
 
-**Verified against `src/app/admin/patients/page.tsx`, `.../patients/[id]/page.tsx`, `src/app/api/patients/[id]/route.ts` and the live database:**
+**One finding that spans all three children, recorded here because it belongs to none of them.** Every handler in `src/app/api/patients/route.ts` and `src/app/api/patients/[id]/route.ts` gates on `auth()` alone — **any signed-in staff member**, doctor or secretary or admin, can read a patient, edit their details, rewrite their clinical intake and archive them. There is no role check anywhere on the patient surface. That may well be intended for a small clinic where everyone is trusted, but it was never a decision anyone recorded, and it is the reason TJ-011a's new endpoints use the same gate rather than inventing a stricter one. **Worth putting to the user separately.** It is not a blocker for any of the three children and must not be changed inside one of them.
 
-1. **Upload documents.** **Real, and mostly built already.** The `PatientFile` model exists with every column needed, `GET /api/patients/[id]` already returns `files` ordered by date, the profile page already renders a **Files** tab with a working grid and icons — and `patient-files` is already allow-listed in `POST /api/upload`. The *only* missing piece is an endpoint that writes a `PatientFile` row after the upload, plus a button. There is no `POST /api/patients/[id]/files`. Smallest task in the batch relative to its value.
-2. **"I added the first patient after the cleanup and it still said Patient #2, meaning the cleanup didn't clean up properly."** — **Misdiagnosed. The cleanup was fine.** Read from the live database: exactly one `Patient` row, `id = 2`, and `Patient_id_seq` at `last_value = 2, is_called = true`. PostgreSQL never rolls a sequence back on `DELETE` — that is by design, so concurrent inserts can't collide. The rows really were deleted. What the user is seeing is `src/app/admin/patients/[id]/page.tsx:172` printing the raw primary key as `Patient #{patient.id}` (and `secretary/patients/[id]/page.tsx:106` doing the same). **Needs a decision:** reset the sequence once and keep showing the PK — simple, but the gap reappears after the next deletion, and it is *guaranteed* to reappear once TJ-011 §3 ships a hard delete — or stop showing the PK as a patient number. Recommend the latter; the first is a treatment, not a fix.
-3. **Hard delete.** **Real.** Only `PATCH { archived }` exists. `ClinicalIntake` and `PatientFile` cascade cleanly, but `Reservation_patientId_fkey` is **RESTRICT**, so any patient who has ever been booked cannot be deleted until the reservations are dealt with. Needs the same product decision as the doctor case.
+---
 
-**Also found, unreported:** `admin/patients/page.tsx:170-201` contains a fully built *Add Patient* modal that can never open — `showAdd` is initialised `false` and the header button navigates to `/admin/patients/new` instead. ~130 lines of dead code including its own upload handling. The identical pattern exists in both employee list pages (`openAdd` defined, never called). Worth deleting, and worth deleting *before* anyone copies from it by mistake.
+### TJ-011a — Attach documents to a patient
+
+- **Status:** READY
+- **Branch:** `feat/patient-documents`
+- **Why:** The `PatientFile` model exists, `GET /api/patients/[id]` already returns `files` ordered by `uploadedAt desc`, both patient profile pages already render a **Files** tab and grid, and `patient-files` is already allow-listed in `POST /api/upload`. What is missing is an endpoint that writes a `PatientFile` row after an upload — `grep -rn "patientFile\." src/` outside `src/generated/` returns **nothing**. The tab has shown "No files uploaded yet" since it shipped and structurally always would. This is TJ-016's problems 1 and 2 closed together, and it is the smallest task in the batch relative to its value.
+
+**Planning pass:** 2026-08-21 — read `src/app/api/patients/[id]/route.ts`, `src/app/api/patients/route.ts`, `src/app/api/employees/files/route.ts`, `src/app/api/employees/files/[fileId]/route.ts`, `src/app/api/upload/route.ts`, `src/app/admin/patients/[id]/page.tsx`, `src/app/secretary/patients/[id]/page.tsx`, `src/app/admin/employees/secretaries/page.tsx` (the shipped documents UI this mirrors), `src/lib/storageUrl.ts`, `src/lib/uploads.ts`, and the `Patient` / `PatientFile` models in `prisma/schema.prisma`.
+
+**TJ-016 asked that the user first decide whether patients get documents at all, or whether the tab, model and relation should be deleted. Proceeding to build, without asking, and here is the reasoning.** The two options are not symmetrical: building is additive and reversible, while the alternative drops a table. Everything needed already exists and was built deliberately — the model, the relation, the `include`, the tab, the grid, the upload folder allow-list — so "delete it" would be discarding five pieces of finished work on the strength of one missing endpoint. If the user does want the tab gone, that is a clean revert of this task plus the original scaffolding, and nothing here makes it harder.
+
+**Confirmed, none of it assumed:**
+- **No new GET endpoint is needed, unlike the employee case.** The employee modal fetches its list separately from `/api/employees/files?userId=`, because it lives in a modal with no page-level payload. The patient page already has `fetchPatient()`, whose response includes `files` — so an upload just re-runs it. Do not add `GET /api/patients/[id]/files`; it would be a second source of truth for data the page already holds.
+- **`patient-files` is already in `ALLOWED_FOLDERS`** at `src/app/api/upload/route.ts:16`, alongside `employee-files`. No change to the upload route.
+- **`POST /api/upload` re-encodes images to WebP** (`route.ts:38`), so `file.type` from the picked file is a lie for images. `fileType` must come from the response's `contentType`, exactly as the employee handler does. `fileSize` is the size as picked — exact for documents, approximate for a re-encoded image. This is the same known imprecision the employee UI carries; do not try to improve on it here.
+- **`PatientFile.patientId` is `onDelete: Cascade`**, so rows vanish with the patient. That is intended and is TJ-011c's problem, not this one — a cascade that leaves the storage objects behind is the leak TJ-014e already records for employees.
+- **The gate is `auth()` only**, matching every other `/api/patients/*` handler. See the note on the parent task: the patient surface has no role checks anywhere, and introducing one here alone would be inconsistent without being meaningfully safer.
+
+**TJ-016's problem 2 is real and is fixed here, because the feature does not work without it.** Both profile pages render `href={f.filePath}`, and `filePath` holds a storage path (`patient-files/1723…-ab12.webp`), not a URL. It would resolve relative to the current page and 404. It has been invisible only because no file has ever existed. `publicUploadUrl()` in `src/lib/storageUrl.ts` — added by TJ-009f2 for exactly this — is the fix, and it must be applied to the **secretary** page too: that page's tab is read-only, but its links break the moment this task makes files real.
+
+**TJ-016's problem 3 needs no work.** `Files ({patient.files.length})` stops being a lie by omission the moment the count can be non-zero.
+
+**The regression risk.** `fetchPatient()` on line 82 also repopulates `infoForm` and the whole `intakeForm`. Calling it after an upload therefore **resets any unsaved clinical-assessment edits** in the Intake tab. The Files tab is a different tab, but the state is shared and survives tab switches. The verification below exercises this directly, and it is why the instructions refresh through `fetchPatient()` — the alternative, splicing the new row into local state, would drift from the server's ordering.
+
+**Scope — touch only these:**
+- `src/app/api/patients/[id]/files/route.ts` *(new file — the `files` directory does not exist yet)*
+- `src/app/api/patients/[id]/files/[fileId]/route.ts` *(new file)*
+- `src/app/admin/patients/[id]/page.tsx`
+- `src/app/secretary/patients/[id]/page.tsx` *(the broken link only — nothing else)*
+
+**Do not touch:** `src/app/api/upload/route.ts` (the folder is already allow-listed), `src/app/api/patients/[id]/route.ts` (its `GET` already returns what the page needs), `prisma/schema.prisma` (no schema change — `PatientFile` is complete), `src/lib/uploads.ts`, `src/lib/storageUrl.ts`, and `src/app/admin/patients/page.tsx`. In particular, **leave `Patient #{patient.id}` on line 172 of the admin page exactly as it is** — it is wrong, it is TJ-011b, and it is blocked on a decision.
+
+**Instructions:**
+
+*1. Create `src/app/api/patients/[id]/files/route.ts`.*
+
+```ts
+import { NextRequest, NextResponse } from "next/server";
+import { prisma } from "@/lib/prisma";
+import { auth } from "@/lib/auth";
+
+// POST /api/patients/[id]/files — attach a document to a patient.
+// The file itself is uploaded separately via POST /api/upload (folder:
+// "patient-files"); this endpoint only records the metadata against the
+// returned path. There is no GET counterpart on purpose: the patient page
+// already receives `files` from GET /api/patients/[id].
+export async function POST(
+    req: NextRequest,
+    { params }: { params: Promise<{ id: string }> }
+) {
+    const session = await auth();
+    if (!session) {
+        return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    const { id } = await params;
+    const patientId = parseInt(id, 10);
+    if (isNaN(patientId)) {
+        return NextResponse.json({ error: "Invalid patient ID" }, { status: 400 });
+    }
+
+    const body = await req.json();
+    const { fileName, filePath, fileType, fileSize } = body;
+
+    if (!fileName || !filePath || !fileType || !fileSize) {
+        return NextResponse.json(
+            { error: "fileName, filePath, fileType and fileSize are required" },
+            { status: 400 }
+        );
+    }
+
+    const patient = await prisma.patient.findUnique({ where: { id: patientId } });
+    if (!patient) {
+        return NextResponse.json({ error: "Patient not found" }, { status: 404 });
+    }
+
+    const file = await prisma.patientFile.create({
+        data: { patientId, fileName, filePath, fileType, fileSize },
+    });
+
+    return NextResponse.json(file, { status: 201 });
+}
+```
+
+*2. Create `src/app/api/patients/[id]/files/[fileId]/route.ts`.*
+
+```ts
+import { NextRequest, NextResponse } from "next/server";
+import { prisma } from "@/lib/prisma";
+import { auth } from "@/lib/auth";
+import { removeUpload } from "@/lib/uploads";
+
+// DELETE /api/patients/[id]/files/[fileId] — detach a document from a patient
+export async function DELETE(
+    _req: NextRequest,
+    { params }: { params: Promise<{ id: string; fileId: string }> }
+) {
+    const session = await auth();
+    if (!session) {
+        return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    const { id, fileId } = await params;
+    const patientId = parseInt(id, 10);
+    const numericFileId = Number(fileId);
+    if (isNaN(patientId) || Number.isNaN(numericFileId)) {
+        return NextResponse.json({ error: "Invalid id" }, { status: 400 });
+    }
+
+    // Matched on both ids, not just the file's: the patient id is in the URL,
+    // so a mismatched pair means the caller is wrong about something and
+    // should get a 404 rather than a deletion that happens to work.
+    const file = await prisma.patientFile.findFirst({
+        where: { id: numericFileId, patientId },
+    });
+    if (!file) {
+        return NextResponse.json({ error: "File not found" }, { status: 404 });
+    }
+
+    // Remove the row first: if the storage removal fails or is unconfigured we
+    // want an orphaned object, not a row pointing at a file that is gone. The
+    // helper never throws, so a storage problem cannot fail this request.
+    await prisma.patientFile.delete({ where: { id: numericFileId } });
+    const objectRemoved = await removeUpload(file.filePath);
+
+    return NextResponse.json({ message: "File removed", objectRemoved });
+}
+```
+
+*3. `src/app/admin/patients/[id]/page.tsx` — import the URL helper.*
+
+Replace:
+
+```tsx
+import { useRouter } from "next/navigation";
+```
+
+with:
+
+```tsx
+import { useRouter } from "next/navigation";
+import { publicUploadUrl } from "@/lib/storageUrl";
+```
+
+*4. `src/app/admin/patients/[id]/page.tsx` — state.*
+
+After the line `    const [activeTab, setActiveTab] = useState<"intake" | "sessions" | "files">("intake");` insert:
+
+```tsx
+    const [uploadingName, setUploadingName] = useState("");
+    const [removingId, setRemovingId] = useState<number | null>(null);
+    const [fileError, setFileError] = useState("");
+```
+
+*5. `src/app/admin/patients/[id]/page.tsx` — handlers.*
+
+Immediately after the `handleArchiveToggle` function's closing `    };`, insert:
+
+```tsx
+    const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+        e.target.value = "";   // let the same file be picked again after a failure
+        setFileError("");
+        setUploadingName(file.name);
+
+        const fd = new FormData();
+        fd.append("file", file);
+        fd.append("folder", "patient-files");
+        const up = await fetch("/api/upload", { method: "POST", body: fd });
+        if (!up.ok) {
+            setUploadingName("");
+            setFileError("Upload failed.");
+            return;
+        }
+        const { path, contentType } = await up.json();
+
+        // fileType comes from the response, not the picked file: /api/upload
+        // re-encodes images to WebP, so file.type would be a lie. fileSize is
+        // the size as picked — the endpoint does not report the stored length,
+        // so it is exact for documents and approximate for a re-encoded image.
+        const res = await fetch(`/api/patients/${id}/files`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+                fileName: file.name,
+                filePath: path,
+                fileType: contentType,
+                fileSize: file.size,
+            }),
+        });
+        setUploadingName("");
+        if (!res.ok) {
+            setFileError("Could not attach the document.");
+            return;
+        }
+        fetchPatient();
+    };
+
+    const handleRemoveFile = async (fileId: number) => {
+        setFileError("");
+        setRemovingId(fileId);
+        // res.ok is the only success signal. The response also carries
+        // objectRemoved, which is false whenever SUPABASE_SERVICE_ROLE_KEY is
+        // unset — the row is still gone, so surfacing it would report a
+        // failure that did not happen. Do not read it.
+        const res = await fetch(`/api/patients/${id}/files/${fileId}`, { method: "DELETE" });
+        setRemovingId(null);
+        if (!res.ok) {
+            setFileError("Could not remove the document.");
+            return;
+        }
+        fetchPatient();
+    };
+```
+
+*6. `src/app/admin/patients/[id]/page.tsx` — the Files tab.*
+
+Replace the whole block:
+
+```tsx
+            {/* Files Tab */}
+            {activeTab === "files" && (
+                <div className="section-card">
+                    {patient.files.length === 0 ? (
+                        <p className="empty-text">No files uploaded yet</p>
+                    ) : (
+                        <div className="files-grid">
+                            {patient.files.map((f) => (
+                                <a key={f.id} href={f.filePath} target="_blank" rel="noreferrer" className="file-card">
+                                    <span className="file-icon">{f.fileType.includes("image") ? "🖼" : "📄"}</span>
+                                    <span className="file-name">{f.fileName}</span>
+                                    <span className="file-date">{formatDate(f.uploadedAt)}</span>
+                                </a>
+                            ))}
+                        </div>
+                    )}
+                </div>
+            )}
+```
+
+with:
+
+```tsx
+            {/* Files Tab */}
+            {activeTab === "files" && (
+                <div className="section-card">
+                    {fileError && <div className="error-msg" role="alert">{fileError}</div>}
+
+                    <div className="file-upload-row">
+                        <input
+                            type="file"
+                            className="file-input"
+                            aria-label="Upload a document"
+                            disabled={!!uploadingName}
+                            onChange={handleUpload}
+                        />
+                        <span className="field-hint">
+                            {uploadingName ? `Uploading ${uploadingName}…` : "Saved immediately — no separate Save step."}
+                        </span>
+                    </div>
+
+                    {patient.files.length === 0 && !uploadingName ? (
+                        <p className="empty-text">No files uploaded yet</p>
+                    ) : (
+                        <div className="files-grid">
+                            {patient.files.map((f) => (
+                                <div key={f.id} className="file-card">
+                                    <a
+                                        href={publicUploadUrl(f.filePath)}
+                                        target="_blank"
+                                        rel="noreferrer"
+                                        className="file-open"
+                                    >
+                                        <span className="file-icon">{f.fileType.includes("image") ? "🖼" : "📄"}</span>
+                                        <span className="file-name">{f.fileName}</span>
+                                        <span className="file-date">{formatDate(f.uploadedAt)}</span>
+                                    </a>
+                                    <button
+                                        type="button"
+                                        className="btn-sm btn-remove"
+                                        disabled={removingId === f.id}
+                                        onClick={() => handleRemoveFile(f.id)}
+                                    >
+                                        {removingId === f.id ? "Removing…" : "Remove"}
+                                    </button>
+                                </div>
+                            ))}
+                        </div>
+                    )}
+                </div>
+            )}
+```
+
+Note the `.file-card` changes from an `<a>` to a `<div>` with an `<a>` inside it — a Remove button nested inside a link would be a click-target conflict.
+
+*7. `src/app/admin/patients/[id]/page.tsx` — CSS.*
+
+Replace:
+
+```css
+                .file-card {
+                    display: flex; flex-direction: column; align-items: center; gap: 0.35rem;
+                    padding: 1rem; background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.06);
+                    border-radius: var(--radius-sm, 2px); text-decoration: none; color: #fff;
+                    transition: background 0.15s;
+                }
+                .file-card:hover { background: rgba(255,255,255,0.08); }
+```
+
+with:
+
+```css
+                .file-card {
+                    display: flex; flex-direction: column; align-items: center; gap: 0.35rem;
+                    padding: 1rem; background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.06);
+                    border-radius: var(--radius-sm, 2px); color: #fff;
+                    transition: background 0.15s;
+                }
+                .file-card:hover { background: rgba(255,255,255,0.08); }
+                .file-open {
+                    display: flex; flex-direction: column; align-items: center; gap: 0.35rem;
+                    text-decoration: none; color: #fff; width: 100%; min-width: 0;
+                }
+                .file-upload-row {
+                    display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap;
+                    margin-bottom: 1rem; padding-bottom: 1rem;
+                    border-bottom: 1px solid rgba(255,255,255,0.06);
+                }
+                .file-input { font-size: 0.82rem; color: rgba(255,255,255,0.6); max-width: 100%; }
+                .field-hint { font-size: 0.72rem; color: rgba(255,255,255,0.35); }
+                .btn-remove {
+                    background: rgba(239,68,68,0.15); color: #fca5a5; margin-top: 0.5rem;
+                }
+                .btn-remove:hover:not(:disabled) { background: rgba(239,68,68,0.25); }
+                .btn-remove:disabled { opacity: 0.5; cursor: not-allowed; }
+                .error-msg {
+                    background: rgba(220,38,38,0.1); border: 1px solid rgba(220,38,38,0.2);
+                    color: #fca5a5; padding: 0.5rem 0.75rem; border-radius: var(--radius-sm, 2px);
+                    font-size: 0.82rem; margin-bottom: 1rem;
+                }
+```
+
+`.btn-sm` already exists in this file and supplies the padding, radius and font — `.btn-remove` only adds colour.
+
+*8. `src/app/secretary/patients/[id]/page.tsx` — the broken link, and nothing else.*
+
+Add the import: replace `import { useRouter } from "next/navigation";` with
+
+```tsx
+import { useRouter } from "next/navigation";
+import { publicUploadUrl } from "@/lib/storageUrl";
+```
+
+(If that page imports `useRouter` differently, match whatever import line is actually there and add the second line after it.)
+
+Then replace the single line
+
+```tsx
+                                <a key={f.id} href={f.filePath} target="_blank" rel="noreferrer" className="file-card">
+```
+
+with
+
+```tsx
+                                <a key={f.id} href={publicUploadUrl(f.filePath)} target="_blank" rel="noreferrer" className="file-card">
+```
+
+**Leave that tab read-only.** No upload control, no Remove button — a secretary reads patient documents, and changing that is not this task's decision to make.
+
+**Verification:**
+- `npm run build` passes.
+- `npx eslint src/app/api/patients src/app/admin/patients src/app/secretary/patients` is clean.
+- **Upload a real document end to end** on `/admin/patients/<id>` → Files: pick a PDF and an image, confirm both appear in the grid, the tab count goes from `Files (0)` to `Files (2)`, and **both links open the actual file** in a new tab. The link is the half that has never worked — a card that renders is not proof.
+- **Confirm the stored row matches the stored object:** for the image, `fileType` must be `image/webp` (the re-encoded type), **not** the picked file's type. If it says `image/png` the `contentType` wiring is wrong.
+- **Remove a file** and confirm it leaves the grid, the count drops, and exactly one `[uploads]` line is logged naming its path. (`SUPABASE_SERVICE_ROLE_KEY` is expected unset, so it will read `… unset — leaving <path> in storage`. That is correct and expected — do **not** add the key.)
+- **The mismatched-pair 404:** `DELETE /api/patients/<otherPatientId>/files/<fileId>` returns **404** and the row is still there.
+- **Unauthenticated `POST /api/patients/<id>/files` returns 401.**
+- **The named regression — unsaved intake edits.** Open the Clinical Assessment tab, type into a field **without saving**, switch to Files, upload a document, switch back. Report what you find. `fetchPatient()` repopulates `intakeForm`, so the edit is expected to be **lost**. Do not fix it and do not work around it — report it exactly as observed so it can be filed.
+- **Visual:** the Files tab at 320px and at 1440px — the upload row wraps rather than overflowing, and the file cards do not spill out of the grid.
+
+**Done when:**
+- [ ] A document can be attached to a patient and appears in the tab
+- [ ] Its link opens the real file on both the admin and the secretary page
+- [ ] `fileType` records the stored type, not the picked one
+- [ ] Remove deletes the row and reaches `removeUpload`
+- [ ] A file id belonging to another patient 404s
+- [ ] The secretary tab is still read-only
+- [ ] Nothing outside the four files in Scope changed, and `Patient #{patient.id}` is untouched
+
+---
+
+### TJ-011b — Stop printing the primary key as a patient number
+
+- **Status:** BLOCKED — needs a decision from the user. Verified, not planned.
+- **Why:** The reported symptom ("I added the first patient after the cleanup and it still said Patient #2") was **misdiagnosed — the cleanup was fine.** The live database holds exactly one `Patient` row at `id = 2`, with `Patient_id_seq` at `last_value = 2, is_called = true`. PostgreSQL never rolls a sequence back on `DELETE`; that is deliberate, so concurrent inserts cannot collide. What the user is seeing is `src/app/admin/patients/[id]/page.tsx:172` printing the raw primary key as `Patient #{patient.id}`, and `src/app/secretary/patients/[id]/page.tsx:106` doing the same.
+- **The decision:** reset the sequence once and keep showing the primary key — simple, but the gap reappears after the next deletion and is **guaranteed** to reappear once TJ-011c ships a hard delete — or stop showing the primary key as a patient number at all. **Recommend the latter; the first is a treatment, not a fix.** Blocked because "stop showing it" has a second half nobody has chosen: whether the header shows nothing there, or a real patient-facing identifier that does not exist yet.
+
+---
+
+### TJ-011c — Patients — hard delete
+
+- **Status:** BLOCKED — needs the same product decision as the doctor case. Verified, not planned.
+- **Why:** Only `PATCH { archived }` exists. `ClinicalIntake` and `PatientFile` both cascade cleanly, but **`Reservation_patientId_fkey` is `RESTRICT`** — so any patient who has ever been booked cannot be deleted until their reservations are dealt with, and reservations are clinical records that are never thrown away.
+- **The decision, and it is the same one TJ-009g and TJ-010a answered for employees:** refuse the delete while any reservation exists, naming the count, and leave archiving as the only route for a patient with history. That is the house pattern and is almost certainly right — but for a *patient* it means a patient can effectively never be hard-deleted once they have attended once, which is a different practical outcome than it was for staff, and the user should say so out loud before it ships.
+- **Two things its pass will owe once unblocked:** the storage objects behind `PatientFile` cascade away as rows and leak their uploads exactly as TJ-014e records for employees; and whether the confirm gate types the patient's name (the employee pattern) or a fixed word (what TJ-012 adopted, because a name can be Arabic or empty).
 
 ---
 
 ### TJ-012 — Blog — hard delete a post
 
-- **Status:** BACKLOG — no planning pass. Do not execute against this ID.
-- **Why:** **Confirmed real, and the starkest case in the batch:** `src/app/api/blog/[id]/route.ts` exports `GET` and `PUT` and **no `DELETE` at all**. The admin list's *Archive* button (`admin/blog/page.tsx:57-64`) is a `PUT` that sets `status: "ARCHIVED"`, and *Restore* sets it back to `DRAFT`. Nothing has ever removed a post. The live database holds 7.
+- **Status:** READY
+- **Branch:** `feat/blog-hard-delete`
+- **Why:** `src/app/api/blog/[id]/route.ts` exports `GET` and `PUT` and **no `DELETE` at all**. The admin list's *Archive* button is a `PUT` setting `status: "ARCHIVED"`, and *Restore* sets it back to `DRAFT`. Nothing has ever removed a post; the live database holds 7. This adds the endpoint and the one button that reaches it.
 
-**The one thing a pass must settle:** `BlogPost_linkedId_fkey` is **SET NULL**, and the model carries a self-relation for EN↔AR translation pairs. Deleting one language therefore leaves its translation alive but silently unlinked — it would keep publishing with a dangling half. Decide whether deleting a post deletes its translation too, refuses while one is linked, or unlinks deliberately with a warning.
+**Planning pass:** 2026-08-21 — read `src/app/api/blog/[id]/route.ts`, `src/app/api/blog/route.ts`, `src/app/api/blog/[id]/translate/route.ts`, `src/app/admin/blog/page.tsx`, `src/app/api/public/blog/route.ts`, `src/app/api/public/blog/[slug]/route.ts`, `src/app/blog/[slug]/page.tsx`, `src/lib/uploads.ts`, `src/app/admin/employees/secretaries/page.tsx` (for the confirm-modal pattern and its CSS), and the `BlogPost` model plus the `PostStatus` / `PostLang` enums in `prisma/schema.prisma`.
+
+**The translation question the task reserved for the pass, settled — and the obvious answer is a deadlock.**
+
+`translate/route.ts:35-51` writes the link **in both directions**: the new row is created with `linkedId: original.id`, then the original is updated with `linkedId: translation.id`. `linkedId` is `@unique`, so a translated pair is two rows each pointing at the other. That single fact rules out one of the three candidate answers:
+
+- **Refuse while linked** would mean *neither* half of a pair can ever be deleted, because each is always linked to the other and there is no unlink action anywhere in the UI. It is not a conservative choice, it is a dead end. **Rejected.**
+- **Delete both** lets someone destroy a *published* Arabic post by deleting an abandoned English draft. **Rejected** — the blast radius is invisible from the row being acted on.
+- **Unlink deliberately, having said so first.** Adopted. The surviving translation stays exactly as it is — same status, same slug, still publishing — and merely stops pointing at a row that no longer exists.
+
+**The unlink is written explicitly rather than left to the foreign key.** `BlogPost_linkedId_fkey` is `SET NULL` and would do it unaided, but that is Prisma's *default* action for an optional relation and is **not declared in `schema.prisma`** — the behaviour this feature depends on would be invisible at the only place anyone would look for it. The handler therefore nulls the pointer itself, in a transaction with the delete.
+
+**Confirmed, so that the task does not carry them as assumptions:**
+- **The public site cannot break from this.** `/blog` and `/blog/[slug]` are client components that `fetch` `/api/public/blog…` on mount; there is **no `generateStaticParams`, no `revalidate` and no `dynamic` export anywhere under `src/app/blog`**. Nothing is pre-rendered, so no stale page can survive a deletion.
+- **Nothing public reads `linked` or `linkedId`.** Both public routes select explicit field lists and neither includes it. A translation whose pointer has been nulled renders identically to one that never had a pair, so the unlink has no public consequence at all.
+- **`$transaction([...])` in its array form is the house convention** — `api/pending-changes/[id]/route.ts:37`.
+- **`canManageContent` is the right gate,** not `role === "ADMIN"`: every other handler in this file and its siblings uses `requireContentManager()`, and TJ-005b1 shipped the grant precisely so a content holder can run the blog. A hard delete stays inside that grant.
+
+**The regression risk, and it is the reason this task has a negative test.** `translate/route.ts:41` copies `coverImage: original.coverImage` into the new row — **a translated pair shares one storage object.** A delete that removed the cover image unconditionally would erase the picture the *surviving* translation still displays, on the public site, silently. The handler therefore removes the object only after confirming no other row still references that exact value. (This is the same sharing hazard TJ-014c is filed for; TJ-014c covers *replacement*, this covers *deletion*, and neither blocks the other.)
+
+**Scope — touch only these:**
+- `src/app/api/blog/[id]/route.ts`
+- `src/app/admin/blog/page.tsx`
+
+**Do not touch:** `src/app/api/blog/route.ts` (the list `GET` already returns `linked.lang`, which is all the warning needs — do **not** widen its `select` to fetch the translation's title), `translate/route.ts`, `BlogEditor.tsx`, either public blog route, `prisma/schema.prisma` (no migration: this adds no column and declares no referential action), and `src/lib/uploads.ts`.
+
+**Instructions:**
+
+*1. `src/app/api/blog/[id]/route.ts` — add the handler.*
+
+Add to the import block, immediately after `import { canManageContent } from "@/lib/permissions";`:
+
+```ts
+import { removeUpload } from "@/lib/uploads";
+```
+
+Then append at the end of the file:
+
+```ts
+// DELETE /api/blog/[id] — permanent removal. There is no soft delete here:
+// ARCHIVED already is the soft delete, and this is the step past it.
+export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+    const session = await requireContentManager();
+    if (!session) {
+        return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    const { id } = await params;
+    const post = await prisma.blogPost.findUnique({ where: { id } });
+    if (!post) {
+        return NextResponse.json({ error: "Post not found" }, { status: 404 });
+    }
+
+    // Archive first, then delete. The list only offers this on an archived row,
+    // but the endpoint must hold on its own — nothing else here refuses, since
+    // no foreign key points at a BlogPost.
+    if (post.status !== "ARCHIVED") {
+        return NextResponse.json(
+            { error: "Archive this post before deleting it permanently." },
+            { status: 409 }
+        );
+    }
+
+    // A translated pair points both ways (translate/route.ts writes linkedId on
+    // both rows), so the surviving half still references this one. Null it here
+    // rather than relying on the foreign key's SET NULL: that action is Prisma's
+    // default for an optional relation and is not written down in schema.prisma,
+    // so a reader would have no way to know this feature depends on it.
+    await prisma.$transaction([
+        prisma.blogPost.updateMany({ where: { linkedId: id }, data: { linkedId: null } }),
+        prisma.blogPost.delete({ where: { id } }),
+    ]);
+
+    // Only once the row is gone, and only if the object is no longer referenced.
+    // translate/route.ts copies coverImage into the translation, so a pair shares
+    // one object — removing it unconditionally would erase the picture the
+    // surviving half still shows. removeUpload never throws; its return value is
+    // deliberately not surfaced, because it is false whenever
+    // SUPABASE_SERVICE_ROLE_KEY is unset and would report a failure that did not
+    // happen.
+    if (post.coverImage) {
+        const stillUsed = await prisma.blogPost.count({
+            where: { coverImage: post.coverImage },
+        });
+        if (stillUsed === 0) {
+            await removeUpload(post.coverImage);
+        }
+    }
+
+    return NextResponse.json({ message: "Post deleted permanently" });
+}
+```
+
+*2. `src/app/admin/blog/page.tsx` — state.*
+
+After the line `    const [filter, setFilter] = useState<(typeof FILTERS)[number]>("All");` insert:
+
+```tsx
+    const [deleteTarget, setDeleteTarget] = useState<BlogPost | null>(null);
+    const [deleteConfirm, setDeleteConfirm] = useState("");
+    const [deleteError, setDeleteError] = useState("");
+    const [deleting, setDeleting] = useState(false);
+```
+
+*3. `src/app/admin/blog/page.tsx` — handlers.*
+
+Immediately after the `restore` function's closing `    };` (the one ending the block that begins `    const restore = async (id: string) => {`), insert:
+
+```tsx
+    const openDelete = (post: BlogPost) => {
+        setDeleteTarget(post);
+        setDeleteConfirm("");
+        setDeleteError("");
+    };
+
+    const handleHardDelete = async () => {
+        if (!deleteTarget) return;
+        setDeleting(true);
+        setDeleteError("");
+        const res = await fetch(`/api/blog/${deleteTarget.id}`, { method: "DELETE" });
+        setDeleting(false);
+        if (!res.ok) {
+            const data = await res.json().catch(() => ({}));
+            setDeleteError(data.error || "Could not delete this post.");
+            return;
+        }
+        setDeleteTarget(null);
+        fetchPosts();
+    };
+```
+
+*4. `src/app/admin/blog/page.tsx` — the button.*
+
+Replace:
+
+```tsx
+                                        ) : (
+                                            <button className="btn-sm btn-restore" onClick={() => restore(post.id)}>Restore</button>
+                                        )}
+```
+
+with:
+
+```tsx
+                                        ) : (
+                                            <>
+                                                <button className="btn-sm btn-restore" onClick={() => restore(post.id)}>Restore</button>
+                                                <button className="btn-sm btn-delete" onClick={() => openDelete(post)}>Delete permanently</button>
+                                            </>
+                                        )}
+```
+
+This puts the action only on an ARCHIVED row, matching the employee screens where *Delete permanently* appears only beside *Re-enrol*.
+
+*5. `src/app/admin/blog/page.tsx` — the confirm modal.*
+
+Insert immediately before the line `            <style jsx>{\`` :
+
+```tsx
+            {deleteTarget && (
+                <div className="modal-overlay" onClick={() => setDeleteTarget(null)}>
+                    <div className="modal-card modal-narrow" onClick={(e) => e.stopPropagation()}>
+                        <h2>Delete this post?</h2>
+                        <p className="delete-warning">
+                            <strong>{deleteTarget.title || "(untitled)"}</strong> will be removed permanently.
+                            This cannot be undone.
+                        </p>
+                        {deleteTarget.linked && (
+                            <p className="delete-warning">
+                                Its {deleteTarget.linked.lang === "AR" ? "Arabic" : "English"} translation is
+                                <strong> kept</strong>, and keeps its own status — but the two stop being linked,
+                                and that cannot be undone either.
+                            </p>
+                        )}
+                        {deleteError && <div className="error-msg" role="alert">{deleteError}</div>}
+                        <div className="form-group">
+                            <label>Type <strong>DELETE</strong> to confirm</label>
+                            <input
+                                value={deleteConfirm}
+                                onChange={(e) => setDeleteConfirm(e.target.value)}
+                                autoFocus
+                            />
+                        </div>
+                        <div className="modal-actions">
+                            <button className="btn-secondary" onClick={() => setDeleteTarget(null)}>Cancel</button>
+                            <button
+                                className="btn-danger"
+                                onClick={handleHardDelete}
+                                disabled={deleting || deleteConfirm !== "DELETE"}
+                            >
+                                {deleting ? "Deleting…" : "Delete permanently"}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+```
+
+**Why `DELETE` and not the title, which is what the employee modals ask for.** A post's title can be Arabic, can be long, and for a translation spawned by `translate/route.ts` is the **empty string** — against which `deleteConfirm !== post.title` is satisfied on an untouched field and the button would arm itself immediately. A fixed word is the only spelling of this gate that cannot be defeated by the data.
+
+*6. `src/app/admin/blog/page.tsx` — CSS.*
+
+This page has **no modal styles at all** — it has `.btn-edit`, `.btn-archive` and `.btn-restore` and nothing else. Insert immediately before the line `                .empty-state { text-align: center; color: rgba(255,255,255,0.35); padding: 2rem !important; }`:
+
+```css
+                .btn-delete { background: rgba(239,68,68,0.15); color: #fca5a5; }
+                .btn-delete:hover { background: rgba(239,68,68,0.25); }
+                .btn-secondary {
+                    background: rgba(255,255,255,0.08); color: rgba(255,255,255,0.7);
+                    border: 1px solid rgba(255,255,255,0.12); border-radius: 8px;
+                    padding: 0.6rem 1.25rem; font-size: 0.9rem; cursor: pointer; font-family: inherit;
+                }
+                .btn-danger {
+                    background: #dc2626; color: #fff; border: none; border-radius: 8px;
+                    padding: 0.6rem 1.25rem; font-size: 0.9rem; font-weight: 600;
+                    cursor: pointer; font-family: inherit;
+                }
+                .btn-danger:hover:not(:disabled) { background: #b91c1c; }
+                .btn-danger:disabled { opacity: 0.5; cursor: not-allowed; }
+                .modal-overlay {
+                    position: fixed; inset: 0; background: rgba(0,0,0,0.6);
+                    display: flex; align-items: center; justify-content: center;
+                    z-index: 1000; backdrop-filter: blur(4px); padding: 1rem;
+                }
+                .modal-card {
+                    background: #1e293b; border: 1px solid rgba(255,255,255,0.1);
+                    border-radius: 16px; padding: 2rem; width: 100%; max-width: 560px;
+                    max-height: 90vh; overflow-y: auto;
+                }
+                .modal-card h2 { font-size: 1.3rem; margin-bottom: 1rem; font-weight: 600; }
+                .modal-narrow { max-width: 420px; }
+                .modal-actions { display: flex; justify-content: flex-end; gap: 0.75rem; margin-top: 1.5rem; }
+                .delete-warning { font-size: 0.85rem; color: rgba(255,255,255,0.6); margin: 0 0 0.75rem; line-height: 1.5; }
+                .form-group { display: flex; flex-direction: column; gap: 0.4rem; }
+                .form-group label { font-size: 0.8rem; color: rgba(255,255,255,0.6); font-weight: 500; }
+                .form-group input {
+                    background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.1);
+                    border-radius: 8px; padding: 0.65rem 0.8rem; color: #fff; font-size: 0.9rem;
+                    outline: none; font-family: inherit;
+                }
+                .form-group input:focus { border-color: #6ee7b7; }
+                .error-msg {
+                    background: rgba(220,38,38,0.1); border: 1px solid rgba(220,38,38,0.2);
+                    color: #fca5a5; padding: 0.5rem 0.75rem; border-radius: 4px;
+                    font-size: 0.82rem; margin-bottom: 0.75rem;
+                }
+```
+
+**Verification:**
+- `npm run build` passes.
+- `npx eslint src/app/admin/blog src/app/api/blog` is clean.
+- **The endpoint refuses a non-archived post:** `DELETE /api/blog/<id>` against a `PUBLISHED` post returns **409** and the row is still there afterwards. Check the row, not just the status code.
+- **The endpoint refuses an unauthenticated caller:** the same request with no session returns **401**.
+- **The shared cover image survives — this is the case the task exists to get right.** Build the fixture through the real UI: create a post, give it a cover image, use *Translate* to spawn its pair (which copies the same `coverImage`), archive one half, delete it. Then assert **all three**: the surviving half still exists; its `coverImage` is unchanged and the image still loads on the public site; and **no `[uploads]` line was logged**, because the object was still referenced. A silent pass here is not evidence — confirm the shared value really was identical on both rows before deleting.
+- **The unlink happens and only on the right row:** after that delete, the surviving row's `linkedId` is `NULL` and every other post's `linkedId` is untouched.
+- **The unshared cover image is released:** delete an archived post that has a cover image and **no** translation, and confirm exactly one `[uploads]` line naming that object. (`SUPABASE_SERVICE_ROLE_KEY` is expected to be unset, so the line will read `… unset — leaving <path> in storage`. That is the correct and expected output — it proves `removeUpload` was reached. Do **not** add the key.)
+- **Visual:** `/admin/blog` on the Archived filter — the modal opens, is legible at 320px and at 1440px, the button stays disabled until `DELETE` is typed, and Cancel closes without deleting.
+
+**Done when:**
+- [ ] `DELETE /api/blog/[id]` exists, gated by `canManageContent`, and 409s on a non-archived post
+- [ ] A linked translation survives the delete, unlinked, with its status intact
+- [ ] A shared cover image is **not** removed; an unshared one is
+- [ ] The button appears only on archived rows and is armed only by typing `DELETE`
+- [ ] Nothing outside the two files in Scope changed
 
 ---
 
