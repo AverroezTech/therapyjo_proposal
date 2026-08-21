@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
 import { canAccessClinical } from "@/lib/permissions";
+import { logPatientActivity } from "@/lib/audit";
 
 // Valid status transitions (state machine)
 const VALID_TRANSITIONS: Record<string, string[]> = {
@@ -86,6 +87,13 @@ export async function PUT(
             patient: { select: { id: true, name: true, phone1: true } },
             doctor: { select: { id: true, name: true, color: true } },
         },
+    });
+
+    await logPatientActivity({
+        patientId: reservation.patientId,
+        userId: session.user.id,
+        action: "SESSION_UPDATED",
+        summary: `Session with ${reservation.doctor.name} edited`,
     });
 
     return NextResponse.json(reservation);
@@ -179,6 +187,13 @@ export async function PATCH(
         },
     });
 
+    await logPatientActivity({
+        patientId: updated.patientId,
+        userId: session.user.id,
+        action: "SESSION_STATUS_CHANGED",
+        summary: `${reservation.status} → ${newStatus}`,
+    });
+
     return NextResponse.json(updated);
 }
 
@@ -195,8 +210,16 @@ export async function DELETE(
 
     const { id } = await params;
 
-    await prisma.reservation.delete({
+    const deleted = await prisma.reservation.delete({
         where: { id: parseInt(id, 10) },
+        include: { doctor: { select: { name: true } } },
+    });
+
+    await logPatientActivity({
+        patientId: deleted.patientId,
+        userId: session.user.id,
+        action: "SESSION_DELETED",
+        summary: `Session with ${deleted.doctor.name} on ${deleted.sessionDate.toISOString().split("T")[0]}`,
     });
 
     return NextResponse.json({ message: "Reservation deleted" });

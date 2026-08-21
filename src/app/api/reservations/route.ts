@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
+import { logPatientActivity } from "@/lib/audit";
 
 // GET /api/reservations?date=YYYY-MM-DD&doctorId=xxx
 export async function GET(req: NextRequest) {
@@ -132,6 +133,13 @@ export async function POST(req: NextRequest) {
             patient: { select: { id: true, name: true, phone1: true } },
             doctor: { select: { id: true, name: true, color: true } },
         },
+    });
+
+    await logPatientActivity({
+        patientId: reservation.patientId,
+        userId: session.user.id,
+        action: "SESSION_CREATED",
+        summary: `Booked with ${reservation.doctor.name} on ${sessionDate}`,
     });
 
     return NextResponse.json(reservation, { status: 201 });

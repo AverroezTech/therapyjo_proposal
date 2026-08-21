@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
+import { logPatientActivity } from "@/lib/audit";
 
 // POST /api/reservations/[id]/duplicate — clone reservation to a new date
 export async function POST(
@@ -46,6 +47,13 @@ export async function POST(
             patient: { select: { id: true, name: true, phone1: true } },
             doctor: { select: { id: true, name: true, color: true } },
         },
+    });
+
+    await logPatientActivity({
+        patientId: duplicated.patientId,
+        userId: session.user.id,
+        action: "SESSION_DUPLICATED",
+        summary: `Duplicated to ${sessionDate}`,
     });
 
     return NextResponse.json(duplicated, { status: 201 });

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
 import { canAccessClinical } from "@/lib/permissions";
+import { logPatientActivity } from "@/lib/audit";
 
 // GET /api/reservations/[id]/soap — get SOAP note for a reservation
 export async function GET(
@@ -39,6 +40,14 @@ export async function PUT(
     const reservationId = parseInt(id, 10);
     const body = await req.json();
 
+    const reservation = await prisma.reservation.findUnique({
+        where: { id: reservationId },
+        select: { patientId: true },
+    });
+    if (!reservation) {
+        return NextResponse.json({ error: "Reservation not found" }, { status: 404 });
+    }
+
     const data = {
         subjective: body.subjective ?? null,
         objective: body.objective ?? null,
@@ -51,6 +60,12 @@ export async function PUT(
         where: { reservationId },
         update: data,
         create: { reservationId, ...data },
+    });
+
+    await logPatientActivity({
+        patientId: reservation.patientId,
+        userId: session.user.id,
+        action: "SOAP_NOTE_UPDATED",
     });
 
     return NextResponse.json(soap);

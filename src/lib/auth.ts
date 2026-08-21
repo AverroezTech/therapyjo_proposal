@@ -5,6 +5,9 @@ import bcrypt from "bcryptjs";
 import { prisma } from "@/lib/prisma";
 import { authConfig } from "@/lib/auth.config";
 
+const MAX_LOGIN_ATTEMPTS = 5;
+const LOCKOUT_MINUTES = 15;
+
 export const { handlers, signIn, signOut, auth } = NextAuth({
     ...authConfig,
     callbacks: {
@@ -58,12 +61,40 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
                 if (!user) return null;
                 if (user.status !== "ACTIVE") return null;
 
+                // Locked out from too many recent bad passwords. Rejected the same
+                // way as a wrong password — the login page shows one generic
+                // message either way, so a lockout isn't distinguishable to
+                // whoever is trying. (TJ-024)
+                if (user.lockedUntil && user.lockedUntil > new Date()) {
+                    return null;
+                }
+
                 const passwordMatch = await bcrypt.compare(
                     credentials.password as string,
                     user.passwordHash
                 );
 
-                if (!passwordMatch) return null;
+                if (!passwordMatch) {
+                    const attempts = user.failedLoginAttempts + 1;
+                    const lockingOut = attempts >= MAX_LOGIN_ATTEMPTS;
+                    await prisma.user.update({
+                        where: { id: user.id },
+                        data: {
+                            failedLoginAttempts: lockingOut ? 0 : attempts,
+                            lockedUntil: lockingOut
+                                ? new Date(Date.now() + LOCKOUT_MINUTES * 60 * 1000)
+                                : null,
+                        },
+                    });
+                    return null;
+                }
+
+                if (user.failedLoginAttempts > 0 || user.lockedUntil) {
+                    await prisma.user.update({
+                        where: { id: user.id },
+                        data: { failedLoginAttempts: 0, lockedUntil: null },
+                    });
+                }
 
                 return {
                     id: user.id,
