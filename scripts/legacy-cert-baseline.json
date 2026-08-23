@@ -1,0 +1,8 @@
+{
+  "serial": "06575A8139BB2762A52C9A079CFB28F80EE8",
+  "from": "Jul 24 20:08:23 2026 GMT",
+  "to": "Oct 22 20:08:22 2026 GMT",
+  "san": "DNS:therapyjo.com, DNS:www.therapyjo.com",
+  "issuer": "Let's Encrypt",
+  "measured": "2026-08-24"
+}
