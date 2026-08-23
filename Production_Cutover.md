@@ -862,6 +862,26 @@ backstop for a missed tripwire, never the plan.**
 
 Fire the tripwire when `npm run cert:check` reports `TRIPWIRE`.
 
+### Reading `npm run cert:check`
+
+`npm run cert:check` (`scripts/check-legacy-cert.mjs`, TJ-036) prints a verdict word on its own
+first line and exits with a matching code, so it is greppable from a scheduler. Run it **weekly**
+from Phase 3 onwards, and **daily** while a fallback is in progress.
+
+| Verdict | Exit | What it means | What to do |
+|---|---|---|---|
+| `OK` | 0 | Serial matches the baseline, more than 14 days left | Nothing |
+| `RENEWED` | 0 | Serial changed on the tracked certificate | **Good news.** Before Phase 4 this is Test B passing; during a fallback it is the signal to flip back. Re-run with `--update` to accept the new baseline |
+| `TRIPWIRE` | 1 | Serial unchanged, ≤14 days to `notAfter` | **Run this runbook now** |
+| `EXPIRED` | 2 | The tracked certificate has lapsed | Missed tripwire — the clinic is already degraded. Run the runbook and expect the outage row above |
+| `FOREIGN` | 3 | The host is not serving the tracked certificate at all | **Check DNS before trusting anything else.** Most likely `www` was repointed by a hand-edit — it must stay at `208.98.35.122` |
+| `RESOLVED` | 0 | SAN names `www.therapyjo.com` and no longer names the apex | **Hazard 9 is over.** Someone reissued for `www` alone. Retire this runbook and `new.therapyjo.com` |
+| `ERROR` | 3 | Could not measure — timeout, DNS failure, no certificate | **Not a signal. Retry before reacting.** A transient network failure produces this, and it was observed once during TJ-036's own verification. Two consecutive `ERROR`s a few minutes apart is worth investigating; one is not |
+
+**`ERROR` and `FOREIGN` never mean "fine."** They mean the check could not tell you anything about
+the certificate, which is the one thing a tripwire must never quietly imply.
+
+
 ### Preconditions — verify these hold *before* they are needed
 
 - `new.therapyjo.com` still resolves and still serves this app. Phase 5 no longer removes it.
