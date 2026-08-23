@@ -25,10 +25,10 @@ and still serves the legacy application, exactly as it did before this work star
 
 | | State |
 |---|---|
-| `master` / deployed | **`4264663`**, pushed. Vercel builds from GitHub — **`git push` is the deploy trigger** |
+| `master` / deployed | **`16d35dd`**, pushed. Vercel builds from GitHub — **`git push` is the deploy trigger** |
 | Live at | `therapyjo-proposal.vercel.app` |
 | `/clinic/` proxy | **Working and verified in production**, including relative assets and the authenticated admin screen |
-| `/clinic/` escapes | **Audited and fixed on branch `fix/legacy-clinic-escapes` — not yet merged or deployed.** Two escapes found, both patched; see Hazard 5. Until this ships, **staff cannot log in through `/clinic/`** — a successful login redirects them into this app and 404s |
+| `/clinic/` escapes | **Fixed and verified in production**, `16d35dd`. Two escapes found and patched; see Hazard 5. Before this, a successful login at `/clinic/` bounced staff into this app and 404'd — they could not reach the clinic system at all |
 | Timezone | **Fixed and verified in production** — `Asia/Amman` |
 | Custom domain on Vercel | **Not attached.** Apex still `208.98.35.122` |
 | DNS | Still at site4now.net, **untouched** |
@@ -932,6 +932,22 @@ needs no such pairing because `redirects()` runs *ahead* of middleware.
 
 Note that Next compiles these sources case-insensitively (`/^…/i`), so capital-`A` `/Admin/…`
 is caught and `/CLINIC/…` is correctly excluded from the loop guard.
+
+**Verified in production**, `16d35dd`, 2026-08-23:
+
+| Check | Before | After |
+|---|---|---|
+| `/Admin/Index.aspx` | `302 → /login?callbackUrl=…` | `307 → /clinic/Admin/Index.aspx` |
+| `/WebResource.axd` | `302 → /login` | `404` with `X-Powered-By: ASP.NET` — reaches IIS |
+| Unauthenticated chain from `/Admin/Index.aspx` | dumped into this app | 3 hops, ends `200` at `/clinic/Login.aspx`, **never leaves the proxy** |
+| `/clinic/Login.aspx`, `/clinic/Admin/Index.aspx` | — | `0` redirects — loop guard holds |
+| Legacy admin screen in-browser | — | renders; **22 `.axd` resources load with real bytes**; `WebForm_DoPostBackWithOptions`, `WebForm_PostBackOptions` and `Sys` all defined, so postbacks work |
+| `/`, `/login`, `/blog`, `/admin`, `/clinic`, `/clinic/` | — | unchanged |
+
+That third row is the one worth remembering: the `.aspx` rule catches the legacy app's *own*
+internal auth bounce, not just the post-login redirect. An unauthenticated staff member now walks
+`/Admin/Index.aspx → /clinic/Admin/Index.aspx → (IIS 302 /Login.aspx) → /clinic/Login.aspx` and
+stays inside the proxy the whole way.
 
 If further escapes turn out to be numerous or structural, the answer is not more rules — it is
 `clinic.therapyjo.com` as a subdomain, which sidesteps the entire class of problem for the cost
