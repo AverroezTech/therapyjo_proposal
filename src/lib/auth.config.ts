@@ -32,10 +32,11 @@ export const authConfig: NextAuthConfig = {
             const pathname = nextUrl.pathname;
 
             // Public routes — accessible to everyone
-            // "/clinic" and "/.well-known" are served by the legacy clinical system at the
-            // proxy and should never reach this app. They are listed here so that if a proxy
-            // rule stops matching, the request 404s honestly instead of redirecting staff
-            // (or an ACME validator) into this app's login.
+            // "/clinic" is served by the legacy clinical system at the proxy and should never
+            // reach this app. It is listed here so that if a proxy rule stops matching, the
+            // request 404s honestly instead of redirecting staff into this app's login.
+            // "/.well-known" is a public namespace by standard (RFC 8615) and must not sit
+            // behind auth, regardless of what is or is not proxied.
             const publicRoutes = ["/", "/api/auth", "/blog", "/api/public", "/clinic", "/.well-known"];
             const isPublic = publicRoutes.some(
                 (route) => pathname === route || pathname.startsWith(route + "/")

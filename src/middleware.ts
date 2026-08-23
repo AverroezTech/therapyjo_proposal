@@ -34,11 +34,14 @@ export const config = {
          *    exempted. Bare "/clinic" (no slash) is deliberately NOT excluded
          *    here — it still needs to reach the handler above for the
          *    exact-match redirect to "/clinic/".)
-         *  - .well-known/ (ACME certificate validation, proxied to legacy)
+         *  - .well-known/ (RFC 8615 well-known URIs are a public namespace and
+         *    must never sit behind authentication. Note that on Vercel,
+         *    /.well-known/acme-challenge/* never reaches this app at all —
+         *    the platform serves it ahead of application routing.)
          *
          * These exclusions matter: without them, NextAuth middleware would
          * intercept these paths and redirect unauthenticated requests to
-         * /login, breaking the legacy proxy and ACME validation.
+         * /login, breaking the legacy proxy.
          */
         "/((?!_next/static|_next/image|favicon\\.ico|clinic/|\\.well-known/|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico|mp4|webm|mp3|woff|woff2|ttf|eot|css|js)$).*)",
     ],

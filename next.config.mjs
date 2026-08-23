@@ -58,30 +58,31 @@ const nextConfig = {
   // src/middleware.ts instead, where a plain string comparison has no such
   // leniency.
   async rewrites() {
-    // No legacy origin configured (e.g. preview deployments) — /clinic and
-    // /.well-known/acme-challenge fall through to the app's normal routing
-    // and 404 honestly rather than proxying anywhere.
+    // No legacy origin configured (e.g. preview deployments) — /clinic falls
+    // through to the app's normal routing and 404s honestly rather than
+    // proxying anywhere.
     if (!LEGACY_ORIGIN) {
       return [];
     }
     return {
-      // beforeFiles: these must win over the filesystem and dynamic routes,
-      // so a page or route added later under /clinic or /.well-known can
-      // never accidentally shadow the proxy.
+      // beforeFiles: this must win over the filesystem and dynamic routes, so
+      // a page or route added later under /clinic can never accidentally
+      // shadow the proxy.
       beforeFiles: [
         {
           source: "/clinic/:path*",
           destination: `${LEGACY_ORIGIN}/:path*`,
         },
-        // UNDER EVALUATION: lets the legacy host keep renewing a TLS
-        // certificate for a hostname that now resolves to Vercel, by
-        // proxying ACME HTTP-01 challenge requests back to it. May need to
-        // be removed if it interferes with Vercel's own certificate
-        // issuance for the same hostname.
-        {
-          source: "/.well-known/acme-challenge/:token*",
-          destination: `${LEGACY_ORIGIN}/.well-known/acme-challenge/:token*`,
-        },
+        // There was also a rewrite here sending /.well-known/acme-challenge/*
+        // to the legacy origin, so that host could keep renewing a TLS
+        // certificate for a name that now resolves to Vercel. It was removed
+        // on 2026-08-23 because it cannot work: Vercel serves that path
+        // itself, at the platform layer, ahead of application routing. A
+        // request for it returns Vercel's own token store —
+        //   X-Vercel-Acme-Ips: 216.198.79.3,64.29.17.3,...
+        //   {"error":{"message":"Token not found","code":"not_found",...}}
+        // — never reaching this config. Do not re-add it; see
+        // Production_Cutover.md, Hazard 9.
       ],
     };
   },
