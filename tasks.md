@@ -63,6 +63,19 @@ Two things that bear repeating here, because this is the file both agents open:
 | TJ-017 | Let a proxy fall-through fail cleanly | DONE — task commit `33cb466`, merged to `master` as `68cc31d` with `--no-ff`; runtime-proven against a measured master baseline | `chore/clinic-path-public` |
 | TJ-018 | Document the production environment variables | DONE — task commit `8bb70df`, merged to `master` as `cd3d4cf` with `--no-ff`; all seven deployment variables now documented, `.env` still ignored | `docs/env-example` |
 | TJ-019 | Migrate the `middleware` file convention to `proxy` | BACKLOG — deferred until after the cutover; see `Production_Cutover.md` | — |
+| TJ-020 | `.form-grid` in the employee modals has never fitted 320px | BACKLOG — no planning pass | — |
+| TJ-021 | Every admin page overflows horizontally at 320px | BACKLOG — no planning pass | — |
+| TJ-022 | Warn before unsaved clinical text is discarded | DONE — merged `6467b39` with `--no-ff`; runtime-proven and visually reviewed | `feat/unsaved-changes-warning` |
+| TJ-023 | Stop serving clinical data to secretaries | DONE — merged `c86985b` with `--no-ff`; runtime-proven and visually reviewed | `feat/clinical-read-boundary` |
+| TJ-024 | The session page claims "Saved!" on a failed request | BACKLOG — no planning pass; **re-confirmed still present 2026-08-23** | — |
+| TJ-025 | **ID contested** — cited in shipped code but never defined here; see TJ-026 | — | — |
+| TJ-026 | Reconcile the four unrecorded `master` commits and their task-ID citations | BACKLOG — no planning pass | — |
+| TJ-027 | Patch the critical `next-auth` fail-open advisory | BACKLOG — no planning pass; **security, semver-safe fix** | — |
+| TJ-028 | Clear the remaining dependency advisories (`next`, `sharp`, transitives) | BACKLOG — no planning pass | — |
+| TJ-029 | Add CI to enforce build, typecheck and lint | BACKLOG — no planning pass | — |
+| TJ-030 | ESLint findings have drifted from 55 to 61 | BACKLOG — no planning pass | — |
+| TJ-031 | The repo carries an 18 MB video and six duplicated assets | BACKLOG — no planning pass | — |
+| TJ-032 | `README.md` is six months stale | BACKLOG — no planning pass | — |
 
 ---
 
@@ -6502,6 +6515,89 @@ GOOGLE_PLACES_PLACE_ID=
 - **Why:** `next build` emits `⚠ The "middleware" file convention is deprecated. Please use "proxy" instead.` under Next 16.1.6. It is a warning, the build passes, and nothing is broken today.
 - **Why it is deliberately not queued as READY:** `src/middleware.ts` is the application's entire authentication boundary — it exports `NextAuth(authConfig).auth`, and its `matcher` decides which requests are checked *at all*. Its two failure modes are "every protected route is public" and "nothing is reachable", neither of which announces itself in a build log. Landing that rename in the same window as a DNS migration means that when something breaks, nobody can say whether the cause was the rename or the cutover. Sequence it deliberately once the cutover has settled.
 - **What the pass must do when it runs:** read the Next 16 migration note rather than assuming a file rename suffices — confirm whether the export shape and the `config.matcher` convention carry over unchanged, and whether `NextAuth().auth` is still the supported wrapper under the new convention. Verification must include an anonymous request to `/admin` still redirecting, and an authenticated request to a role-mismatched route still landing on `/unauthorized`.
+
+---
+
+## Health check — 2026-08-23
+
+A full read-only sweep of the project and the repo, run at the user's request. Nothing was changed and the live database was not touched. What passed is recorded here so a future pass can tell a *new* failure from one that was already known; what failed became TJ-026 … TJ-032 below.
+
+**Scope, and one thing that moved underneath it.** The sweep was taken against `03920aa`. While it was running, `081674f` — the `/clinic` legacy proxy merge — landed on `master`, changing `.env.example`, `next.config.mjs`, `src/middleware.ts` and `src/lib/auth.config.ts`. It did **not** touch `tasks.md`. Every finding below was re-checked against the new HEAD and still holds, with the single exception noted in the next paragraph. Note that `081674f` also makes TJ-019 (`middleware` → `proxy`) and TJ-028's Next-version question live in a way they were not an hour earlier: `src/middleware.ts` has just been rewritten, so read it before either pass.
+
+**Passed, verified by command, not by eye:** `npx tsc --noEmit` exits **0**. `npx next build` exits **0**. `npx prisma validate` reports the schema valid (12 models, 8 enums). `.env` has **never** been committed on any branch, and every "secret-like" grep hit in tracked files is an environment variable *name* in a comment or a `process.env` read, never a value. `src` holds **0** `console.log` calls, **0** TODO/FIXME/HACK markers, and **2** `any` casts. All seven surviving feature branches are fully merged into `master` and **0** commits ahead — they can be deleted whenever convenient.
+
+**The one claim that expired the same day it was written.** At `03920aa`, `.env` and `.env.example` had zero key drift in either direction. `081674f` added three keys to `.env.example` — `LEGACY_ORIGIN`, `SUPABASE_SERVICE_ROLE_KEY` and `TZ` — and **none of the three is present in the local `.env`**, which now has 7 of the documented 10. Each absence means something different, and they should not be lumped together:
+
+- `SUPABASE_SERVICE_ROLE_KEY` — already known, and exactly what blocks TJ-014d.
+- `TZ` — **benign locally.** `next.config.mjs:4` sets `process.env.TZ = "Asia/Amman"` in the config itself, before anything reads it, so the variable being absent from `.env` changes nothing. It is documented for the deploy host's benefit, not the local one.
+- `LEGACY_ORIGIN` — the one to watch, though **not a defect**: `next.config.mjs:52` returns `[]` from `rewrites()` when it is unset, and the surrounding comment says that is deliberate and correct for preview deployments, where `/clinic` *should* 404 rather than proxy somewhere. The hazard is only that the same code path is indistinguishable from a misconfigured **production** build — `next build` exits 0 either way, and the missing `/clinic` proxy is invisible until someone requests it. Worth an explicit assertion in the cutover procedure rather than a new task.
+
+**Standing caution for whoever reads the audit next.** Counting role checks per route with `grep` produces false positives: `src/app/api/patients/[id]/files/route.ts` looks unguarded because it gates through a `WRITE_ROLES` array rather than an inline `role !==` comparison. Six routes really do authorise on session existence alone — `notes/route.ts`, `patients/route.ts`, `patients/duplicates/route.ts`, `reservations/[id]/duplicate/route.ts`, `upload/route.ts` and `storage/clinical/[...path]/route.ts` — and for the first five that is almost certainly intended, because all three staff roles legitimately use them. Read the file before calling any of them a defect.
+
+---
+
+### TJ-026 — Reconcile the four unrecorded `master` commits and their task-ID citations
+
+- **Status:** BACKLOG — no planning pass. Do not execute against this ID.
+- **Why:** Four commits sit on `master` — `fc85eb8`, `3ec33c8`, `aac85c2`, `03920aa` — that this file has no record of. `tasks.md` was last written at `84f53d4`; all four post-date it. They are not small: between them they change `prisma/schema.prisma` (twice), `src/lib/auth.ts`, the storage boundary and the clinical audit trail.
+- **Every marker of the protocol is missing.** They landed as a **linear chain directly on `master`** — single parents, no branch, no `--no-ff` merge commit — unlike every prior task in this file. They carry a **different author identity**, `Ali <ali.almuhtaseb@student.manchester.ac.uk>`, where all previous work is `alihamami <ahamami02@outlook.com>`. None records a planning pass, a status line, or a visual review.
+- **The task IDs they cite do not hold up, and this is the part that actively misleads.** Nine files now carry `TJ-024` comments — `lib/audit.ts:7`, `lib/auth.ts:67`, `lib/storageUrl.ts:20`, `lib/uploads.ts:27`, `api/patients/[id]/audit/route.ts:7`, `api/patients/[id]/route.ts:10`, `api/storage/clinical/[...path]/route.ts:10`, `api/upload/route.ts:9`, `doctor/page.tsx:47` — but **TJ-024 in this file is an unrelated BACKLOG item explicitly marked "Do not execute against this ID."** Two further files, `api/doctor-profiles/[id]/route.ts:67` and `api/employees/doctors/[id]/route.ts:191`, cite **`TJ-025`, which has never been defined here at all.** A future reader following either citation lands on the wrong task or on nothing.
+- **What its planning pass owes:** read the four diffs and decide what work they actually represent, then give that work real IDs and real entries — the four commits plausibly cover doctor patient access, login lockout, the private storage bucket, and doctor hard-delete, but that must be read from the diffs rather than inferred from the subject lines. Decide what `TJ-025` becomes and correct the citations in all eleven files. Establish whether the two `schema.prisma` changes were pushed to the shared Supabase database — with no migrations, `db push` writes straight to live clinic data, so the schema may already have moved without any record of when or by whom. Confirm the author identity split is the same person on a second machine and not a third party with push access.
+
+---
+
+### TJ-027 — Patch the critical `next-auth` fail-open advisory
+
+- **Status:** BACKLOG — no planning pass. Do not execute against this ID. **Security; treat as the highest-priority item in this batch.**
+- **Why:** `npm audit --omit=dev` reports **21 vulnerabilities (2 critical, 14 high, 5 moderate)** in production dependencies. The critical pair is `next-auth` (direct, `5.0.0-beta.30`) and its `@auth/core` dependency. The lead advisory reads: *"Configuration errors can cause existence-based auth checks to fail open (auth object populated with an error)."*
+- **This one names the shape of this app's authentication boundary.** `src/lib/auth.config.ts:41` gates every protected route on `const isLoggedIn = !!auth?.user`, and **31 API handlers** gate on a bare `if (!session)`. That is exactly the existence-based check the advisory describes failing open. The same package also carries a homoglyph `@` bypass in the email normaliser, an uncaught exception in `getToken()` on malformed Bearer headers, and OAuth state/nonce/PKCE cookies not bound to the provider that set them.
+- **The fix is cheap, which is the argument for doing it first.** The vulnerable range ends at `5.0.0-beta.31`; `npm outdated` already reports **`5.0.0-beta.32`** as Wanted. It is a **semver-compatible** bump inside the same beta line, not a major migration.
+- **What its planning pass owes:** confirm `beta.32` actually clears both advisories rather than assuming Wanted equals patched, and read that release's notes for changes to the `authorized` callback signature or the JWT/session callbacks, since `auth.config.ts` depends on all three. Decide whether the existence-based guards should additionally be hardened to assert a *role* rather than mere presence — that would make the app resilient to this class of advisory instead of just this instance. Verify against a running app before merge: an unauthenticated request to a protected route must still redirect, and each of the three roles must still reach exactly its own surface.
+
+---
+
+### TJ-028 — Clear the remaining dependency advisories
+
+- **Status:** BACKLOG — no planning pass. Do not execute against this ID. Sits behind TJ-027, which carries the urgent half.
+- **Why:** After the `next-auth` criticals, fourteen high-severity advisories remain. Two are direct and need judgement:
+  - **`next` 16.1.6 → 16.3.2** — *HTTP request smuggling in rewrites*, plus unbounded `next/image` disk cache growth and unbounded postponed-resume buffering. The rewrite advisory matters here specifically because `src/middleware.ts` fronts every non-static path with a matcher, and the cutover plan proxies `/clinic` to the legacy clinical system.
+  - **`sharp` 0.34.5 → 0.35.3** — inherited libvips CVEs (`CVE-2026-33327`, `-33328`, `-35590`, `-35591`). npm marks this fix **semver-major**.
+  - The rest are transitive, reached through `@supabase/supabase-js` (`ws`) and `prisma` (`valibot`, `@prisma/dev`), and should clear when those are bumped: `@supabase/supabase-js` 2.97.0 → 2.112.3 and `prisma`/`@prisma/client` 7.4.1 → 7.9.1 are both semver-compatible.
+- **What its planning pass owes:** decide the order and the blast radius. The `next` minor bump crosses 16.1 → 16.3 and this project already has a deprecation warning pending against that line (TJ-019, `middleware` → `proxy`) — check whether 16.3 turns that warning into an error before bumping, because that would silently merge two tasks. Bumping `@prisma/client` regenerates the client into `src/generated/prisma`; confirm that still typechecks. `sharp` is build-time image handling only, so its major bump is lower-risk than its severity suggests — say so explicitly rather than letting "MAJOR" stall the whole batch. **Do not run `npm audit fix --force`**; it will take the majors unattended.
+
+---
+
+### TJ-029 — Add CI to enforce build, typecheck and lint
+
+- **Status:** BACKLOG — no planning pass. Do not execute against this ID.
+- **Why:** `.github/workflows` does not exist. Nothing mechanically checks anything on push or on a pull request. This is not a hypothetical gap: it is the direct reason the four commits in TJ-026 could land on `master` with no record, and the reason the lint drift in TJ-030 went unnoticed. The protocol in `Claude_Instructions.md` is enforced entirely by whoever remembers it.
+- **What its planning pass owes:** decide the minimum that actually pays for itself — `tsc --noEmit` and `next build` are both currently green and would fail loudly on a regression, so they are the obvious first two. Lint is **not** currently green (46 errors), so wiring it as a blocking gate would fail the very first run; decide whether it lands as non-blocking now and blocking after TJ-030, or waits. Note that `next build` needs `DATABASE_URL` present to run `prisma generate` in `postinstall` — work out what a CI runner is given without putting live clinic credentials into GitHub Actions, which is a real constraint and probably points at a dummy connection string.
+
+---
+
+### TJ-030 — ESLint findings have drifted from 55 to 61
+
+- **Status:** BACKLOG — no planning pass. Do not execute against this ID.
+- **Why:** TJ-015 scoped ESLint to hand-written app code and recorded **55 real findings** as the baseline. `npx eslint .` now reports **61 problems — 46 errors and 15 warnings**. The scoping itself still holds: nothing from `src/generated/prisma` or `design_handoff_landing_and_blog_cms` appears in the output, so the drift is all in application code.
+- **The distribution is narrow, which makes this tractable.** By rule: **42** `react-hooks/set-state-in-effect` (errors), **11** `@next/next/no-img-element` (warnings), **4** `react-hooks/preserve-manual-memoization` (errors), **4** `react-hooks/exhaustive-deps` (warnings). The two reservation-creation pages, `admin/reservations/new/page.tsx` and `secretary/reservations/new/page.tsx`, are the worst single files at 4 problems each, and share the same `fetchDoctors` `useCallback` whose empty dependency array does not match its inferred `form.doctorId` dependency — the React Compiler reports it is **skipping optimisation of those components entirely** as a result.
+- **What its planning pass owes:** separate the rules that indicate a real bug from the ones that are noise at this stage. `set-state-in-effect` at 42 occurrences is a pattern this codebase uses deliberately for data fetching, and mass-rewriting it is a large, risky change to clinical screens — decide whether the honest answer is to fix the four `preserve-manual-memoization` cases (which cost real render performance and point at a genuine dependency bug) and formally accept or downgrade the rest, rather than pretending 61 will reach 0. Whatever is decided, record the new agreed baseline here so the next drift is measurable.
+
+---
+
+### TJ-031 — The repo carries an 18 MB video and six duplicated assets
+
+- **Status:** BACKLOG — no planning pass. Do not execute against this ID. Low priority; recorded so it is a decision rather than an oversight.
+- **Why:** `public/hero.mp4` is **18,154,244 bytes** — roughly 17 MiB of a 19.5 MiB pack, so very nearly the entire weight of the repository's history is one video that does not delta-compress between revisions. Separately, six files are **byte-identical duplicates** between `public/` and `design_handoff_landing_and_blog_cms/public/`: `cupping.webp`, `hawkgrips.webp`, `joint-manipulation.webp`, `logo.jpg`, `noor_hamami_head_doctor.jpg` and `theragun.webp`.
+- **The handoff directory is still referenced,** by `Claude_Instructions.md:318` and by this file, as the design reference for the landing page and blog CMS — so it is **not** simply dead weight to delete, and TJ-002 already pruned unreferenced root assets once. The duplication is the question, not the directory's existence.
+- **What its planning pass owes:** decide whether `hero.mp4` should move out of git entirely (it is served from `public/` and could be an uploaded asset, but that adds a deploy-time dependency the cutover does not currently have) or simply be left alone as a one-off cost already paid. For the duplicates, decide whether the handoff copies can reference `public/` or whether the prototype `.dc.html` files need them to stand alone — open the prototypes and check before removing anything, because their whole value is being viewable in isolation. Rewriting history to drop the video is **out of scope** unless the user asks: the repo has a remote and other clones may exist.
+
+---
+
+### TJ-032 — `README.md` is six months stale
+
+- **Status:** BACKLOG — no planning pass. Do not execute against this ID. Low priority.
+- **Why:** `README.md` was last committed **2026-02-14** (`fa4264f`). Everything that now defines this application arrived after that date: the three-role authentication boundary, the clinical read boundary (TJ-023), the audit trail, private storage for patient and employee documents, the content-management grant, and the production cutover plan. The file describes a project that no longer exists.
+- **What its planning pass owes:** decide who the README is actually for, because that determines all of its content. If it is for the clinic, it duplicates `Production_Cutover.md` and should mostly link to it. If it is for a future developer, the useful content is the run/build commands, the environment variables (already documented in `.env.example` by TJ-018 — link, do not restate), the role model, and the single most important operational fact about this project: **there is no local development database and no migrations, so `prisma db push` writes directly to the live clinic database.** That warning belongs somewhere a newcomer reads first, and today it is nowhere in the repo.
 
 ---
 
