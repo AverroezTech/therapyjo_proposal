@@ -1,10 +1,68 @@
-# Production_Cutover.md — therapyjo.com
+# Production_Cutover.md — therapyjo.com on Vercel
 
-The procedure for pointing `therapyjo.com` at this application while the legacy
-clinical system keeps running. Read it completely before acting on any part of it.
+The procedure for pointing `therapyjo.com` at this application, hosted on **Vercel**, with DNS
+moved to **HostGator**, while the legacy clinical system keeps running at **`/clinic/`**.
+Read it completely before acting on any part of it.
 
 **Trigger:** the user says "post to production", or names a phase from this file.
 **Owner:** the planner runs this. It is not a queued task and does not come off `tasks.md`.
+
+**Planning pass:** second, 2026-08-23. Supersedes the host-agnostic first pass. What changed:
+
+| Area | First pass | This pass |
+|---|---|---|
+| Host | "a hosting platform" | Vercel, with the routing expressed in `next.config.mjs` |
+| DNS | Nameservers to a proxy provider | Nameservers to HostGator (user decision, 2026-08-23) |
+| Legacy origin | "preserve the `Host` header" | **Impossible on Vercel** — rewrites send the destination's hostname. The origin must answer to its own name. See Hazard 1. |
+| Mail | "check the mail records twice" | A specific, verified break: the SPF `a` mechanism under `DMARC p=reject`. See Hazard 2. |
+| Prefix mechanics | "relative paths survive" | Verified true for the legacy login shell, plus the `trailingSlash` loop and the escape catalogue |
+| Env | 7 variables | 10 — `LEGACY_ORIGIN`, `SUPABASE_SERVICE_ROLE_KEY` and `TZ` were missing, and each breaks something |
+
+### Where things stand — end of session, 2026-08-23
+
+**Read this first.** Nothing public has moved. `therapyjo.com` still resolves to the legacy host
+and still serves the legacy application, exactly as it did before this work started.
+
+| | State |
+|---|---|
+| `master` / deployed | **`4264663`**, pushed. Vercel builds from GitHub — **`git push` is the deploy trigger** |
+| Live at | `therapyjo-proposal.vercel.app` |
+| `/clinic/` proxy | **Working and verified in production**, including relative assets |
+| Timezone | **Fixed and verified in production** — `Asia/Amman` |
+| Custom domain on Vercel | **Not attached.** Apex still `208.98.35.122` |
+| DNS | Still at site4now.net, **untouched** |
+| SPF | Still `v=spf1 a mx …` — unfixed, and unfixable until Phase 3 |
+| **Legacy hosting panel** | **No access.** No login; vendor unreachable |
+| **Ability to edit DNS** | **None** until the nameservers move |
+| Vercel plan | **Hobby.** Pro declined — see *Declined, deliberately* |
+| Supabase | Free / Nano, `aws-1-eu-west-1`. Vercel functions in `iad1` — mismatched, declined |
+
+**The DNS row reframes everything.** The zone is hosted where nobody can reach it, so *no record
+is editable at all* until the nameservers move to HostGator. Phase 3 is therefore not merely a
+migration step — it is the step that **returns control of the domain to its owner**, and every
+other DNS-dependent action sits downstream of it.
+
+### Next actions, in order
+
+1. **Phase 3 — move the nameservers to HostGator.** Nothing blocks it; the registrar panel is
+   the user's. Transcribe the seven records in Phase 3, **with the corrected SPF** (Phase 1 folds
+   into this — see the note there).
+2. **Decide Hazard 9** before Phase 4. Option 2 is dead; the live choices are 1 + 3, or 4, or 5.
+3. **Ask the clinic two questions:** is any `therapyjo.com` email address actually used, and is
+   anything automated pointing at the bare domain?
+4. **Run the two Phase 2c checks that need a login:** the 6 MB upload and a patient-document
+   round trip.
+
+### Owed cleanup
+
+- `src/app/api/public/diagnostics/route.ts` is **temporary** and still live. Kept deliberately —
+  it re-verifies the timezone cheaply after the Phase 4 rebuild, when `AUTH_URL` changes and
+  everything is rebuilt. **Delete it once Phase 4 passes.**
+- `TJ-033` (4.5 MB upload limit), `TJ-034` (ambient timezone), `TJ-035` (SEO) are candidates
+  named in this file and **not yet filed** in `tasks.md`.
+
+So `/clinic/*` does not exist in production yet, and nothing public has moved. Phase 2 is now
+*audit and retrofit* rather than *create and deploy*, and it no longer has to wait on Phase 1.
 
 ---
 
@@ -20,11 +78,12 @@ All that changes is which address routes to which system.
 
 ### Hard rules
 
-1. **Never log into the legacy system.** No credentials for it are needed, wanted, or accepted.
-   No step here reads from or writes to its database. If a step seems to require it, stop — the
-   step is wrong.
+1. **Never log into the legacy application.** No credentials for it are needed, wanted, or
+   accepted. No step here reads from or writes to its database. Its *hosting control panel* is a
+   different thing and is a legitimate `[USER]` destination; its *application* is not.
 2. **Never run a destructive database command** against either database as part of this. No
-   `prisma db push`, no `migrate reset`, no seed, against production.
+   `prisma db push`, no `migrate reset`, no seed, against production. There is one shared
+   Supabase Postgres and `db push` edits live clinic data.
 3. **Steps are owned.** A `[USER]` step happens in a third-party web panel behind a login and
    **cannot be performed by any agent.** Do not attempt it, do not ask for the password, do not
    work around it. Present the step and wait.
@@ -32,53 +91,344 @@ All that changes is which address routes to which system.
 
 ---
 
-## Who can do what
+## Verified state of the live domain
 
-Most of this cutover is not repo work. Be honest about that up front rather than discovering
-it halfway through.
+Measured 2026-08-23 from public DNS and unauthenticated HTTP. No credentials used. Re-measure
+before acting — these are facts with a date on them, not constants.
+
+| Fact | Value | Why it matters |
+|---|---|---|
+| Authoritative NS | `ns1/ns2/ns3.site4now.net` | **DNS is at the legacy Windows host, not HostGator.** HostGator is registrar only. |
+| Apex `A` | `208.98.35.122` | The legacy IIS server |
+| Apex `A` TTL | **300s** | Rollback propagates in five minutes |
+| Wildcard | `*` → `208.98.35.122` | Every unlisted subdomain resolves to legacy. A wildcard, not dozens of records. |
+| `www` `A` | `208.98.35.122` | Serves the legacy app, **HTTP 200, valid certificate** |
+| `mail` | **`CNAME` → `mail5010.site4now.net`** (which resolves to `208.98.34.60`) | **Not an A record.** Transcribing it as `A → 208.98.34.60` works today and silently breaks whenever site4now renumbers its own mail host. |
+| `MX` | `10 igw10.site4now.net` | Clinic mail |
+| `TXT` SPF | `v=spf1 a mx include:_spf.site4now.net -all` | **The `a` mechanism is the trap.** See Hazard 2. |
+| `TXT` `_dmarc` | `v=DMARC1;p=reject;pct=100;rua=mailto:postmaster@therapyjo.com` | **`p=reject`** — an SPF failure bounces mail, it does not junk it |
+| TLS certificate | **One** Let's Encrypt certificate serves both names — identical serial `06575A81…`, SAN `therapyjo.com` + `www.therapyjo.com`, expires **2026-10-22** | `www` is already a certified, working legacy address — and the shared SAN is a timed trap. See Hazard 9. |
+| `CAA` | **None**, on the apex or on `www` — verified twice over DoH | Nothing restricts which CA may issue, so Vercel's certificate request in Phase 4 cannot be blocked by one. Nothing to transcribe. **Do not add a CAA record during the cutover** — it can only turn a working issuance into a failed one. Worth considering afterwards. |
+| DKIM | **None** under 16 probed selectors, with a validated absent-control | Nothing to transcribe. Confirm against the zone export, which is authoritative where probing is not. |
+| `SRV`, `autodiscover` | **None.** `autodiscover` resolves only via the wildcard, to the *web* IP | No Outlook autoconfiguration exists today, so the cutover cannot regress it. |
+| Server | `Microsoft-IIS/10.0`, `X-AspNet-Version: 4.0.30319` | |
+| IIS binding | `Host: therapyjo.com` → 200; any other host → **403**; unknown SNI → **connection reset** | The origin must be a hostname IIS is bound to. See Hazard 1. |
+| Login markup | `<form method="post" action="./">` with `__VIEWSTATE`; assets `assets/css/…`, `vendors/…`, `images/…` | **All relative.** The login shell survives a path prefix intact. |
+| `Cache-Control` | `private` | Vercel's edge will not cache proxied clinical responses |
+
+### How complete is this, without the zone export?
+
+The zone export may not be obtainable — the user cannot log into the legacy hosting panel. So
+the question is how much the table above can be trusted on its own. More than it first appears,
+for a structural reason:
+
+**The wildcard is a safety net.** `* → 208.98.35.122` is being transcribed, so any subdomain
+missed that resolves there is still covered after the move. A missed record only bites if it is
+**not an A record**, or is an A record pointing somewhere *other* than the web IP.
+
+Non-A records are enumerable by name even behind a wildcard, because the wildcard synthesises
+answers only for A queries — a TXT or CNAME query at a nonexistent name returns an honest NODATA.
+That was exercised on 2026-08-23 with validated absent-controls:
+
+| Probe | Coverage | Result |
+|---|---|---|
+| DKIM selectors | 37 names | All absent |
+| `SRV` services | 9 standard services | All absent |
+| `CNAME` / `TXT` / `MX` | 33 plausible subdomain names | All absent |
+| `CAA` | apex and `www` | All absent |
+
+**What remains genuinely unknowable by probing:** a record at a name nobody would guess, and an
+A record pointing somewhere other than `208.98.35.122`. Certificate-transparency logs would
+surface the names, and crt.sh returned `502` on every attempt that day — a service outage,
+confirmed by a bare homepage fetch failing the same way. It stays open as Phase 0 step 7.
+
+**Assessment:** proceeding on the probed table alone is a *low* risk for a zone this small and
+this ordinary, and the residual risk is concentrated in mail records — which are exactly the ones
+probed most systematically. It is not zero, and it is not the same as knowing. Get the export if
+anyone can; do not treat its absence as a reason to stop.
+
+---
+
+## Who can do what
 
 | Marker | Meaning | Examples |
 |---|---|---|
-| `[USER]` | A human, in a third-party control panel. An agent cannot do these. | DNS records, nameserver change, Cloudflare rules, host account setup, entering secrets |
-| `[EXECUTOR]` | Repo work on a branch, under the normal Planner/Executor Protocol | Config changes, `.env.example`, build verification |
-| `[PLANNER]` | Verification an agent can perform from outside — reading public URLs, checking headers, confirming DNS resolution | Post-change checks in every phase |
+| `[USER]` | A human, in a third-party control panel. An agent cannot do these. | DNS records, nameserver change, Vercel project and env vars, legacy hosting panel, secrets |
+| `[EXECUTOR]` | Repo work on a branch, under the normal Planner/Executor Protocol | `next.config.mjs`, `src/middleware.ts`, `.env.example`, build verification |
+| `[PLANNER]` | Verification from outside — reading public URLs, checking headers, resolving DNS | Post-change checks in every phase |
 
 ---
 
 ## Target addresses
 
-| Address | Serves | Notes |
-|---|---|---|
-| `therapyjo.com` | This app — landing page | `src/app/page.tsx` |
-| `/blog`, `/blog/[slug]` | This app — public blog | |
-| `/login`, `/admin`, `/doctor`, `/secretary` | This app — dashboards and content admin | Already at these paths. No code change. |
-| `/clinic/*` | **Legacy clinical system**, proxied to its existing origin | Staff use this daily |
+| Address | Serves |
+|---|---|
+| `therapyjo.com` | This app — landing page (`src/app/page.tsx`) |
+| `/blog`, `/blog/[slug]` | This app — public blog |
+| `/login`, `/admin`, `/doctor`, `/secretary` | This app — dashboards and content admin. Already at these paths; no code change. |
+| `/clinic/*` | **Legacy clinical system**, proxied by Vercel to its existing origin |
+| `www.therapyjo.com` | **The legacy origin.** Unchanged, still pointing at `208.98.35.122`. Doubles as staff's direct fallback. |
+| `new.therapyjo.com` | Temporary — this app on Vercel during Phase 3, removed after Phase 5 |
 
 `/admin` is unavailable as the legacy prefix — the legacy app already answers there.
-`/login` is unavailable — this app already owns it (`src/app/login/`).
+`/login` is unavailable — this app owns it.
 
-Putting this app's admin under `/frontend` instead was considered and deliberately deferred: it
-would mean restructuring routing and every internal link, for a cosmetic address. It is not a
-cutover prerequisite.
+### Request flow after cutover
+
+```
+browser ──► therapyjo.com  (A → Vercel)
+              │
+              ├─ /, /blog, /login, /admin, …  ─► this app's functions ─► Supabase
+              │
+              └─ /clinic/*  ─► Vercel rewrite ─► https://www.therapyjo.com/*
+                                                  (A → 208.98.35.122, IIS, own cert)
+```
+
+The legacy origin is reached **by name**, over TLS, at an address it already answers to. Nothing
+in the legacy hosting panel has to change for this to work — which is the point of choosing
+`www` over a fresh origin hostname.
+
+**Cost of that choice:** visitors typing `www.therapyjo.com` land on the clinical login rather
+than the marketing site. If that is unacceptable, the alternative is a dedicated origin hostname
+— say `origin.therapyjo.com` — which requires the legacy host to bind it *and* issue a
+certificate for it (Hazard 1), after which `www` can redirect to the apex normally. That is one
+panel task and one extra DNS record. It is not a cutover prerequisite and can be done later
+without touching anything else.
+
+---
+
+## Repo changes required
+
+All `[EXECUTOR]`, on a branch, in Phase 2b. **None of this is in the deployment that is currently
+live** — that build is `03920aa`, which has no `rewrites`, no `redirects` and no `/clinic`
+exclusion. The site being "ready" is a statement about the marketing site and the admin; the
+legacy proxy does not exist yet.
+
+None of it is risky in isolation, and all of it must be verified locally with
+`npm run build && npm start` plus `curl` before it is deployed, because Next's path matching is
+where plans of this shape usually break.
+
+### 1. `next.config.mjs` — the proxy
+
+**Implemented and locally proven on branch `routing/clinic-legacy-proxy` (`313af8f`), 2026-08-23.
+Not merged.** The design below is the corrected one — the first draft of this section contained a
+bug, described immediately after it.
+
+```js
+// Absolute origin URL, e.g. "https://www.therapyjo.com". Unset on preview
+// deployments, where /clinic must 404 rather than proxy.
+const LEGACY_ORIGIN = process.env.LEGACY_ORIGIN;
+
+const nextConfig = {
+  // The legacy app is served from /clinic/ and every asset and form action in
+  // its markup is relative to that directory, so the trailing slash is
+  // load-bearing. This disables Next's normalisation of it.
+  skipTrailingSlashRedirect: true,
+
+  // No redirects() entry. "/clinic" -> "/clinic/" lives in middleware. See below.
+
+  async rewrites() {
+    if (!LEGACY_ORIGIN) return [];
+    return {
+      beforeFiles: [
+        { source: "/clinic/:path*", destination: `${LEGACY_ORIGIN}/:path*` },
+        // UNDER EVALUATION — Hazard 9, Option 2. Lets the legacy host keep
+        // renewing a certificate for a name that now resolves to Vercel.
+        // Remove if it interferes with Vercel's own issuance.
+        {
+          source: "/.well-known/acme-challenge/:token*",
+          destination: `${LEGACY_ORIGIN}/.well-known/acme-challenge/:token*`,
+        },
+      ],
+    };
+  },
+};
+```
+
+`beforeFiles` is required — the rewrite must win over filesystem and dynamic routes.
+
+#### Why the redirect is not in `redirects()`
+
+**The obvious design is wrong and produces the exact loop it was meant to prevent.** Next compiles
+every `redirects()` source with an optional trailing slash appended, unconditionally —
+`next/dist/lib/redirect-status.js`, `modifyRouteRegex`, which does
+`regex.replace(/\$$/, '(?:\\/)?$')` with no `strict` or `skipTrailingSlashRedirect` guard.
+
+So `source: "/clinic"` compiles to a regex that **also matches `/clinic/`** — and sends it to
+`/clinic/`. A self-redirect, forever. Verified in Next's source and observed live before the
+cause was found.
+
+The fix is an exact string comparison in middleware, which has no such leniency. This also means
+bare `/clinic` must **not** be excluded from the middleware matcher, which is why the exclusion
+below is `clinic/` with a required slash rather than `clinic(?:/|$)`.
+
+#### Locally verified, all ten cases
+
+Against a stand-in origin that echoes the path it received. Every case passed.
+
+| # | Case | Result |
+|---|---|---|
+| 1 | `/clinic` → one 307 → `/clinic/`, no loop | PASS |
+| 2 | `/clinic/` → origin receives `/` | PASS |
+| 3 | `/clinic/Default.aspx?id=7` → query preserved | PASS |
+| 4 | `/clinic/deep/nested/path` → prefix stripped | PASS |
+| 5 | `/.well-known/acme-challenge/<token>` → reaches origin | PASS |
+| 6 | Neither path redirects to `/login` | PASS |
+| 7 | `/blog` still served by this app | PASS |
+| 8 | `/admin` unauthenticated still → `/login` | PASS |
+| 9 | `/clinicians` NOT proxied, NOT exempted | PASS |
+| 10 | `LEGACY_ORIGIN` unset → `/clinic/` clean 404 | PASS |
+
+Case 1 passing also settles a question this plan had been hedging: **middleware runs before
+`beforeFiles` rewrites.** The rewrite's own compiled regex matches bare `/clinic` too, so if the
+order were reversed, case 1 would have proxied instead of redirecting.
+
+Cases 8 and 9 are the ones that matter for safety — they prove the matcher was not over-broadened
+and that authentication still guards everything it did before.
+
+### 2. `src/middleware.ts` — keep auth away from the prefix
+
+Two exclusions, plus the `/clinic` redirect that could not live in `redirects()`:
+
+```js
+export default auth((req) => {
+    if (req.nextUrl.pathname === "/clinic") {
+        return NextResponse.redirect(new URL("/clinic/", req.nextUrl));
+    }
+});
+
+// matcher:
+"/((?!_next/static|_next/image|favicon\\.ico|clinic/|\\.well-known/|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico|mp4|webm|mp3|woff|woff2|ttf|eot|css|js)$).*)",
+```
+
+Three things about that matcher are deliberate:
+
+- **`clinic/` carries a required trailing slash.** Bare `/clinic` must still reach middleware, or
+  the redirect above never runs.
+- **It is not `clinic`.** That would also exempt `/clinicians` and any future path starting with
+  those letters. The slash anchors it to the segment. Case 9 in the table above tests exactly this.
+- **`\.well-known/` is excluded too.** Without it, NextAuth intercepts ACME validation requests
+  and redirects them to `/login`, and the certificate never issues.
+
+Returning nothing from the wrapped function lets the request continue, with NextAuth's
+`authorized` callback still enforcing everything it did before — proven by cases 8 and 9.
+
+**One cosmetic side effect:** a bare `/clinic` request passes through the NextAuth wrapper and
+picks up `authjs.csrf-token` and `authjs.callback-url` cookies. Harmless — `/clinic` is a public
+route and no authentication is forced — but it means a staff member who never logs into this app
+still receives two of its cookies. Not worth fixing during a cutover.
+
+`src/lib/auth.config.ts` already lists `/clinic` in `publicRoutes` (TJ-017, landed). Keep it.
+The two together are deliberate belt and braces: the matcher means middleware never runs for
+`/clinic`, and `publicRoutes` means that if it somehow does, staff get an honest 404 instead of
+being redirected into *this* app's login — which looks exactly like the clinical system has been
+deleted.
+
+### 3. `.env.example` — add the three missing variables
+
+`LEGACY_ORIGIN`, `SUPABASE_SERVICE_ROLE_KEY` and `TZ` are each consumed or required in
+production, and none of them is documented. See the table below.
+
+### 4. Do **not** land in this window
+
+`next build` emits a deprecation warning for the `middleware` file convention (Next 16 prefers
+`proxy`). It is a warning, filed as **TJ-019**. Changing authentication plumbing in the same
+window as a DNS migration means that when something breaks you cannot tell which change caused
+it. The matcher edit above is a one-line exclusion, not a refactor; that is the whole allowance.
 
 ---
 
 ## Production environment variables
 
-Set on the hosting platform, never committed. `.gitignore` ignores `.env*`.
+Set in the Vercel project, Production scope, never committed. `.gitignore` ignores `.env*`.
 
 | Variable | Notes for production |
 |---|---|
-| `DATABASE_URL` | **Use Supabase's pooled connection string, not the direct one.** `src/lib/prisma.ts` opens a `pg.Pool` per instance; on a serverless host the direct connection exhausts Postgres connection slots under load. This is the single most likely cause of intermittent 500s after launch. |
-| `AUTH_SECRET` | Generate a **new** value for production. Do not reuse the development secret. |
-| `AUTH_URL` | Must match the hostname currently being served. Set it to the temporary host URL during Phase 1, and change it to `https://therapyjo.com` in Phase 3. **A stale value here is the #1 cause of a login that loops forever.** |
+| `DATABASE_URL` | **Supabase's pooled (Supavisor transaction, port `6543`) string, not the direct one.** `src/lib/prisma.ts` opens a `pg.Pool` per instance; against the direct connection, instance count multiplies that until Postgres runs out of slots. Simplest way to be certain: overwrite it with the Transaction-pooler string from Supabase's *Connect* dialog rather than trying to audit what is there — the value is Sensitive and cannot be read back. **`pg.Pool`'s `max: 3` should stay at 3 — see Hazard 8, this reverses earlier advice in this file.** |
+| `AUTH_SECRET` | Generate a **new** value for production. Never reuse the development secret. |
+| `AUTH_URL` | Must match the hostname actually being served. `https://new.therapyjo.com` in Phase 3, `https://therapyjo.com` in Phase 4. **A stale value here is the #1 cause of a login that loops forever.** |
+| `LEGACY_ORIGIN` | **New.** `https://www.therapyjo.com`. Absent, `/clinic` 404s instead of proxying — correct preview-deployment behaviour. **This one is a BUILD-time variable, and that is a trap.** `rewrites()` runs during `next build` and its result is baked into `.next/routes-manifest.json` as a literal string — verified 2026-08-23, the manifest contains the origin URL spelled out. A deployment built without it has **no proxy at all**, and `/clinic` 404s with nothing in any log to explain why. Setting it and restarting is not enough; it must be present **when the build runs**, and changing it requires a genuine rebuild, not a cache-reusing redeploy. |
+| `SUPABASE_SERVICE_ROLE_KEY` | **Already set in the Vercel project** (user-confirmed 2026-08-23), and it is not optional there. Without it `supabaseAdmin` is `null`, so `POST /api/upload` returns **503** for the `patient-files` and `employee-files` folders and `GET /api/storage/clinical/*` returns **503** — patient and employee documents could be neither uploaded nor viewed. Being set is not the same as working: Phase 2c round-trips a real document to prove it. Note this is the same key **TJ-014d** is blocked on; that task is blocked on having it *locally*, and remains so. |
+| `TZ` | **New.** `Asia/Amman`. See Hazard 4 — the `process.env.TZ` line in `next.config.mjs` does not reach Vercel's runtime. |
 | `NEXT_PUBLIC_SUPABASE_URL` | Same project as development unless a separate production project is created. |
 | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | As above. Public by design. |
-| `GOOGLE_PLACES_API_KEY` | Reviews section. Absent → reviews degrade, nothing crashes. |
+| `GOOGLE_PLACES_API_KEY` | Reviews section. Absent, reviews degrade and nothing crashes. |
 | `GOOGLE_PLACES_PLACE_ID` | As above. |
 
+### Vercel project settings
+
+Audited 2026-08-23. Project `therapyjo-proposal`, currently at `therapyjo-proposal.vercel.app`.
+
+| Setting | Current | Required | Why |
+|---|---|---|---|
+| Plan | **Hobby** | **Pro** | **Confirmed blocker.** Hobby is licensed for non-commercial use only, and a clinic's public site plus staff portal is commercial by any reading. This is a terms question, not a technical one — no error will ever tell you about it, and the remedy if Vercel notices first is suspension of the clinic's website. Settle it before the domain is pointed anywhere. |
+| Function region | **`iad1`** (US East) | **`dub1`** (Dublin) | Supabase is in **`aws-1-eu-west-1`** — Ireland. Vercel's `dub1` *is* AWS eu-west-1, so this co-locates functions with the database. Changeable on Hobby (one region, but you pick which). See below. |
+| Fluid Compute | **Enabled** | Keep | Good for this workload, and it changes the connection-pool advice — see Hazard 8. |
+| Node version | — | Match local | |
+| Deployment protection | — | On for Preview | Relevant to the service-role scope below. |
+
+**On the region — resolved 2026-08-23, and it is the cheapest win in this file.** Supabase is in
+`aws-1-eu-west-1` (Ireland). Vercel's functions are in `iad1` (Virginia). So today every single
+database query crosses the Atlantic and comes back.
+
+Vercel's `dub1` is AWS eu-west-1 — the same region as the database. Moving there collapses the
+function↔database hop from a transatlantic round trip to a same-region one, and **that hop is paid
+once per query**, so a page issuing four sequential queries saves four times over.
+
+It improves the other hop too, which is the unusual part — this is not a trade:
+
+| Hop | Today (`iad1`) | With `dub1` |
+|---|---|---|
+| Function → database | Virginia ↔ Ireland | Same region |
+| Jordan user → function | Jordan ↔ Virginia | Jordan ↔ Ireland |
+
+Both get shorter. `iad1` is simply the default nobody chose. Change it, redeploy — a new
+deployment is required for the region to take effect — and do it **before** measuring anything in
+Phase 3, or the latency numbers gathered there will describe a configuration you are about to
+abandon.
+
+**On pooler mode.** Local development uses the **session** pooler (same host, port `5432`).
+Production should use the **transaction** pooler (`6543`), which multiplexes many client
+connections onto few Postgres ones and is the right shape for serverless. That means production
+will run a pooling mode local development has never exercised. If `prepared statement … already
+exists` errors ever appear, that is the symptom and the cause is transaction mode — not a code
+bug. Switching local to `6543` as well is the cheap way to find that out during development
+rather than during a clinic's working day.
+
+#### Declined, deliberately, 2026-08-23
+
+Recorded so a later reader does not mistake these for oversights and "fix" them mid-cutover.
+
+| Item | Decision | Consequence carried |
+|---|---|---|
+| `DATABASE_URL` port | **Not changed.** Account owner states it is already `6543` | Unverifiable from here (the value is Sensitive). If true, production runs **transaction** mode while local runs **session** mode — so the `prepared statement … already exists` failure mode is live in production and cannot reproduce locally. |
+| Service-role key scope | **Stays on Preview** | Accepted. Reachable surface is nil today — every route using it is behind `await auth()` and previews cannot mint sessions. Becomes real only if a future handler touches `supabaseAdmin` before checking a session. |
+| Function region | **Stays `iad1`** | Every database query crosses the Atlantic. Affects the app's own pages only — **not** `/clinic/*`, which is proxied at Vercel's edge and never enters a function. |
+| Plan | **Stays Hobby** | Two distinct consequences, below. |
+
+**The Hobby decision carries a technical risk, separate from the licensing one.** Hobby's usage
+limits **pause the deployment** rather than billing for overage. After Phase 4, all clinical
+traffic — every page, every asset, every postback of a ViewState-heavy Web Forms app for every
+staff member, all day — flows through Vercel and counts toward that cap. Exceeding it does not
+produce an invoice; it takes `/clinic/*` down, and with it the clinic's access to its own
+scheduling and patient records.
+
+This is a rough estimate, not a measurement: ten staff at a few hundred page loads a day, with
+Web Forms pages in the hundreds of kilobytes, lands in the tens of gigabytes per month — the same
+order of magnitude as the cap, not comfortably below it. **Worth measuring in Phase 3 rather than
+assuming**, and it is the single strongest technical argument for Pro, independent of terms.
+
+The licensing point stands as stated and will not be repeated: Hobby is non-commercial, and this
+decision belongs to whoever owns the Vercel account. They should know the term exists, so that
+staying on Hobby is a choice rather than an accident.
+
+**Supabase is on the Free plan at Nano compute.** Two things follow that are outside this
+cutover but should not go unrecorded: Free has **no automated backups**, and this database holds
+patient records, SOAP notes and clinical documents. Free also caps file storage at 1 GB, which
+scanned patient documents will reach. Neither blocks the cutover; both are worth a decision.
+
 `src/generated/prisma/` is gitignored and regenerated by the `postinstall` script
-(`prisma generate`). A clean deploy handles this with no intervention.
+(`prisma generate`). A clean Vercel build handles this with no intervention.
 
 ---
 
@@ -86,136 +436,692 @@ Set on the hosting platform, never committed. `.gitignore` ignores `.env*`.
 
 **Nothing changes. The safety of every later phase rests on this being done thoroughly.**
 
-1. `[USER]` **Export the complete DNS record list** from the legacy host's control panel —
-   every record, not only the website ones. **A missed mail record silently stops clinic
-   email.** A screenshot is sufficient. This is not a credential.
-2. `[USER]` Identify the alternate hostname the legacy server answers to besides
-   `therapyjo.com`. Hosts issue one automatically. It becomes the proxy origin.
-3. `[PLANNER]` Record the current live state for comparison: resolved address, response
-   headers, and the fact that the legacy login renders at the bare root.
+1. `[USER]` **Export the complete DNS zone** from the site4now/MyASP control panel — every
+   record, not only the web ones. The table above reconstructs most of it from public DNS, but
+   it **cannot see `CAA` records, DKIM selectors, or any subdomain hidden behind the wildcard**.
+   A screenshot is sufficient. This is not a credential.
+2. `[USER]` Confirm from the panel that `www.therapyjo.com` is bound to the legacy site and will
+   stay bound. It is the proxy origin; if the host would ever drop that binding, use a dedicated
+   origin hostname instead — see Target addresses.
+2b. `[USER]` In the same panel, establish **whether a certificate can be issued for
+   `www.therapyjo.com` alone**, without `therapyjo.com` on it. Some panels only offer "domain and
+   www" as one unit. The answer decides whether Hazard 9 is fixed by a reissue in Phase 4 or by
+   moving to a dedicated origin hostname — and the second of those is much easier to arrange now
+   than in the hour after a cutover.
+3. ~~`[USER]` Obtain `SUPABASE_SERVICE_ROLE_KEY`.~~ **Done** — it is already set in the Vercel
+   project. Phase 2c still has to prove it works.
 4. `[USER]` Confirm no staff member relies on a bookmark to the bare domain — that address is
-   being taken over.
+   being taken over. `www.therapyjo.com` becomes their address.
+5. `[USER]` Determine **whether the legacy application sends email**.
+   **Answered 2026-08-23, user report:** patients receive no appointment emails, and the legacy
+   site has no "forgot password" function anywhere. Qualified with "to my knowledge" and not
+   corroborated by DMARC data, so treated as *probable, not established*. See Hazard 2 for what
+   this does and does not change.
+5b. `[USER]` **New, and now the more important question: is `therapyjo.com` email used by anyone
+   at all?** Ask the clinic what address staff actually send work email from. This matters twice
+   over:
+   - The postmaster mailbox could not be logged into, so the DMARC reports that would have
+     settled step 5 are unreadable — and may not be being delivered anywhere at all.
+   - **Phases 1, 3 and 4 each require sending and receiving a test email.** Those gates are
+     unperformable if nobody holds a working mailbox on the domain. Establish who does, or
+     accept that the mail-safety checks in this plan cannot be run and say so explicitly rather
+     than skipping them quietly.
+6. `[PLANNER]` Re-measure everything in the verified-state table and diff it against this file.
+   **Done 2026-08-23**, over DoH: CAA, DKIM, SRV and autodiscover all confirmed absent, `mail`
+   corrected to a `CNAME`, TTLs confirmed at 300.
+7. `[PLANNER]` **Outstanding:** retry the certificate-transparency query
+   (`https://crt.sh/?q=%25.therapyjo.com&output=json`), which returned `502` on every attempt
+   during the 2026-08-23 pass — a crt.sh outage, confirmed by a bare homepage fetch failing the
+   same way, and again at session close. **Three attempts, three `502`s — still outstanding.**
+   CT logs are the only way to see hostnames the wildcard hides: a subdomain that once
+   held a certificate but is no longer a distinct DNS record will not show up in any lookup, and
+   would be dropped in the Phase 3 transcription without anyone noticing. Retry before Phase 3;
+   if crt.sh is still down, use another CT search. Low probability of finding anything, and the
+   cost of the miss is a silently dead hostname.
 
-**Stop gate.** Do not begin Phase 2 until the DNS export exists and has been read.
+**Stop gate.** Do not begin **Phase 3** until the zone export exists and has been read. Phases 1
+and 2 need nothing from it and can proceed.
 
 ---
 
-## Phase 1 — Deploy privately
+## Phase 1 — Fix SPF, before anything moves
 
-**`therapyjo.com` is untouched throughout. Zero risk.**
+> **Sequencing correction, 2026-08-23. This phase cannot run where it is written.** It was
+> specified as "done in the current DNS panel, days ahead of the nameserver move" — but the
+> current DNS panel is the legacy host's, and there is no access to it. No record in the
+> site4now zone can be edited at all.
+>
+> **Fold it into Phase 3 instead.** The zone is being recreated from scratch at HostGator, so the
+> corrected SPF record simply gets typed in there rather than transcribed as-is. That removes a
+> phase rather than delaying one, and the 24-hour soak it prescribed is unnecessary: TTLs on
+> these records are 300 seconds, and Phase 4 — the apex move, which is what SPF is protecting
+> against — comes later anyway.
+>
+> The reasoning below stays; only the *where* and *when* change.
 
-1. `[EXECUTOR]` Confirm `npm run build` passes on `master` before anything is deployed.
-2. `[USER]` Create the hosting project and set every variable from the table above.
-   Set `AUTH_URL` to the temporary host URL for now.
-3. `[USER]` Deploy. The app becomes reachable at a temporary address only you know.
-4. `[PLANNER]` Verify on the temporary address:
-   - Landing page renders with real content — doctors and blog posts load, not empty sections.
-   - `/blog` lists posts; an individual article opens.
+**Not silently destroying clinic email. Nothing to do with Vercel.**
+
+The current record is `v=spf1 a mx include:_spf.site4now.net -all`. The `a` mechanism means
+*"whatever the apex A record points at is allowed to send mail as this domain."* Today that is
+the legacy server. The moment the apex points at Vercel, the legacy server stops being
+authorised — and `_dmarc` says `p=reject`, so its mail is **bounced, not junked**.
+
+1. `[USER]` Replace the SPF record with the same policy stated by address instead of by
+   reference:
+
+   `v=spf1 ip4:208.98.35.122 mx include:_spf.site4now.net -all`
+
+   Confirm `208.98.35.122` against the zone export first. If the panel shows a different
+   outbound IP for mail, use that — and keep `ip4:` entries for both if in any doubt.
+2. `[USER]` Lower the TTL on the apex `A`, `www` `A`, `MX` and both `TXT` records to **300s** if
+   the panel allows it. The apex is already 300; the others are not necessarily.
+3. `[PLANNER]` Confirm the new SPF resolves and still ends in `-all`.
+4. `[USER]` **Send and receive a test email** on the current setup. This establishes the
+   baseline — if mail is already broken you need to know now, and not attribute it to the
+   cutover later.
+
+**Wait at least 24 hours** after the SPF change before Phase 3, so any receiver-side cache of the
+old record has expired. Phase 2 does not touch DNS and should run during that soak, not after it.
+
+---
+
+## Phase 2 — Audit and retrofit the existing deployment
+
+**The app is already live on Vercel at its `*.vercel.app` address, and no custom domain is
+attached. `therapyjo.com` is untouched throughout. Zero public risk.**
+
+Independent of Phase 1 — run it during the SPF soak. The work here is closing the gap between
+what is deployed and what the cutover needs, which is three environment variables and three
+repo changes.
+
+### 2a — Audit what is already there
+
+1. `[USER]` Report which variables from the table above are present in the Vercel project.
+   **Names and presence only — do not paste values.** Two matter more than the rest:
+   - `DATABASE_URL` — is it the **pooled** string (Supavisor, port `6543`) or the direct one
+     (port `5432`)? The direct string behaves perfectly for one tester and fails under a clinic,
+     so this cannot be settled by "it works".
+   - `AUTH_URL` — whatever it is now, it changes twice more, in 2b and Phase 4.
+2. `[USER]` Confirm the plan is **Pro**, and report the function region so it can be checked
+   against the Supabase project's region.
+3. `[USER]` Confirm no custom domain is attached to the project yet. (Public DNS says none is,
+   as of 2026-08-23.)
+
+#### Audit result, 2026-08-23
+
+| Variable | Scope | Assessment |
+|---|---|---|
+| `DATABASE_URL` | **Production only** | Present. Pooled-vs-direct **still unknown** — the value is marked Sensitive so Vercel does not display it. Outstanding. |
+| `AUTH_SECRET` | Production + Preview | Present |
+| `AUTH_URL` | **Production only** | Present. Changes twice more — 2b and Phase 4. |
+| `SUPABASE_SERVICE_ROLE_KEY` | Production + **Preview** | Present. See the note below — Preview scope is a real exposure. |
+| `NEXT_PUBLIC_SUPABASE_URL` / `_ANON_KEY` | Production + Preview | Present |
+| `GOOGLE_PLACES_API_KEY` / `_PLACE_ID` | Production + Preview | Present |
+| `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | Production + Preview | **Referenced nowhere in `src/`.** Dead configuration — probably a half-finished move to Supabase's newer key scheme. Harmless; worth deleting so the next reader does not assume it does something. |
+| `LEGACY_ORIGIN` | — | **Missing.** Required, and **build-time**. |
+| `TZ` | — | **Missing.** Required. |
+
+**`SUPABASE_SERVICE_ROLE_KEY` is scoped to Preview, and it should not be** — as hardening, not
+because anything is currently exploitable. Stating the severity accurately matters more than
+stating it dramatically:
+
+- The key bypasses Row Level Security completely, so code holding it can reach every patient
+  document and clinical row through the Supabase API.
+- **But every route that uses it today is behind `await auth()`**, and previews have no
+  `DATABASE_URL`, so the Prisma-backed credential check cannot succeed and no preview session can
+  be minted. The reachable surface today is therefore effectively nil.
+- What it costs is margin. The key material sits in a weaker environment for no benefit, and the
+  protection is one future commit away from lapsing — a debug route, a health check, any handler
+  that touches `supabaseAdmin` before checking a session.
+
+Restrict it to **Production**. Nothing in the app needs it on previews, it costs one dropdown,
+and it is much easier to do now than to argue for after an incident.
+
+### 2b — Land the missing pieces and redeploy
+
+4. `[EXECUTOR]` Land the three repo changes above on a branch, verified locally against the four
+   `curl` checks, and merge. `npm run build` passes on `master`.
+5. `[USER]` Add `LEGACY_ORIGIN=https://www.therapyjo.com`. Set `AUTH_URL=https://new.therapyjo.com`.
+   **`TZ` cannot be added** — Vercel rejects it as a reserved name; the timezone is pinned in
+   `src/instrumentation.ts` instead. See Hazard 4.
+5b. `[USER or PLANNER]` **`git push`. This is the deploy trigger, and forgetting it is invisible.**
+   The Vercel project builds from GitHub, so a merge that exists only locally does not exist to
+   Vercel. Observed 2026-08-23: a redeploy after a local-only merge rebuilt the **previous
+   commit** with the new environment variable attached — which looks like a successful deploy in
+   every dashboard, and produces an application missing the entire change. Confirm with
+   `git log origin/master..master` returning nothing before treating a deploy as done.
+6. `[USER]` **Redeploy — and force a fresh build.** An environment variable saved in the dashboard
+   does not reach the running deployment until a new build; this is the most common way a correct
+   variable appears to have no effect. For `LEGACY_ORIGIN` it is worse than a delay: the value is
+   compiled into the route manifest, so a redeploy that reuses the build cache can produce a
+   deployment with **no `/clinic` proxy at all**, failing silently. If Vercel offers "use existing
+   build cache", decline it.
+7. `[PLANNER]` Confirm the proxy actually exists in the deployment before trusting it: request
+   `/clinic` on the `*.vercel.app` address and expect a **307 to `/clinic/`**. A 404 there means
+   the build did not see `LEGACY_ORIGIN`, whatever the dashboard shows.
+
+### 2c — Verify, on the `*.vercel.app` address
+
+7. `[PLANNER]` Work the list and stop at the first failure:
+   - Landing page renders with **real** content — doctors and blog posts load, not empty
+     sections. An empty section here usually means `DATABASE_URL` is wrong, not that the page is
+     broken.
+   - `/blog` lists posts; an article opens.
    - `/login` accepts a real login and lands on the correct dashboard for the role.
    - Publishing a post in the admin makes it appear on the public blog **without a redeploy**.
-   - An image upload succeeds.
+   - An image upload succeeds — **and, separately, a 6 MB PDF upload.** See Hazard 3; this is
+     the check that catches the Vercel-only body-size limit, and it is the one most likely to
+     fail, because it cannot fail locally.
+   - A patient document uploads **and opens again.** `SUPABASE_SERVICE_ROLE_KEY` is set, so this
+     should pass — but set and working are different claims, and a wrong key degrades to the
+     same 503 as a missing one.
+   - **Timezone, measured not assumed:** `GET /api/public/diagnostics` reports
+     `timeZone: "Asia/Amman"` and `offsetMinutes: -180`, and its `sample` field — the instant
+     `2026-08-23T23:30:00Z` — renders as **Aug 24**, not Aug 23. Request it twice and confirm
+     `now` changes, proving it is served dynamically rather than prerendered at build time. A
+     prerendered response would report the *build machine's* timezone and look like a pass while
+     proving nothing. **This endpoint is temporary and must be deleted once Phase 2c passes.**
+   - `/clinic` and `/clinic/` return a clean **404**. Correct at this stage, not a failure: the
+     `vercel.app` hostname is not what the legacy origin expects, so the rewrite has nothing to
+     prove until Phase 3 puts a real hostname in front of it.
 
-**Stop gate — user sign-off.** Nothing proceeds until the user is satisfied with the new site.
+#### Results, 2026-08-23, against `therapyjo-proposal.vercel.app` at commit `33a5d51`
+
+| Check | Result |
+|---|---|
+| `/clinic` → 307 → `/clinic/` | PASS |
+| `/clinic/` serves the legacy app | PASS — 200 with `X-Aspnet-Version: 4.0.30319` passed through from IIS |
+| Legacy markup intact under the prefix | PASS — `action="./"`, `href="assets/css/app.css"`, `__VIEWSTATE` all present |
+| **Relative assets resolve under the prefix** | **PASS — `/clinic/assets/css/app.css` returns 200, `text/css`, 286 KB** |
+| Timezone | PASS — `Asia/Amman`, `-180`, and the boundary instant renders as **Aug 24** |
+| `/`, `/blog`, `/login` | PASS — 200 |
+| `/admin` unauthenticated | PASS — 302 to `/login?callbackUrl=%2Fadmin` |
+
+**The fourth row is the one that mattered most.** Hazard 5 — whether a Web Forms app survives
+being served from a subdirectory — was the largest unquantified risk in this plan, and its login
+screen now renders through the proxy with its full stylesheet. That is not the whole answer: the
+inner screens are behind a login and only a human can exercise them (Phase 4 step 5). But the
+mechanism works, and it was proven **without any DNS change**, because the origin sees
+`Host: www.therapyjo.com` regardless of which hostname the browser used.
+
+That last fact is worth generalising: **most of this plan is testable before anything
+irreversible happens.** Earlier revisions assumed otherwise.
+
+**Not yet run:** the 6 MB upload (Hazard 3) and the patient-document round trip, both of which
+need an authenticated session.
+
+**Stop gate — user sign-off.** The visual sign-off is already given; what has to hold here is
+this list. An unresolved item on it is a reason not to start Phase 3.
 
 ---
 
-## Phase 2 — Move the switchboard, as a no-op
+## Phase 3 — Move DNS to HostGator, as a no-op
 
-**The only genuinely risky step. The technique is to make it change nothing.**
+**The riskiest phase, and the technique is to make it change nothing.** Every record is recreated
+exactly as it is today. No record points anywhere new. The only observable difference is which
+nameservers answer.
 
-Configure the new proxy to send **every** address to the legacy origin first — behaving
-identically to today. Only then move the nameservers. While the change propagates, both the old
-route and the new route produce the same result, so no visitor can tell anything happened. That
-is what makes this zero-downtime.
+1. `[USER]` In HostGator, create the zone for `therapyjo.com` and **transcribe every record from
+   the Phase 0 export**, unchanged:
+   | Name | Type | Value | TTL |
+   |---|---|---|---|
+   | `@` | `A` | `208.98.35.122` | 300 |
+   | `*` | `A` | `208.98.35.122` | 300 |
+   | `www` | `A` | `208.98.35.122` | 300 |
+   | `mail` | **`CNAME`** | `mail5010.site4now.net.` | 300 |
+   | `@` | `MX` | `10 igw10.site4now.net.` | 300 |
+   | `@` | `TXT` | the **Phase 1** SPF record | 300 |
+   | `_dmarc` | `TXT` | `v=DMARC1;p=reject;pct=100;rua=mailto:postmaster@therapyjo.com` | 300 |
+   | `new` | `CNAME` | the value Vercel's domain panel gives you | — |
 
-1. `[USER]` Add the domain to the proxy provider. **Recreate every record from Phase 0**, and
-   check the mail records twice.
-2. `[USER]` Route all paths to the legacy origin, preserving the `Host` header so the legacy
-   server's site binding still matches.
-3. `[PLANNER]` Confirm the proxy returns today's legacy page before any nameserver change.
-4. `[USER]` Change the nameservers at the registrar. One screen.
-5. `[PLANNER]` After propagation, verify the legacy site still loads normally and the mail
-   records resolve.
-6. `[USER]` **Send and receive a test email.** Do not skip this; it is the check that catches
-   the one failure that is silent.
+   That table is the **entire** confirmed zone as of 2026-08-23 — verified over DoH, with no
+   CAA, no DKIM selector and no SRV record anywhere in it. It is short enough to get right.
+   Still diff it against the Phase 0 export before trusting it: probing proves a name answers,
+   only the export proves what the zone contains.
 
-**Schedule this in clinic-closed hours (Asia/Amman).** Certificate issuance on the new proxy
-can lag by minutes, during which browsers may warn.
+   Three traps in that table:
+   - **`mail` is a `CNAME`, not an `A`.** Copying the resolved IP instead works today and breaks
+     the day site4now renumbers its mail host.
+   - **The wildcard `*`.** Omit it and every subdomain dies at once.
+   - **`www` must keep pointing at `208.98.35.122`** — it is the proxy origin, not a spare.
 
-**Rollback:** change the nameservers back. The previous ones stay valid throughout.
+   **Check the mail records twice.** A missed `MX`, SPF or DKIM record is the one failure mode
+   that produces no error anywhere and is discovered days later.
+2. `[PLANNER]` Before the nameserver change, query HostGator's nameservers **directly** and diff
+   every record type against the site4now zone. They must match exactly.
+3. `[USER]` Change the nameservers at the registrar. One screen.
+4. `[PLANNER]` After propagation: the legacy site still loads at both `therapyjo.com` and
+   `www.therapyjo.com`, and `MX`/SPF/DMARC resolve identically to Phase 0.
+5. `[USER]` **Send and receive a test email again.** Do not skip this.
+6. `[USER]` Add `new.therapyjo.com` to the Vercel project and wait for its certificate.
+7. `[PLANNER]` Re-run the whole **Phase 2c** checklist against `https://new.therapyjo.com` — a real
+   hostname, a real certificate, real cookies. This is the dry run a temporary host URL cannot
+   give you. **`/clinic/` should now work**, because `LEGACY_ORIGIN` is reachable. Run the escape
+   hunt (Hazard 5) and the latency measurement (Hazard 7) here.
+
+**Schedule the nameserver change in clinic-closed hours (Asia/Amman, UTC+3).**
+
+**Rollback — and it is the slow one.** Change the nameservers back at the registrar. The
+site4now zone stays intact and authoritative throughout; nothing there is deleted.
+
+But do not plan around this being quick. The zone's own `NS` TTL is 3600, and that figure is
+misleading: resolvers cache the **`.com` delegation**, not the in-zone `NS` record, and the
+delegation TTL for `.com` is conventionally **172800 (two days)**. So a nameserver rollback can
+take up to two days to reach every resolver, during which some see HostGator and some see
+site4now.
+
+That is exactly why Phase 3 changes no record values. Both zones answer identically, so a split
+resolver population is harmless — which is what makes an otherwise slow, hard-to-reverse step
+safe to take. It also means **Phase 3 is the one phase you cannot hurry**, and any problem
+discovered in it is better fixed forward, by correcting the record in HostGator, than by
+rolling the delegation back.
+
+(The `.com` delegation TTL above is the standard value, not one measured here — Windows'
+resolver tools would not return the referral. Confirm it at the registrar if the rollback
+window matters to the scheduling decision.)
 
 ---
 
-## Phase 3 — Flip the front door
+## Phase 4 — Flip the front door
 
-**The migration actually happens here. Instant, and reversible in seconds.**
+**The migration actually happens here. One record, reversible in five minutes.**
 
-1. `[USER]` Change `AUTH_URL` to `https://therapyjo.com` and redeploy.
-2. `[USER]` Switch the routing rules: default traffic to this application, `/clinic/*` to the
-   legacy origin with the prefix stripped. Ensure `/clinic` without a trailing slash normalises
-   to `/clinic/` — without it, the legacy app's relative asset paths resolve wrongly.
-3. `[PLANNER]` Verify, in this order, and stop at the first failure:
-   - `therapyjo.com` serves the landing page, with doctors and blog content populated.
+1. `[USER]` Add `therapyjo.com` to the Vercel project. Vercel will show the required `A` value —
+   **copy it from the dashboard, not from this file.**
+2. `[USER]` Change `AUTH_URL` to `https://therapyjo.com` and redeploy.
+3. `[USER]` Change the apex `A` record in HostGator from `208.98.35.122` to Vercel's value.
+   **Leave `www` pointing at `208.98.35.122`** — it is the proxy origin. Changing it would break
+   `/clinic/` and the staff fallback in the same stroke.
+4. `[PLANNER]` Verify in this order, and stop at the first failure:
+   - `therapyjo.com` serves the landing page over HTTPS with a valid certificate, doctors and
+     blog content populated.
    - `/blog` and an article load.
-   - `/clinic/` reaches the legacy login screen.
-   - `/login` serves **this** app's login, not the legacy one.
-4. `[USER]` **Log into the legacy system at `/clinic/` and confirm patient and doctor records
-   display normally.** Click through scheduling, open a patient record, perform a save. This is
-   the check that matters most, and only a human with legitimate access can perform it.
-5. `[PLANNER]` Publish a test post in the new admin and confirm it appears on the public blog.
+   - `/login` serves **this** app's login, and a real login succeeds.
+   - `/clinic` redirects to `/clinic/`, once, not in a loop.
+   - `/clinic/` reaches the legacy login screen **with its stylesheet applied** — an unstyled
+     page means the assets escaped the prefix.
+5. `[USER]` **Log into the legacy system at `/clinic/` and work it properly.** Open scheduling,
+   open a patient record, perform a save, upload a file, run a report. Compare each screen
+   against the same screen at `https://www.therapyjo.com`. This is the check that matters most,
+   and only a human with legitimate access can perform it. Any difference between the two is an
+   escape (Hazard 5), and none of it is a data risk.
+6. `[PLANNER]` Publish a test post in the new admin and confirm it appears on the public blog.
+7. `[USER]` Send and receive a test email a third time. This is the first moment the apex `A`
+   has actually changed, which is what Hazard 2 is about.
+8. `[USER]` **Same day, not later:** in the legacy hosting panel, reissue that host's certificate
+   for **`www.therapyjo.com` only**, dropping `therapyjo.com` from it. Skipping this does not
+   break anything today — it breaks `/clinic/*` for every staff member about a month from now,
+   with no warning in between. Hazard 9 explains why.
 
-**Rollback:** revert the single routing rule. Seconds, and the legacy site returns to the front
-door.
+**Rollback:** set the apex `A` back to `208.98.35.122`. Five minutes at a 300s TTL, and the
+legacy site is back at the front door. `AUTH_URL` goes back with it.
 
 ---
 
-## Phase 4 — Hand over
+## Phase 5 — Hand over
 
-1. `[USER]` Tell staff the new address for the clinical system and have them re-bookmark it.
-2. `[USER]` Leave the legacy system's direct address working as a fallback during transition.
-3. `[PLANNER]` For several days, treat any report of a broken screen inside the legacy system
-   as the known hazard below until proven otherwise.
+1. `[USER]` Tell staff their address is now `therapyjo.com/clinic/`, and that
+   `www.therapyjo.com` reaches the same system directly if anything looks wrong. Have them
+   re-bookmark.
+2. `[USER]` After a week of quiet, remove `new.therapyjo.com` from Vercel and delete its record.
+3. `[PLANNER]` For several days, treat any report of a broken screen inside the legacy system as
+   Hazard 5 until proven otherwise.
+4. `[PLANNER]` Watch Vercel's logs for 404s on root paths that look like legacy assets. Each one
+   is an escape that nobody reported.
 
 ---
 
 ## Known hazards
 
-### 1. The legacy app under a subpath
+### 1. Vercel rewrites do not preserve the `Host` header
 
-Serving the legacy system from `/clinic/` rather than the bare domain is the part that cannot be
-verified from outside — its inner screens are behind a login. Its markup uses **relative** asset
-paths and posts back to `./`, which survive a path prefix correctly. What breaks is any link the
-application writes as **root-relative** — those escape the `/clinic` prefix and land on this app
-instead.
+Measured: the legacy IIS returns **403** for any Host it is not bound to, and **resets the
+connection** on an unknown SNI name. A Next.js rewrite to an external URL sends the
+**destination's** hostname, and no setting changes this. So the origin must be a name IIS
+already answers to, with a certificate covering it.
 
-Symptom: a staff screen fails to load, or a click lands on the new landing page.
-Not a data risk — nothing is lost or corrupted.
-Fix: a proxy rule rewriting root-relative links, or move the legacy system to its own subdomain,
-which sidesteps the problem entirely and remains available as a fallback.
+`www.therapyjo.com` satisfies both today, verified. That is the entire reason this plan uses it.
+If you move to a dedicated origin hostname later, the legacy host must **bind it and issue a
+certificate for it** first, and the DNS record must resolve before a certificate can be issued
+over HTTP-01 — the order matters.
 
-### 2. Fall-through to this app's auth
+Do not work around this by proxying to the IP with a forged Host header and certificate
+verification disabled. That puts patient data on an unverified TLS connection.
 
-`src/lib/auth.config.ts` treats every path not in `publicRoutes`
-(`/`, `/api/auth`, `/blog`, `/api/public`) as protected, and `src/middleware.ts` matches
-everything except static assets. If a `/clinic/*` request ever reaches this application —
-because a proxy rule is mis-ordered or fails — an unauthenticated visitor is **redirected to
-this app's `/login`**, which looks like the legacy system has been replaced.
+### 2. SPF, the `a` mechanism, and `DMARC p=reject`
 
-This is why `/clinic/*` must be intercepted at the proxy and never reach the application.
-Adding `/clinic` to `publicRoutes` turns that failure into a clean 404 instead of a confusing
-redirect; see `tasks.md` → **TJ-017**.
+The most dangerous thing in this cutover, and it has nothing to do with the website. `v=spf1 a …`
+authorises whatever the apex `A` points at. Point the apex at Vercel and the legacy mail sender
+is silently de-authorised, under a DMARC policy of `reject`.
 
-### 3. Database connections
+Symptom: appointment reminders and password resets stop arriving, with no error visible anywhere
+in either system, discovered days later by a patient who missed an appointment.
 
-Covered in the environment table, repeated because it bites after launch rather than during it:
-use the **pooled** connection string.
+Fixed in Phase 1, ahead of time, by pinning the IP instead of dereferencing the `A` record.
+Tested in Phases 1, 3 and 4, because each of those phases moves a different piece.
 
-### 4. Do not refactor auth during a cutover
+**Re-rated 2026-08-23 — still do it, for a different reason.** The user reports no appointment
+emails and no password-reset function in the legacy app, which makes it *probable* that nothing
+sends mail from `208.98.35.122` and that de-authorising it breaks nothing. That downgrades this
+from a launch blocker to a one-record precaution. Three things keep it on the list anyway:
 
-`next build` emits a deprecation warning for the `middleware` file convention (Next 16 prefers
-`proxy`). It is a warning, not an error, and it is filed as **TJ-019**. **Do not land it as part
-of this cutover.** Changing authentication plumbing in the same window as a DNS migration means
-that when something breaks, you cannot tell which change caused it.
+1. **The evidence is a recollection, not a measurement.** The DMARC reports that would settle it
+   are in a mailbox nobody can open. "To my knowledge, nothing sends mail" is exactly the belief
+   a silent mail failure hides behind.
+2. **The flip does not just remove an authorisation, it adds one.** After Phase 4, `a`
+   dereferences to *Vercel's* address — so the SPF record would begin asserting that a shared
+   edge IP belonging to a hosting company is a legitimate sender for a medical clinic's domain.
+   That is not a breakage, it is sloppiness with the clinic's name on it, and the same one-record
+   edit removes it.
+3. **It costs one TXT record and 24 hours of waiting**, against a failure mode that is invisible
+   for days. That trade does not need a strong prior to be worth taking.
+
+What it stops being is a *reason to delay*. If Phase 1 is inconvenient to schedule, the cutover
+can proceed without it — provided this decision is made deliberately rather than by forgetting.
+
+### 3. Vercel caps request bodies at 4.5 MB
+
+`src/app/api/upload/route.ts` rejects files over **10 MB**. Vercel's function request-body limit
+is **4.5 MB**. Every upload between those two figures fails in production with a platform 413
+that the app's own error handling never sees — and it works perfectly in development, which is
+what makes it expensive to diagnose. Scanned patient documents land in that range routinely.
+
+The fix is to upload directly from the browser to Supabase Storage with a signed upload URL, so
+the bytes never traverse a Vercel function. Not a cutover prerequisite, provided the 6 MB test
+in Phase 2 is honestly assessed and the app's own limit is lowered to match reality in the
+meantime — shipping a 10 MB promise the platform breaks at 4.5 MB is worse than shipping a 4 MB
+limit. **Candidate TJ-033.**
+
+### 4. The timezone pin does not reach Vercel
+
+`next.config.mjs` sets `process.env.TZ = "Asia/Amman"`, and **no source file references that
+timezone** — the whole scheme rests on that one line. `next.config.mjs` is a build-time and
+`next start` concern; Vercel's serverless runtime does not evaluate it per invocation. There are
+89 raw `new Date(…)` / `toISOString()` call sites in `src/`.
+
+Amman is UTC+3 year-round. Under UTC, everything between 00:00 and 03:00 Amman time is filed to
+the previous day. The clinic is closed then, which narrows the blast radius to date-only
+boundaries computed near midnight rather than to appointments themselves — but it is wrong, and
+it is wrong silently.
+
+**`TZ` cannot be set on Vercel.** Established 2026-08-23: Vercel rejects it as a reserved name —
+it is one of the AWS Lambda runtime-reserved variables. The environment-variable fix this file
+previously prescribed does not exist.
+
+**What works instead.** Node applies `process.env.TZ` assignments at runtime, verified on Node 22:
+
+```
+process.env.TZ='UTC';        new Date('2026-08-23T23:30:00Z')  ->  Sun Aug 23 2026 23:30 GMT+0000
+process.env.TZ='Asia/Amman'; new Date('2026-08-23T23:30:00Z')  ->  Mon Aug 24 2026 02:30 GMT+0300
+```
+
+That is Hazard 4 in two lines — the same instant is the 23rd in UTC and the 24th in Amman. So the
+fix is `instrumentation.ts` with a `register()` that sets `process.env.TZ`, which Next runs once
+per server instance at bootstrap, before any request is handled.
+
+**Verify it empirically — do not assume the instrumentation ran.** Whether `register()` executes
+before route handlers in Vercel's serverless runtime is a reasonable inference, not a measured
+fact. Confirm it in Phase 2c against the real deployment.
+
+None of this is the *real* fix. The real fix is that date-only boundaries should be computed with
+an explicit `timeZone`, not inherited from an ambient process setting that three separate layers
+have now failed to carry. **Candidate TJ-034**, and it stays open after the cutover.
+
+### 5. The legacy app under a subpath — the escape catalogue
+
+The login shell is verified safe: `action="./"`, `assets/css/…`, `images/…` — all relative, all
+resolving correctly under `/clinic/`. What cannot be verified from outside is the inner screens,
+and Web Forms has three habits that escape a path prefix:
+
+| Escape | Emitted as | Lands on |
+|---|---|---|
+| `Response.Redirect("~/Page.aspx")` | `Location: /Page.aspx` | This app → 404, or worse, this app's `/admin` |
+| Resource handlers | `/WebResource.axd`, `/ScriptResource.axd` | This app → 404 → dead JavaScript, broken postbacks |
+| Root-relative links | `href="/Something"` | This app |
+
+Symptom: a staff screen fails to load, is unstyled, or a click lands on the marketing site.
+**Not a data risk** — nothing is lost or corrupted.
+
+Find them in Phase 3 step 7, with the browser network panel open and Vercel's logs alongside:
+every 404 on a root path that the marketing site does not own is an escape. Then add exactly the
+rules those escapes require — not these speculatively:
+
+```js
+// beforeFiles — resource handlers, rewritten so there is no extra round trip
+{ source: "/:file((?!clinic/).*\\.axd)", destination: `${LEGACY_ORIGIN}/:file` },
+
+// redirects — page navigations, bounced back under the prefix so the address
+// bar stays honest. 307 preserves method and body, so postbacks survive.
+{ source: "/:file((?!clinic/).*\\.aspx)", destination: "/clinic/:file", permanent: false },
+```
+
+The `(?!clinic/)` lookahead is not optional. Without it the `.aspx` rule matches its own
+destination, and every legacy page enters an infinite redirect.
+
+If the escapes turn out to be numerous or structural, the answer is not more rules — it is
+`clinic.therapyjo.com` as a subdomain, which sidesteps the entire class of problem for the cost
+of one DNS record and one binding. Keep that in your pocket.
+
+### 6. Session cookies cross between the two systems
+
+A consequence of same-origin subpath hosting, worth stating once. Because both systems answer on
+`therapyjo.com` at path `/`, every `/clinic/*` request carries **this app's `authjs.session-token`
+to the legacy IIS server**, and every request to the marketing site carries the legacy
+`ASP.NET_SessionId` to Vercel. Neither system reads the other's cookie, but each one's session
+token is transmitted to, and potentially logged by, the other's infrastructure.
+
+There is no fix within a subpath design — the auth cookie must be scoped to `/`. A subdomain
+gives the two systems separate cookie jars and removes it entirely. Recorded here as an accepted
+consequence of the chosen shape, not as an argument to change it.
+
+Related, and worth an explicit check in Phase 3: confirm the legacy `Set-Cookie` after login
+carries **no explicit `Domain=www.therapyjo.com`**. If it does, the browser will reject it under
+`therapyjo.com`, and login through `/clinic/` will fail while working perfectly at `www`.
+
+### 7. Latency and cost of proxying a daily-use application
+
+Every clinical request now takes an extra hop: staff browser → nearest Vercel PoP → the legacy
+origin, instead of going straight there. Measure it in Phase 3 against the direct
+`www.therapyjo.com` address before staff meet it, and again from inside the clinic. A plan that
+is technically correct and 400 ms slower on every screen will be judged a failure.
+
+All that traffic is also billed as Vercel data transfer, and there is no caching relief: IIS
+sends `Cache-Control: private`.
+
+### 8. Database connections
+
+Use the **pooled** connection string. Repeated because it bites after launch rather than during
+it.
+
+**Correction, 2026-08-23 — do not drop `pg.Pool`'s `max` to 1.** An earlier revision of this file
+said to, on the reasoning that a serverless instance serves one request at a time. **That
+reasoning does not hold here: the project has Fluid Compute enabled.** Fluid instances serve many
+concurrent requests, so a pool of 1 would serialise every database call behind a single
+connection and turn the pool into the bottleneck. `max: 3` stays.
+
+The ceiling is not tight. Supabase reports pool size **15** to Postgres and **200** max client
+connections at Nano compute — and Fluid means few instances, not many. There is room to raise
+`max` if connection wait time shows up under load; there is no reason to lower it.
+
+The measurements that matter after launch are Supavisor's client-connection count and, if it
+appears, `remaining connection slots` in the Postgres logs.
+
+### 9. The shared certificate breaks the proxy about 30 days after cutover
+
+**Severity is on a par with Hazard 2, and the mechanism is the same: a delayed, silent failure
+caused by moving the apex.**
+
+Measured 2026-08-23: `therapyjo.com` and `www.therapyjo.com` are served by **one certificate**,
+not two — identical serial `06575A8139BB2762A52C9A079CFB28F80EE8`, SAN covering both names,
+Let's Encrypt, expiring **2026-10-22**.
+
+Let's Encrypt renewal validates **every** name on the certificate, and an ACME order is
+all-or-nothing across its identifiers. After Phase 4, HTTP-01 validation for `therapyjo.com`
+resolves to Vercel, which knows nothing about the legacy host's challenge token and returns 404.
+That one failure fails the whole order — so **`www.therapyjo.com` does not get renewed either.**
+
+Chain of consequences, none of which announces itself:
+
+1. Renewal is attempted, typically ~30 days before expiry — around **2026-09-22**.
+2. It fails silently. The existing certificate is still valid, so nothing looks wrong.
+3. On **2026-10-22** the certificate expires.
+4. Vercel validates TLS when it proxies, so the `/clinic/:path*` rewrite starts returning **502**.
+5. Every staff member loses the clinical system at once, roughly a month after a cutover that
+   appeared to have gone perfectly.
+
+**The fix, and its timing is the tricky part.** The certificate cannot be narrowed to `www`
+*before* Phase 4, because until the apex moves, `https://therapyjo.com` is still served by the
+legacy host and needs that name on its certificate. So:
+
+- `[USER]` **Immediately after Phase 4**, in the legacy hosting panel, reissue the certificate
+  for **`www.therapyjo.com` only**, dropping `therapyjo.com` from it. The apex no longer needs a
+  certificate there.
+- **Deadline: before the next renewal attempt** — call it 2026-09-22, and treat a cutover that
+  lands near that date as needing this done the same day.
+- If the panel will not issue for `www` alone — some issue "domain and www" as an inseparable
+  unit — use a dedicated origin hostname instead (`origin.therapyjo.com`), whose certificate
+  never contains the apex and is therefore immune. See Target addresses.
+
+**If nobody can instruct the legacy host, this becomes the blocker for the whole cutover.**
+Established 2026-08-23: the user cannot log into the SmarterASP.NET control panel. Every fix
+above requires *someone* with authority over that hosting account — which is a relationship, not
+a password, and may sit with the clinic or with the legacy vendor.
+
+Note carefully what this is **not**. It is not a consequence of serving the legacy app under
+`/clinic/`. Abandoning the subpath entirely does not help, because the certificate covering
+`www` fails renewal the moment the *apex* stops resolving to the legacy host — regardless of
+whether Vercel proxies anything. **Any plan that points `therapyjo.com` at Vercel inherits
+this.**
+
+It is also not a cliff. The consequence is a **fuse, roughly 60 days long**:
+
+| Date | Event |
+|---|---|
+| ~2026-09-22 | First renewal attempt after the flip fails, silently |
+| 2026-10-22 | Certificate expires; `/clinic/*` starts returning 502 |
+| Any time before then | Reverting the apex `A` to `208.98.35.122` restores renewal |
+
+So the cutover *can* proceed without legacy-host access, provided that is a **decision** rather
+than an oversight: either someone gains authority over that account before the renewal window,
+or the cutover is rolled back before the certificate expires. Do not start Phase 4 without
+naming, in writing, who will do which.
+
+### Options when the legacy host cannot be reached at all
+
+Established 2026-08-23: no control-panel login, and the vendor is unreachable. What remains under
+the clinic's control is the **domain registration** and the **Vercel project** — nothing on the
+legacy host. These are the options that fit inside that, ordered by how much they actually solve.
+
+| # | Option | Solves it? | Cost |
+|---|---|---|---|
+| 1 | **Time the cutover just after a successful renewal** | No — extends the fuse from ~30 to ~90 days | Waiting until late September |
+| 2 | ~~Proxy the ACME challenge path through Vercel~~ | **RULED OUT 2026-08-23** — measured, not predicted | — |
+| 3 | **Cut over and monitor the certificate**, reverting if renewal fails | No — but converts a silent failure into a caught one | Someone must actually watch it |
+| 4 | **Reach the host without the vendor** — the account is billed to someone | Yes | Depends on a relationship that may not exist |
+| 5 | **Do not move the apex.** New site lives permanently at a new subdomain | Yes, trivially | The new site never gets the real domain |
+
+Options 1, 3 and 4 combine. The sane default is **1 + 3 + 2-if-it-tests-clean**, with 4 running
+in the background and 5 as the honest fallback if none of it lands.
+
+**Option 1 — timing.** The certificate was issued 2026-07-24 and expires 2026-10-22, so renewal
+is likely around **2026-09-22**. If the apex is still on the legacy host at that moment, renewal
+succeeds and the new certificate runs to roughly **2026-12-21**. Cutting over immediately after
+that turns a one-month fuse into a three-month one, for free. The renewal is observable from
+outside: watch the certificate's **serial number** on `www.therapyjo.com` and note when it
+changes.
+
+**Option 2 — ruled out by measurement, 2026-08-23.** The idea was a `beforeFiles` rewrite sending
+`/.well-known/acme-challenge/:path*` to the legacy origin, so the legacy host could keep
+validating `therapyjo.com` after that name resolves to Vercel.
+
+It was deployed and probed. The response did not come from the legacy origin and did not come
+from the application:
+
+```
+HTTP/1.1 404 Not Found
+X-Vercel-Acme-Ips: 216.198.79.3,64.29.17.3,…
+Content-Type: application/json
+{"error":{"message":"Token not found","code":"not_found","statusCode":404,"meta":{}}}
+```
+
+**Vercel serves `/.well-known/acme-challenge/*` itself, at the platform layer, ahead of
+application routing.** An app-level rewrite of that path is unreachable code.
+
+Two conclusions, and they point opposite ways:
+
+- **The rewrite is harmless.** The worry that it might break Vercel's own certificate issuance is
+  answered: Vercel owns the path regardless of what the application declares. Test C in the
+  ladder below is therefore closed, without needing a nameserver move.
+- **The rewrite is also useless.** It can never reach the legacy host, so the legacy host can
+  never validate `therapyjo.com` by HTTP-01 once the apex points at Vercel. **The root-cause fix
+  for Hazard 9 does not exist on Vercel.**
+
+The rewrite should be deleted rather than left in place looking load-bearing. Batch that with
+removing the temporary diagnostic route after Phase 2c.
+
+**What this costs:** the plan of record was "test Option 2, hold Option 5 as the fallback."
+Option 2 has now failed its test. The live choices are Option 1 + Option 3 together — cut over
+right after a successful renewal and monitor the certificate — or Option 4, or Option 5.
+
+**Option 3 — tripwire.** After Phase 4, check `www.therapyjo.com`'s certificate weekly. If the
+**serial has not changed** by two weeks before `notAfter`, renewal has failed: revert the apex
+`A` to `208.98.35.122`, let the renewal succeed, and reconsider. This is what makes the fuse
+survivable — the failure is silent by nature, so the monitoring is not optional decoration.
+
+**Option 5 — don't move the apex.** Worth stating plainly rather than treating as defeat: leave
+both `therapyjo.com` and `www.therapyjo.com` on the legacy host, where the certificate renews
+forever, and give the new site a permanent home at a new subdomain. Zero risk, no fuse, no
+monitoring — at the price of the new site never occupying the real domain. If the options above
+are exhausted, this is better than a cutover with an unmanaged expiry date on it.
+
+### Decision, 2026-08-23
+
+**Test Option 2. Hold Option 5 as the fallback.** Options 1 and 3 come along for free and should
+be applied regardless.
+
+**First, a piece of evidence that makes Option 2 plausible rather than a guess.** Option 2 only
+works if the legacy host validates over **HTTP-01**; if it uses **DNS-01** it writes challenge
+records into the zone, and the nameserver move alone would break renewal — no proxying could
+help. Measured 2026-08-23: there are no `_acme-challenge` TXT records, and more tellingly the
+**SOA serial is `2025031307`** — frozen since March 2025, while the current certificate was
+issued in **July 2026**. A host writing DNS-01 challenge records into this zone would have bumped
+that serial. Nothing has written to this zone in over a year.
+
+Evidence, not proof — some ACME integrations edit a zone without touching the visible serial. But
+it points firmly at HTTP-01, and it means the Phase 3 nameserver move is very unlikely to break
+renewal on its own.
+
+### The test ladder
+
+Three separate questions, each answered before the next step depends on it. **No step is taken
+until the one before it has passed.**
+
+| | Question | How it is answered | If it fails |
+|---|---|---|---|
+| **A** | Does the routing work at all — including the acme-challenge rewrite — without breaking auth or the app? | **PASSED 2026-08-23.** Ten cases against a stand-in origin, branch `routing/clinic-legacy-proxy` (`313af8f`), unmerged. See *Repo changes required*. | — |
+| **B** | Does the legacy host's renewal survive the **nameserver move**? | Phase 3, then watch `www`'s certificate **serial** through the ~2026-09-22 renewal window. A changed serial means validation still works. | The host uses DNS-01. Revert the nameservers and go to Option 5. |
+| **C** | Does the acme-challenge rewrite break **Vercel's own** certificate issuance? | **ANSWERED 2026-08-23 — no, and it does not work either.** Vercel serves that path itself, ahead of the app. Answered on the `vercel.app` host, with no nameserver move needed. | — |
+
+Only if **A**, **B** and **C** all pass does Phase 4 proceed with the rewrite in place — and even
+then, Option 3's tripwire stays on, because C proves the rewrite does not break Vercel, not that
+it definitely keeps the legacy renewal alive. That last fact is only ever confirmed by watching
+the first renewal after the apex moves.
+
+**Order matters and is not negotiable:** A is free and comes first. B and C both require Phase 3,
+because until the nameservers move there is no DNS anyone can edit. B is the one with a calendar
+attached — it can only be observed during a renewal window, so reaching Phase 3 before late
+September is what keeps the cheap version of this plan available.
+
+**Related, and now closed:** a `CAA` record restricts which certificate authorities may issue for
+a zone, and one that did not authorise Vercel's CA would have stalled Phase 4 at the last step
+with the apex already moved. **Verified 2026-08-23: no `CAA` record exists**, on the apex or on
+`www`. Vercel's issuance cannot be blocked this way.
+
+The corollary is an instruction, not just a fact: **do not add a `CAA` record as part of this
+cutover.** It cannot improve the outcome and can only convert a working certificate issuance
+into a failed one at the worst possible moment. If the clinic wants CAA — and it is a reasonable
+thing to want — add it weeks afterwards, authorising both Let's Encrypt and whichever CA Vercel
+turns out to have used.
 
 ---
 
@@ -225,5 +1131,9 @@ that when something breaks, you cannot tell which change caused it.
   the only thing that would ever justify legacy credentials.
 - **Search-engine visibility.** The landing page renders its content in the browser, so crawlers
   see an empty shell on first look. Real, worth fixing for a marketing site, and unrelated to
-  this cutover — it can be addressed before or after.
-- **Moving this app's admin to `/frontend`.** Deferred by decision, see Target addresses.
+  this cutover. `skipTrailingSlashRedirect` adds a second, smaller duplicate-content wart to the
+  same future task. **Candidate TJ-035.**
+- **Moving this app's admin to `/frontend`.** Deferred by decision — it would mean restructuring
+  routing and every internal link for a cosmetic address.
+- **Consolidating the legacy hosting itself.** DNS moves to HostGator here; the legacy
+  application stays exactly where it is.
