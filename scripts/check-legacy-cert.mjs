@@ -8,7 +8,7 @@
 // Run it: `npm run cert:check` (add `-- --host <name>` to point elsewhere,
 // or `-- --update` to accept the current cert as the new baseline). It
 // prints a verdict word as the first token of its output — greppable from a
-// scheduler — and exits 0/1/2/3 depending on what it found. See the six
+// scheduler — and exits 0/1/2/3 depending on what it found. See the seven
 // states below.
 //
 // Node's `tls` module covers all of this; no dependency is added on
@@ -41,6 +41,7 @@ const EXIT = {
   OK: 0,
   TRIPWIRE: 1,
   EXPIRED: 2,
+  FOREIGN: 3,
   ERROR: 3,
 };
 
@@ -225,19 +226,30 @@ async function main() {
   const remaining = daysRemaining(notAfter);
   const serialMatches = observation.serial === baseline.serial;
   const sanNames = parseSanNames(observation.san);
-  // RESOLVED means "this is demonstrably the legacy certificate, and it has
-  // been reissued without the apex" — both halves are required, so a host
-  // whose SAN simply never mentioned therapyjo.com (an unrelated --host,
-  // a typo) can never satisfy it and falsely claim the hazard is over.
-  const isResolved = sanNames.includes(LEGACY_WWW_HOST) && !sanNames.includes(LEGACY_APEX_HOST);
+  // If the SAN doesn't even name the legacy www host, none of the other
+  // verdicts mean anything — not expiry, not the serial comparison, none of
+  // it, because we're not looking at the certificate this script tracks.
+  // The realistic way to hit this isn't a --host typo: it's www.therapyjo.com
+  // itself getting repointed by a hand-edit at HostGator mid-fallback, which
+  // is exactly the mistake Production_Cutover.md warns against. Checked
+  // first, ahead of EXPIRED, so an unrelated expired certificate can never
+  // be reported as "the clinic is degraded."
+  const isForeign = !sanNames.includes(LEGACY_WWW_HOST);
+  // Once the FOREIGN gate below has passed, sanNames is guaranteed to
+  // contain LEGACY_WWW_HOST, so RESOLVED only needs to confirm the apex is
+  // gone — the www half of the old two-part check is now an invariant
+  // established upstream, not something this line needs to re-test.
+  const isResolved = !sanNames.includes(LEGACY_APEX_HOST);
 
   let verdict;
   let exitCode;
   let meaning;
 
-  if (notAfter.getTime() < Date.now()) {
-    // Checked first: an expired certificate is the most urgent state
-    // regardless of what its SAN or serial look like.
+  if (isForeign) {
+    verdict = "FOREIGN";
+    exitCode = EXIT.FOREIGN;
+    meaning = `not the tracked certificate — ${LEGACY_WWW_HOST} may have been repointed; check DNS before trusting any other verdict`;
+  } else if (notAfter.getTime() < Date.now()) {
     verdict = "EXPIRED";
     exitCode = EXIT.EXPIRED;
     meaning = "Missed tripwire; clinic is already degraded";
