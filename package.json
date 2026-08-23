@@ -10,6 +10,7 @@
     "lint": "eslint",
     "icons:normalize": "node scripts/normalize-icons.mjs",
     "cert:check": "node scripts/check-legacy-cert.mjs",
+    "zone:diff": "node scripts/check-zone-parity.mjs",
     "db:push": "npx prisma db push",
     "db:seed": "npx prisma db seed",
     "db:studio": "npx prisma studio"

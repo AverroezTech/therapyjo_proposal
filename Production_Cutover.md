@@ -25,19 +25,22 @@ and still serves the legacy application, exactly as it did before this work star
 
 | | State |
 |---|---|
-| `master` / deployed | **`16d35dd`**, pushed. Vercel builds from GitHub — **`git push` is the deploy trigger** |
+| Deployed | **`16d35dd`** = `origin/master`. Vercel builds from GitHub — **`git push` is the deploy trigger** |
+| Local `master` | **`090eb6e`, seven commits ahead of `origin/master` and unpushed.** All ops tooling and documentation — the cert tripwire, the fallback runbook, the Phase 4 gate. Nothing in it changes the running site, which is why it has not been pushed. Pushing is a deploy; do it deliberately, not incidentally |
 | Live at | `therapyjo-proposal.vercel.app` |
 | `/clinic/` proxy | **Working and verified in production**, including relative assets and the authenticated admin screen |
 | `/clinic/` escapes | **Fixed and verified in production**, `16d35dd`. Two escapes found and patched; see Hazard 5. Before this, a successful login at `/clinic/` bounced staff into this app and 404'd — they could not reach the clinic system at all |
 | Timezone | **Fixed and verified in production** — `Asia/Amman` |
 | Custom domain on Vercel | **Not attached.** Apex still `208.98.35.122` |
-| DNS | Still at site4now.net, **untouched** |
+| DNS | Still at site4now.net, **untouched**. Whole zone re-measured 2026-08-24, authoritatively and over DoH: **identical** to the 2026-08-23 table, `SOA` serial `2025031307` both times — unedited since March 2025 |
+| HostGator nameservers | **Catch-all.** `ns1.hostgator.com` answers a parking address for any domain, including ones that do not exist — so an uncreated zone cannot announce itself as `NXDOMAIN`. See *Reading `npm run zone:diff`* |
 | SPF | Still `v=spf1 a mx …` — unfixed, and unfixable until Phase 3 |
 | **Legacy hosting panel** | **No access.** No login; vendor unreachable |
 | **Ability to edit DNS** | **None** until the nameservers move |
 | **Hazard 9** | **Decided 2026-08-24.** Options 1 + 3 + 4, Option 5 held with named triggers. See *Decision, 2026-08-24* |
 | **Legacy certificate** | Serial `06575A81…`, expires **2026-10-22**, SAN still covers **both** names. Re-measured 2026-08-24 |
-| **Cert tripwire** | `npm run cert:check` — **TJ-036, queued**. Arm it the moment Phase 3 lands |
+| **Cert tripwire** | `npm run cert:check` — **built (TJ-036), reads `OK` at 59 days on 2026-08-24. Not yet armed**: arming is `-- --update` plus a weekly cadence, the moment Phase 3 lands |
+| **Zone parity check** | `npm run zone:diff` — **built and verified 2026-08-24.** Reads `MATCH` on the live site4now zone with `--legacy-spf`, `NOZONE` against HostGator. This is the Phase 3 step-2 gate |
 | **Fallback runbook** | **Written**, see *Fallback runbook*. Not yet needed — nothing has moved |
 | Vercel plan | **Hobby.** Pro declined — see *Declined, deliberately* |
 | Supabase | Free / Nano, `aws-1-eu-west-1`. Vercel functions in `iad1` — mismatched, declined |
@@ -55,7 +58,10 @@ that can only be made in late September.**
 
 1. **Phase 3 — move the nameservers to HostGator.** Nothing blocks it; the registrar panel is
    the user's. Transcribe the seven records in Phase 3, **with the corrected SPF** (Phase 1 folds
-   into this — see the note there). **Deadline: comfortably before ~2026-09-22**, because the
+   into this — see the note there), then **gate the registrar change on `npm run zone:diff`
+   printing `MATCH`** against the account's assigned nameservers. Delegating to a zone that is not
+   populated yet does not fail safe — it parks the domain and drops all mail.
+   **Deadline: comfortably before ~2026-09-22** (~29 days from 2026-08-24), because the
    renewal that answers Test B has to be observed from *behind* this phase to be worth anything.
 2. **Arm the tripwire** as soon as Phase 3 lands: `npm run cert:check -- --update`, then weekly.
    Before Phase 4 it answers Test B; after Phase 4 it is the Option 3 tripwire. Same script,
@@ -697,25 +703,81 @@ nameservers answer.
    Still diff it against the Phase 0 export before trusting it: probing proves a name answers,
    only the export proves what the zone contains.
 
-   Three traps in that table:
+   Four traps in that table:
    - **`mail` is a `CNAME`, not an `A`.** Copying the resolved IP instead works today and breaks
      the day site4now renumbers its mail host.
    - **The wildcard `*`.** Omit it and every subdomain dies at once.
    - **`www` must keep pointing at `208.98.35.122`** — it is the proxy origin, not a spare.
+   - **The zone must end up containing these seven records and nothing else.** cPanel zones
+     usually ship with their own apex `A` and often a self-pointing `MX`. Left alongside the
+     transcribed rows, a leftover default `MX` quietly takes delivery of clinic mail. Transcribing
+     is *replacing* the defaults, not adding to them.
 
    **Check the mail records twice.** A missed `MX`, SPF or DKIM record is the one failure mode
    that produces no error anywhere and is discovered days later.
-2. `[PLANNER]` Before the nameserver change, query HostGator's nameservers **directly** and diff
-   every record type against the site4now zone. They must match exactly.
-3. `[USER]` Change the nameservers at the registrar. One screen.
-4. `[PLANNER]` After propagation: the legacy site still loads at both `therapyjo.com` and
-   `www.therapyjo.com`, and `MX`/SPF/DMARC resolve identically to Phase 0.
+2. `[PLANNER]` Before the nameserver change, diff HostGator's zone against the table above by
+   querying HostGator's nameservers **directly**:
+
+   ```
+   npm run zone:diff -- --ns <the nameserver HostGator assigned this account>
+   ```
+
+   **It must print `MATCH`.** Anything else is a stop. Read the assigned nameservers out of the
+   HostGator panel rather than assuming `ns1/ns2.hostgator.com` — the pair is per-account.
+   The corresponding reading of the *old* zone, for comparison, is
+   `npm run zone:diff -- --ns ns1.site4now.net --legacy-spf`, which should also print `MATCH`.
+3. `[USER]` Change the nameservers at the registrar. One screen. **Only after step 2 prints
+   `MATCH`.** Delegating to an unpopulated zone parks the domain and drops all mail — see
+   *Reading `npm run zone:diff`*.
+4. `[PLANNER]` After propagation, re-run the same check against the delegated nameservers and
+   confirm it still prints `MATCH`, then confirm by hand that the legacy site still loads at both
+   `therapyjo.com` and `www.therapyjo.com`.
 5. `[USER]` **Send and receive a test email again.** Do not skip this.
 6. `[USER]` Add `new.therapyjo.com` to the Vercel project and wait for its certificate.
 7. `[PLANNER]` Re-run the whole **Phase 2c** checklist against `https://new.therapyjo.com` — a real
    hostname, a real certificate, real cookies. This is the dry run a temporary host URL cannot
    give you. **`/clinic/` should now work**, because `LEGACY_ORIGIN` is reachable. Run the escape
    hunt (Hazard 5) and the latency measurement (Hazard 7) here.
+
+### Reading `npm run zone:diff`
+
+`npm run zone:diff` (`scripts/check-zone-parity.mjs`) makes ten assertions about a zone — apex,
+wildcard and `www` `A`; `mail` `CNAME`; `MX`; SPF; DMARC; and the *absence* of `CAA` on both names
+and `AAAA` on the apex — and prints a verdict word on its own first line with a matching exit
+code, in the same shape as `cert:check`.
+
+It queries **the nameserver you name, directly**. That is the whole point: until the delegation
+changes, public recursive DNS still answers from site4now, so an ordinary lookup would test the
+old zone, pass, and tell you nothing about whether HostGator's zone is even populated. `--ns` is
+mandatory for that reason — the script refuses to fall back to the system resolver.
+
+| Verdict | Exit | What it means | What to do |
+|---|---|---|---|
+| `MATCH` | 0 | All ten assertions hold | **The gate is open.** Proceed to the nameserver change |
+| `MATCH-WARN` | 0 | Values all correct, some TTL is not 300 | Safe to delegate, but fix the TTL — a long one slows Phase 4's five-minute rollback |
+| `SPF-LEGACY` | 2 | The zone carries `v=spf1 a mx …` where the corrected form was expected | Replace `a` with `ip4:208.98.35.122`. Expected against site4now; a **stop** against HostGator |
+| `MISMATCH` | 1 | One or more records differ | **Do not change the nameservers.** Fix the record and re-run |
+| `NOZONE` | 3 | The nameserver serves nothing of yours for this zone | The zone is not created there yet. **Not a transcription error** — do not go looking for a typo |
+| `ERROR` | 4 | No `--ns`, or the nameserver's own address would not resolve | Nothing was measured. Never read it as `MATCH` |
+
+**`NOZONE` is the one to understand, because HostGator's nameservers cannot say "no."** Measured
+2026-08-24: `ns1.hostgator.com` answers `162.214.129.144` — a parking host that `301`s to
+`wildcard.hostgator.com` — for `therapyjo.com`, for `google.com`, and for a domain that does not
+exist. Its `SOA` for all three is a generic catch-all (`root.gator.hostgator.com`, serial
+`1378556401`), not a per-domain zone. So an uncreated zone never surfaces as `NXDOMAIN`; it
+surfaces as every `A` record being "wrong" in the same way. The script probes a control domain the
+server cannot host on every run, which is what lets it tell those two states apart and report
+`NOZONE` with the parking address named.
+
+**That measurement is also the reason step 3 is gated on step 2.** Delegating before the zone is
+populated does not produce an empty zone — it parks the domain. The apex, `www` and every
+subdomain resolve to HostGator's parking page while `MX`, SPF and DMARC disappear outright: the
+legacy clinical system unreachable and clinic mail dead, in one move, with a two-day delegation
+TTL behind it.
+
+One limit worth knowing: Node's resolver exposes a TTL only for `A`/`AAAA` answers, so the `MX`,
+`TXT` and `CNAME` TTLs are **not** verified. The script says so in its own output. Check those
+four in the panel by eye.
 
 **Schedule the nameserver change in clinic-closed hours (Asia/Amman, UTC+3).**
 
