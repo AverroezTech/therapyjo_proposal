@@ -18,7 +18,7 @@ Read it completely before acting on any part of it.
 | Prefix mechanics | "relative paths survive" | Verified true for the legacy login shell, plus the `trailingSlash` loop and the escape catalogue — the catalogue has since been **measured against the authenticated admin screen** and came back two escapes wide, both fixed (Hazard 5) |
 | Env | 7 variables | 10 — `LEGACY_ORIGIN`, `SUPABASE_SERVICE_ROLE_KEY` and `TZ` were missing, and each breaks something |
 
-### Where things stand — end of session, 2026-08-23
+### Where things stand — 2026-08-24
 
 **Read this first.** Nothing public has moved. `therapyjo.com` still resolves to the legacy host
 and still serves the legacy application, exactly as it did before this work started.
@@ -35,6 +35,10 @@ and still serves the legacy application, exactly as it did before this work star
 | SPF | Still `v=spf1 a mx …` — unfixed, and unfixable until Phase 3 |
 | **Legacy hosting panel** | **No access.** No login; vendor unreachable |
 | **Ability to edit DNS** | **None** until the nameservers move |
+| **Hazard 9** | **Decided 2026-08-24.** Options 1 + 3 + 4, Option 5 held with named triggers. See *Decision, 2026-08-24* |
+| **Legacy certificate** | Serial `06575A81…`, expires **2026-10-22**, SAN still covers **both** names. Re-measured 2026-08-24 |
+| **Cert tripwire** | `npm run cert:check` — **TJ-036, queued**. Arm it the moment Phase 3 lands |
+| **Fallback runbook** | **Written**, see *Fallback runbook*. Not yet needed — nothing has moved |
 | Vercel plan | **Hobby.** Pro declined — see *Declined, deliberately* |
 | Supabase | Free / Nano, `aws-1-eu-west-1`. Vercel functions in `iad1` — mismatched, declined |
 
@@ -45,13 +49,26 @@ other DNS-dependent action sits downstream of it.
 
 ### Next actions, in order
 
+**Hazard 9 was decided on 2026-08-24 — see *Decision, 2026-08-24* — and that decision sets this
+order. Phase 3 is now urgent for a calendar reason, and Phase 4 is gated behind an observation
+that can only be made in late September.**
+
 1. **Phase 3 — move the nameservers to HostGator.** Nothing blocks it; the registrar panel is
    the user's. Transcribe the seven records in Phase 3, **with the corrected SPF** (Phase 1 folds
-   into this — see the note there).
-2. **Decide Hazard 9** before Phase 4. Option 2 is dead; the live choices are 1 + 3, or 4, or 5.
-3. **Ask the clinic two questions:** is any `therapyjo.com` email address actually used, and is
+   into this — see the note there). **Deadline: comfortably before ~2026-09-22**, because the
+   renewal that answers Test B has to be observed from *behind* this phase to be worth anything.
+2. **Arm the tripwire** as soon as Phase 3 lands: `npm run cert:check -- --update`, then weekly.
+   Before Phase 4 it answers Test B; after Phase 4 it is the Option 3 tripwire. Same script,
+   two jobs.
+3. **Pursue Hazard 9 Option 4 in parallel, starting now.** Find whoever is billed for the
+   SmarterASP.NET account. This is the only action that ends the ~60-day fallback cycle, it is
+   the slowest and least controllable item on this list, and it has ~4 months of runway if the
+   Phase 4 gate is respected. Give it a decision date, not an open end.
+4. **Phase 4 — only after the ~2026-09-22 renewal is observed.** See the entry gate on that
+   phase. A changed serial means Test B passed and the new certificate runs to ~2026-12-21.
+5. **Ask the clinic two questions:** is any `therapyjo.com` email address actually used, and is
    anything automated pointing at the bare domain?
-4. **Run the two Phase 2c checks that need a login:** the 6 MB upload and a patient-document
+6. **Run the two Phase 2c checks that need a login:** the 6 MB upload and a patient-document
    round trip.
 
 ### Owed cleanup
@@ -727,6 +744,32 @@ window matters to the scheduling decision.)
 
 **The migration actually happens here. One record, reversible in five minutes.**
 
+> **Entry gate, added 2026-08-24. Do not start this phase until the legacy certificate has
+> renewed at least once from behind Phase 3.**
+>
+> The certificate measured on 2026-08-24 — serial `06575A81…`, `notBefore` 2026-07-24,
+> `notAfter` 2026-10-22 — is due to renew around **2026-09-22**. Where Phase 4 sits relative to
+> that date is worth about two months of runway:
+>
+> | | Phase 4 before ~2026-09-22 | **Phase 4 after the renewal is observed** |
+> |---|---|---|
+> | The ~2026-09-22 renewal | Fails, silently | **Succeeds** — new certificate to ~2026-12-21 |
+> | First failed renewal | ~2026-09-22 | ~2026-11-21 |
+> | Tripwire fires | ~2026-10-08 | ~2026-12-07 |
+> | Hard deadline | 2026-10-22 | **2026-12-21** |
+>
+> Two things are bought by waiting, and the second matters more than the first:
+>
+> 1. **A fresh certificate**, doubling the time available to pursue Hazard 9 Option 4.
+> 2. **Test B is finally answered.** Nobody has confirmed the legacy host's renewal survives the
+>    *nameserver move* at all. If that host validates over DNS-01, Phase 3 alone kills renewal
+>    and no fallback runbook helps — the answer is Option 5, and that is worth discovering
+>    while the apex is still on the legacy host rather than after it has moved.
+>
+> **The gate:** run `npm run cert:check` weekly after Phase 3. When it reports the serial has
+> changed, Test B has passed — record the new baseline and proceed. If the serial has not changed
+> by 2026-10-08, Test B has **failed**: do not run Phase 4, and go to Option 5.
+
 1. `[USER]` Add `therapyjo.com` to the Vercel project. Vercel will show the required `A` value —
    **copy it from the dashboard, not from this file.**
 2. `[USER]` Change `AUTH_URL` to `https://therapyjo.com` and redeploy.
@@ -754,13 +797,23 @@ window matters to the scheduling decision.)
 6. `[PLANNER]` Publish a test post in the new admin and confirm it appears on the public blog.
 7. `[USER]` Send and receive a test email a third time. This is the first moment the apex `A`
    has actually changed, which is what Hazard 2 is about.
-8. `[USER]` **Same day, not later:** in the legacy hosting panel, reissue that host's certificate
-   for **`www.therapyjo.com` only**, dropping `therapyjo.com` from it. Skipping this does not
-   break anything today — it breaks `/clinic/*` for every staff member about a month from now,
-   with no warning in between. Hazard 9 explains why.
+8. `[USER]` **Same day, not later, *if the panel can be reached*:** in the legacy hosting panel,
+   reissue that host's certificate for **`www.therapyjo.com` only**, dropping `therapyjo.com`
+   from it. Skipping this does not break anything today — it breaks `/clinic/*` for every staff
+   member about a month from now, with no warning in between. Hazard 9 explains why.
+
+   *As of 2026-08-24 this step is **not performable** — no panel login, vendor unreachable. It
+   stays written as the permanent fix, and it is what Option 4's outreach is trying to unlock.
+   Until it lands, the fallback runbook substitutes for it on a ~60-day cycle. Do not read this
+   step as done, and do not read it as optional; read it as owed.*
+9. `[PLANNER]` **Arm the tripwire.** Record the current baseline with
+   `npm run cert:check -- --update`, then run it weekly. This is Option 3, and it is the only
+   thing standing between a silent renewal failure and a clinical outage.
 
 **Rollback:** set the apex `A` back to `208.98.35.122`. Five minutes at a 300s TTL, and the
-legacy site is back at the front door. `AUTH_URL` goes back with it.
+legacy site is back at the front door. `AUTH_URL` goes back with it. This is the same first move
+as the fallback runbook, for a different reason — here it aborts a bad cutover, there it rescues
+a renewal.
 
 ---
 
@@ -769,7 +822,11 @@ legacy site is back at the front door. `AUTH_URL` goes back with it.
 1. `[USER]` Tell staff their address is now `therapyjo.com/clinic/`, and that
    `www.therapyjo.com` reaches the same system directly if anything looks wrong. Have them
    re-bookmark.
-2. `[USER]` After a week of quiet, remove `new.therapyjo.com` from Vercel and delete its record.
+2. `[USER]` **Keep `new.therapyjo.com`.** *Corrected 2026-08-24 — this step previously said to
+   remove it after a week of quiet. That is a month before the first renewal window, and it is
+   the address the fallback runbook parks this app on. Removing it turns a routine fallback into
+   an outage with nowhere to land.* Retire it only once the legacy certificate has been reissued
+   for `www` alone (Hazard 9, Option 4) and the runbook is permanently retired with it.
 3. `[PLANNER]` For several days, treat any report of a broken screen inside the legacy system as
    Hazard 5 until proven otherwise.
 4. `[PLANNER]` Watch Vercel's logs for 404s on root paths that look like legacy assets. Each one
@@ -777,6 +834,88 @@ legacy site is back at the front door. `AUTH_URL` goes back with it.
 
 ---
 
+## Fallback runbook — restoring legacy certificate renewal
+
+**Standing procedure, not a phase.** Once Phase 4 has moved the apex, this is the only thing that
+keeps the legacy certificate alive, and it will be needed **every ~60 days** until someone gains
+authority over the legacy hosting account (Hazard 9, Option 4) or the apex retreats to a
+subdomain (Option 5). Written out so it can be executed at 11pm by whoever is available, not
+reconstructed from Hazard 9 under pressure.
+
+### What it does, and why it is not instant
+
+Reverting the apex `A` does **not** renew anything by itself. It re-opens the door: with
+`therapyjo.com` resolving to `208.98.35.122` again, the legacy host's ACME client can complete
+HTTP-01 validation for *both* names on its certificate the next time it runs. **That client's
+schedule is unknown and cannot be triggered from outside** — no panel access. The DNS flip takes
+five minutes; the wait for the client to run is what sets the length of the window.
+
+### Trigger — fire on the tripwire, not on the outage
+
+| Entry condition | Clinic during the wait | Public site during the wait |
+|---|---|---|
+| **Tripwire** — serial unchanged with ≤14 days to `notAfter` | **Unaffected.** Old certificate still valid, `/clinic/` still proxies | Off the apex, 1–7 days |
+| Outage — certificate already expired | **TLS interstitial at `www`, 502 through `/clinic/`, for the whole wait** | Off the apex, 1–7 days |
+
+Both cost the public site the same. Only one costs the clinic anything. **The outage row is the
+backstop for a missed tripwire, never the plan.**
+
+Fire the tripwire when `npm run cert:check` reports `TRIPWIRE`.
+
+### Preconditions — verify these hold *before* they are needed
+
+- `new.therapyjo.com` still resolves and still serves this app. Phase 5 no longer removes it.
+- Whoever holds the HostGator DNS login is reachable out of hours, and knows this file exists.
+- The apex `A` TTL is still 300s.
+
+### Procedure
+
+| # | Step | Owner | Elapsed |
+|---|---|---|---|
+| 1 | In HostGator, set the apex `A` from Vercel's value back to `208.98.35.122`. **Do not touch `www`, `*`, `MX` or either `TXT`.** | `[USER]` | ~5 min to propagate |
+| 2 | On Vercel, set `AUTH_URL` to `https://new.therapyjo.com` and redeploy | `[USER]` | ~3 min |
+| 3 | Tell staff: `therapyjo.com/clinic/` is unavailable, use **`www.therapyjo.com`** directly | `[USER]` | — |
+| 4 | **Wait.** Run `npm run cert:check` daily until the serial changes | `[PLANNER]` | **24h–7 days** |
+| 5 | Serial changed — record the new one as the baseline (`npm run cert:check -- --update`) | `[PLANNER]` | minutes |
+| 6 | Set the apex `A` back to Vercel's value; set `AUTH_URL` to `https://therapyjo.com`; redeploy | `[USER]` | ~8 min |
+| 7 | Re-run the Phase 4 step 4 verification list, and tell staff `/clinic/` is back | `[PLANNER]` / `[USER]` | ~15 min |
+
+**Step 1 is the whole mechanism. Steps 2 and 3 are the ones that get forgotten** — skipping 2
+breaks login on the new site wherever it is living, and skipping 3 produces a flood of "the
+system is down" reports about a system that is up.
+
+### What is actually down
+
+| | During the window |
+|---|---|
+| Legacy clinical system at `www.therapyjo.com` | **Up throughout.** It never depends on the apex |
+| Legacy clinical system at `therapyjo.com` (root) | Up — that is the fallback state |
+| **`therapyjo.com/clinic/`** | **404 from IIS.** The prefix exists only on Vercel |
+| This app at `therapyjo.com` | Gone. The apex serves the legacy login page to the public |
+| This app at `new.therapyjo.com` | Up, provided the precondition above held |
+| Email | **Unaffected** — SPF pins `ip4:208.98.35.122` and never dereferences the apex |
+
+### If the serial does not change
+
+- **After 72 hours:** the client is probably not on a daily schedule. Keep waiting; do not flip back.
+- **After 7 days, with the certificate still unexpired:** the renewal is not merely blocked by
+  DNS. The likeliest explanations are DNS-01 validation (Test B was never answered, or was
+  answered wrong) or an ACME client that has stopped running at all. Neither is fixable from
+  here. **Go to Option 5** — leave the apex on the legacy host and move this app permanently to
+  `new.therapyjo.com`.
+- **If the certificate expires while waiting:** nothing new breaks that this runbook can fix. The
+  apex is already back on legacy, so `www` continues to serve — with an expired certificate and a
+  browser interstitial — until the client renews.
+
+### Recurrence, stated plainly
+
+A Let's Encrypt certificate lasts 90 days and renews at ~30 days remaining, so this window opens
+roughly **every 60 days, indefinitely**. Six times a year, someone must notice a silent signal,
+flip DNS, wait an unpredictable number of days, and flip back. That is the running cost of
+keeping the apex on Vercel without access to the legacy host, and it is the argument for
+Option 4 — this runbook is a bridge to that, not a destination.
+
+---
 ## Known hazards
 
 ### 1. Vercel rewrites do not preserve the `Host` header
@@ -1143,6 +1282,40 @@ that serial. Nothing has written to this zone in over a year.
 Evidence, not proof — some ACME integrations edit a zone without touching the visible serial. But
 it points firmly at HTTP-01, and it means the Phase 3 nameserver move is very unlikely to break
 renewal on its own.
+
+### Decision, 2026-08-24 — supersedes the above
+
+**Proceed with the cutover. Gate Phase 4 on the September renewal. Run Option 4 in parallel, and
+keep the fallback runbook armed as the standing safety net.** User decision, 2026-08-24.
+
+The 2026-08-23 decision above — "test Option 2, hold Option 5" — was overtaken the same day by
+Option 2's measured failure. This replaces it.
+
+| Element | Choice |
+|---|---|
+| Option 1 — timing | **Taken.** Phase 4 waits for the ~2026-09-22 renewal. See the Phase 4 entry gate |
+| Option 2 — ACME proxy | Dead. Vercel owns `/.well-known/acme-challenge/*` |
+| Option 3 — tripwire | **Taken, automated.** `npm run cert:check`, weekly |
+| Option 4 — reach the host | **Taken, and it is the actual fix.** Outreach starts now, with ~4 months of runway |
+| Option 5 — never move the apex | Held as the fallback, with two named triggers: Test B fails, or the runbook fails to renew after 7 days |
+
+**Certificate re-measured 2026-08-24**, unchanged from the previous day and now the tripwire's
+baseline: serial `06575A8139BB2762A52C9A079CFB28F80EE8`, `notBefore` 2026-07-24,
+`notAfter` 2026-10-22, SAN `therapyjo.com` + `www.therapyjo.com`, issuer Let's Encrypt.
+
+**What was corrected in the user's plan as originally stated.** The plan was "run the fallback if
+the outage happens." Reverting the apex does not renew anything by itself — it re-opens HTTP-01
+validation and then waits on an ACME client whose schedule nobody can see. Entering that wait
+*after* expiry means the clinic spends the whole of it behind a TLS interstitial and a 502ing
+proxy; entering it on the tripwire, ~14 days early, costs the clinic nothing and the public site
+the same 1–7 days either way. **The runbook therefore fires on the tripwire; the outage is only
+the backstop for a tripwire that was missed.**
+
+**What is being accepted, in writing, per the instruction at the end of Hazard 9.** Until Option 4
+lands, the apex stays on Vercel and the legacy certificate is kept alive by a manual ~60-day
+cycle: notice, flip, wait, flip back. `[USER]` owns the DNS flips and the staff notice;
+`[PLANNER]` owns the weekly check and the call to fire. If Option 4 has not landed by the second
+fallback cycle, that is the signal to reconsider Option 5 rather than continue indefinitely.
 
 ### The test ladder
 

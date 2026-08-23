@@ -6505,6 +6505,65 @@ GOOGLE_PLACES_PLACE_ID=
 
 ---
 
+### TJ-036 — A tripwire for the legacy certificate's silent renewal failure
+
+- **Status:** READY
+- **Branch:** `ops/cert-tripwire`
+- **Why:** After Phase 4 moves the apex, the legacy host's Let's Encrypt renewal fails **silently** — the certificate stays valid for another ~30 days and nothing anywhere reports a problem, until `/clinic/*` starts returning 502 for every staff member (Hazard 9). `Production_Cutover.md` prescribes Option 3, a weekly manual check of the certificate's serial number, as the only thing that converts that silent failure into a caught one. A weekly manual check that a human must remember to run, against a signal that is invisible by design, for a window that recurs every ~60 days indefinitely, is not a control — it is an intention. This makes it a command. The same script does double duty **before** Phase 4 as the instrument that answers Test B (does renewal survive the nameserver move?), which is what gates the whole cutover.
+
+**Planning pass:** 2026-08-24 — measured the live certificate directly with Node's `tls` module; read `scripts/normalize-icons.mjs`, `package.json`, and Hazard 9 + the new *Fallback runbook* section of `Production_Cutover.md`.
+
+- **The live certificate, measured 2026-08-24 and the source of the expected values below:**
+  ```json
+  { "serial": "06575A8139BB2762A52C9A079CFB28F80EE8",
+    "from":   "Jul 24 20:08:23 2026 GMT",
+    "to":     "Oct 22 20:08:22 2026 GMT",
+    "san":    "DNS:therapyjo.com, DNS:www.therapyjo.com",
+    "issuer": "Let's Encrypt" }
+  ```
+  These are **measured, not predicted.** The serial is uppercase hex with no colons and no `0x` — that is Node's format, confirmed by running it, not assumed.
+- **Measured gotcha, and the reason this task exists as a spec rather than a one-liner:** after the certificate is read and the socket is closed, `www.therapyjo.com` sends **`ECONNRESET`**. The measurement above emitted a valid certificate *and* an error, and a naive implementation that lets the `error` handler own the exit code will report a healthy certificate as a connection failure — a tripwire that cries wolf weekly is one that gets ignored by the third week. **Capture the certificate in the `secureConnect` callback, latch success there, and ignore any error raised after the latch is set.**
+- **No new dependency.** Node's built-in `tls` covers it; `node --version` is v22.16.0. `openssl` exists in the user's Git Bash but is not on a plain Windows `PATH`, and a tripwire that runs in only one shell is a tripwire that stops running.
+- **`rejectUnauthorized: false` is mandatory, not laziness.** The single most important state for this script to report is *an expired certificate* — and Node refuses the handshake on an expired peer certificate by default, so the strict setting makes the script blind in exactly the case it exists for. Read the certificate, then judge it; do not let TLS validation pre-empt the judgement.
+
+**The change:**
+
+1. **New file `scripts/check-legacy-cert.mjs`**, ESM, no dependencies, header comment in the style of `normalize-icons.mjs` explaining what it watches and why the signal is silent.
+   - Connect to `www.therapyjo.com:443` with `servername` set for SNI and `rejectUnauthorized: false`. Accept `--host <name>` to override, defaulting to `www.therapyjo.com`.
+   - **15-second timeout** via `socket.setTimeout`, and destroy the socket on fire. It runs unattended; it must never hang.
+   - Read `serialNumber`, `valid_from`, `valid_to`, `subjectaltname` from `getPeerCertificate()`.
+   - Compare against **`scripts/legacy-cert-baseline.json`** (committed; public certificate data, no secret).
+2. **The six states.** Print a short human-readable block — host, serial, days remaining, SAN, verdict — and exit with the listed code. The verdict word must be the first token on its own line so it is greppable from a scheduler.
+
+   | Verdict | Condition | Exit | Meaning |
+   |---|---|---|---|
+   | `RESOLVED` | SAN no longer contains `therapyjo.com` | 0 | **Hazard 9 is over.** Someone reissued for `www` alone; the runbook can be retired |
+   | `RENEWED` | serial ≠ baseline | 0 | Renewal succeeded. Test B passed (pre-Phase 4) or the fallback worked (post). Tell the operator to re-run with `--update` |
+   | `OK` | serial = baseline, >14 days to `notAfter` | 0 | Nothing to do |
+   | `TRIPWIRE` | serial = baseline, ≤14 days to `notAfter` | 1 | **Fire the fallback runbook.** Renewal has failed |
+   | `EXPIRED` | `notAfter` in the past | 2 | Missed tripwire; clinic is already degraded |
+   | `ERROR` | no certificate read, or timeout | 3 | Could not measure — say so, never imply `OK` |
+
+   The 14-day threshold is `Production_Cutover.md`'s ("two weeks before `notAfter`"). Put it in a named constant, not inline.
+3. **`--update`** rewrites `scripts/legacy-cert-baseline.json` from the current observation and exits 0. It must **never** run implicitly — a baseline that silently follows the observed serial can never detect that the serial stopped changing, which is the entire signal. Guard it behind the explicit flag and say so in a comment.
+4. **`scripts/legacy-cert-baseline.json`** — seed it with the measured values above, plus a `"measured"` date field.
+5. **`package.json`** — add `"cert:check": "node scripts/check-legacy-cert.mjs"` to `scripts`, after `icons:normalize`.
+
+**Do not:** add a dependency, add a cron/CI schedule (the runbook says weekly-by-hand for now, and a scheduler is a separate decision), touch `next.config.mjs`, or touch anything under `src/`.
+
+**Verification — run these and report the actual output, do not predict it:**
+
+- `npm run cert:check` against the live host. Expected today: verdict `OK`, serial matching the baseline, ~59 days remaining. **Report the real number.**
+- `npm run cert:check -- --host expired.badssl.com` — a deliberately expired certificate. Must print `EXPIRED` and exit 2, **not** `ERROR`. This is the one test that proves `rejectUnauthorized: false` is doing its job.
+- `npm run cert:check -- --host wrong.host.badssl.com` — a valid but mismatched certificate. Should still read and report; the script judges dates and serials, not name binding.
+- `npm run cert:check -- --host does-not-exist.therapyjo.invalid` — must print `ERROR` and exit 3 within the timeout, not hang and not crash with an unhandled rejection.
+- Confirm `--update` rewrites the baseline, and that a second plain run then reports `OK`.
+- `git status` clean apart from the two new files and `package.json`.
+
+**Report back:** the exact verdict lines and exit codes for all four hosts, and the real days-remaining figure. If `ECONNRESET` shows up anywhere in the output, say where — the planner wants to know whether the latch held.
+
+---
+
 ## Notes for the planner
 
 Findings reported by the executor, or surfaced during a pass, that fall outside the scope of the task that turned them up. The planner triages these into tasks. **The executor does not write here** — it reports in conversation and the planner records.
