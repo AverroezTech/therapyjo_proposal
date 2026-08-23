@@ -22,7 +22,14 @@ import { fileURLToPath } from "node:url";
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const BASELINE_PATH = path.join(__dirname, "legacy-cert-baseline.json");
 
-const DEFAULT_HOST = "www.therapyjo.com";
+// The legacy cert's two SAN entries. RESOLVED and --update both need to
+// know, precisely, whether the *legacy* www name is present and whether the
+// apex is gone — not merely whether "therapyjo.com" appears as a substring,
+// since "www.therapyjo.com" contains that substring itself (see
+// parseSanNames below).
+const LEGACY_WWW_HOST = "www.therapyjo.com";
+const LEGACY_APEX_HOST = "therapyjo.com";
+const DEFAULT_HOST = LEGACY_WWW_HOST;
 const PORT = 443;
 const TIMEOUT_MS = 15_000;
 // Production_Cutover.md's fallback runbook: fire the tripwire two weeks
@@ -53,6 +60,30 @@ function parseArgs(argv) {
 function issuerToString(issuer) {
   if (!issuer) return "unknown";
   return issuer.O || issuer.CN || JSON.stringify(issuer);
+}
+
+// Splits a subjectaltname string ("DNS:therapyjo.com, DNS:www.therapyjo.com")
+// into exact hostnames. This exists because "www.therapyjo.com".includes
+// ("therapyjo.com") is true — a substring check would make RESOLVED
+// unreachable for the one host it was written for (the apex is always a
+// substring of the www name) while firing for any unrelated host whose SAN
+// simply doesn't happen to contain the string. Exact-name comparison is
+// what makes RESOLVED mean "the apex was specifically dropped."
+function parseSanNames(san) {
+  if (!san) return [];
+  return san
+    .split(",")
+    .map((entry) => entry.trim())
+    .filter((entry) => entry.toUpperCase().startsWith("DNS:"))
+    .map((entry) => entry.slice(entry.indexOf(":") + 1).trim());
+}
+
+// Right-aligns every printed field to one column, regardless of label
+// length — so a long label like "baselineSerial" can't throw off the
+// block's alignment the way a hand-padded string literal would.
+const LABEL_WIDTH = 16;
+function formatLine(label, value) {
+  return `${(label + ":").padEnd(LABEL_WIDTH)}${value}`;
 }
 
 // Connects with rejectUnauthorized:false and reads the certificate from the
@@ -140,9 +171,9 @@ async function main() {
   if (!observation.ok) {
     printBlock([
       "ERROR",
-      `host:    ${host}`,
-      `reason:  ${observation.reason}`,
-      "meaning: could not measure the certificate — never imply OK",
+      formatLine("host", host),
+      formatLine("reason", observation.reason),
+      formatLine("meaning", "could not measure the certificate — never imply OK"),
     ]);
     process.exitCode = EXIT.ERROR;
     return;
@@ -153,6 +184,23 @@ async function main() {
   // stopped changing, which is the entire signal this script watches for.
   // It only runs behind this explicit flag.
   if (update) {
+    const sanNames = parseSanNames(observation.san);
+    if (!sanNames.includes(LEGACY_WWW_HOST)) {
+      // A typo'd --host, or any host that isn't the legacy cert, must not be
+      // allowed to overwrite the one piece of state the tripwire depends on.
+      printBlock([
+        "ERROR",
+        formatLine("host", host),
+        formatLine(
+          "reason",
+          `refusing --update — observed SAN does not name ${LEGACY_WWW_HOST} (san: ${observation.san})`
+        ),
+        formatLine("meaning", "refusing to avoid clobbering the tracked baseline"),
+      ]);
+      process.exitCode = EXIT.ERROR;
+      return;
+    }
+
     const newBaseline = {
       serial: observation.serial,
       from: observation.from,
@@ -164,8 +212,8 @@ async function main() {
     await writeFile(BASELINE_PATH, JSON.stringify(newBaseline, null, 2) + "\n");
     printBlock([
       "UPDATED",
-      `host:    ${host}`,
-      `serial:  ${observation.serial}`,
+      formatLine("host", host),
+      formatLine("serial", observation.serial),
       `baseline written to ${path.relative(process.cwd(), BASELINE_PATH)}`,
     ]);
     process.exitCode = EXIT.OK;
@@ -176,7 +224,12 @@ async function main() {
   const notAfter = new Date(observation.to);
   const remaining = daysRemaining(notAfter);
   const serialMatches = observation.serial === baseline.serial;
-  const sanStillNamesTherapyjo = observation.san.includes("therapyjo.com");
+  const sanNames = parseSanNames(observation.san);
+  // RESOLVED means "this is demonstrably the legacy certificate, and it has
+  // been reissued without the apex" — both halves are required, so a host
+  // whose SAN simply never mentioned therapyjo.com (an unrelated --host,
+  // a typo) can never satisfy it and falsely claim the hazard is over.
+  const isResolved = sanNames.includes(LEGACY_WWW_HOST) && !sanNames.includes(LEGACY_APEX_HOST);
 
   let verdict;
   let exitCode;
@@ -188,10 +241,10 @@ async function main() {
     verdict = "EXPIRED";
     exitCode = EXIT.EXPIRED;
     meaning = "Missed tripwire; clinic is already degraded";
-  } else if (!sanStillNamesTherapyjo) {
+  } else if (isResolved) {
     verdict = "RESOLVED";
     exitCode = EXIT.OK;
-    meaning = "Hazard 9 is over — SAN no longer names therapyjo.com; runbook can be retired";
+    meaning = `Hazard 9 is over — SAN names ${LEGACY_WWW_HOST} without ${LEGACY_APEX_HOST}; runbook can be retired`;
   } else if (!serialMatches) {
     verdict = "RENEWED";
     exitCode = EXIT.OK;
@@ -208,13 +261,13 @@ async function main() {
 
   printBlock([
     verdict,
-    `host:          ${host}`,
-    `serial:        ${observation.serial}`,
-    `baselineSerial:${" "}${baseline.serial}`,
-    `daysRemaining: ${remaining}`,
-    `notAfter:      ${observation.to}`,
-    `san:           ${observation.san}`,
-    `meaning:       ${meaning}`,
+    formatLine("host", host),
+    formatLine("serial", observation.serial),
+    formatLine("baselineSerial", baseline.serial),
+    formatLine("daysRemaining", remaining),
+    formatLine("notAfter", observation.to),
+    formatLine("san", observation.san),
+    formatLine("meaning", meaning),
   ]);
   process.exitCode = exitCode;
 }
