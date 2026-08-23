@@ -34,6 +34,17 @@ export const config = {
          *    exempted. Bare "/clinic" (no slash) is deliberately NOT excluded
          *    here — it still needs to reach the handler above for the
          *    exact-match redirect to "/clinic/".)
+         *  - .axd (ASP.NET script/resource handlers. The legacy app emits
+         *    /WebResource.axd and /ScriptResource.axd ROOT-relative and
+         *    unconditionally — 21 references on the authenticated admin page
+         *    alone — so they arrive here without the /clinic prefix. They are
+         *    proxied to the legacy origin by a beforeFiles rewrite in
+         *    next.config.mjs, but beforeFiles runs AFTER middleware: without
+         *    this exclusion NextAuth answers first with a redirect to /login,
+         *    the rewrite never fires, the legacy page's JavaScript dies and
+         *    every postback on it breaks. The exclusion and that rewrite are a
+         *    pair — do not remove one without the other.
+         *    See Production_Cutover.md, Hazard 5.)
          *  - .well-known/ (RFC 8615 well-known URIs are a public namespace and
          *    must never sit behind authentication. Note that on Vercel,
          *    /.well-known/acme-challenge/* never reaches this app at all —
@@ -43,6 +54,6 @@ export const config = {
          * intercept these paths and redirect unauthenticated requests to
          * /login, breaking the legacy proxy.
          */
-        "/((?!_next/static|_next/image|favicon\\.ico|clinic/|\\.well-known/|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico|mp4|webm|mp3|woff|woff2|ttf|eot|css|js)$).*)",
+        "/((?!_next/static|_next/image|favicon\\.ico|clinic/|\\.well-known/|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico|mp4|webm|mp3|woff|woff2|ttf|eot|css|js|axd)$).*)",
     ],
 };

@@ -15,7 +15,7 @@ Read it completely before acting on any part of it.
 | DNS | Nameservers to a proxy provider | Nameservers to HostGator (user decision, 2026-08-23) |
 | Legacy origin | "preserve the `Host` header" | **Impossible on Vercel** — rewrites send the destination's hostname. The origin must answer to its own name. See Hazard 1. |
 | Mail | "check the mail records twice" | A specific, verified break: the SPF `a` mechanism under `DMARC p=reject`. See Hazard 2. |
-| Prefix mechanics | "relative paths survive" | Verified true for the legacy login shell, plus the `trailingSlash` loop and the escape catalogue |
+| Prefix mechanics | "relative paths survive" | Verified true for the legacy login shell, plus the `trailingSlash` loop and the escape catalogue — the catalogue has since been **measured against the authenticated admin screen** and came back two escapes wide, both fixed (Hazard 5) |
 | Env | 7 variables | 10 — `LEGACY_ORIGIN`, `SUPABASE_SERVICE_ROLE_KEY` and `TZ` were missing, and each breaks something |
 
 ### Where things stand — end of session, 2026-08-23
@@ -27,7 +27,8 @@ and still serves the legacy application, exactly as it did before this work star
 |---|---|
 | `master` / deployed | **`4264663`**, pushed. Vercel builds from GitHub — **`git push` is the deploy trigger** |
 | Live at | `therapyjo-proposal.vercel.app` |
-| `/clinic/` proxy | **Working and verified in production**, including relative assets |
+| `/clinic/` proxy | **Working and verified in production**, including relative assets and the authenticated admin screen |
+| `/clinic/` escapes | **Audited and fixed on branch `fix/legacy-clinic-escapes` — not yet merged or deployed.** Two escapes found, both patched; see Hazard 5. Until this ships, **staff cannot log in through `/clinic/`** — a successful login redirects them into this app and 404s |
 | Timezone | **Fixed and verified in production** — `Asia/Amman` |
 | Custom domain on Vercel | **Not attached.** Apex still `208.98.35.122` |
 | DNS | Still at site4now.net, **untouched** |
@@ -745,6 +746,11 @@ window matters to the scheduling decision.)
    against the same screen at `https://www.therapyjo.com`. This is the check that matters most,
    and only a human with legitimate access can perform it. Any difference between the two is an
    escape (Hazard 5), and none of it is a data risk.
+   *The login itself and the admin index were audited on 2026-08-23 and their escapes fixed, so
+   both should now work end to end. The inner screens were not reachable for that audit. To check
+   one without a hosting panel, use the technique in Hazard 5: log in, then `fetch()` the screen's
+   URL under `/clinic/` from the page's own JS context and enumerate its `href`/`src`/`action`
+   attributes — anything starting `/` that is not `.aspx` or `.axd` is a new escape.*
 6. `[PLANNER]` Publish a test post in the new admin and confirm it appears on the public blog.
 7. `[USER]` Send and receive a test email a third time. This is the first moment the apex `A`
    has actually changed, which is what Hazard 2 is about.
@@ -869,38 +875,69 @@ have now failed to carry. **Candidate TJ-034**, and it stays open after the cuto
 
 ### 5. The legacy app under a subpath — the escape catalogue
 
-The login shell is verified safe: `action="./"`, `assets/css/…`, `images/…` — all relative, all
-resolving correctly under `/clinic/`. What cannot be verified from outside is the inner screens,
-and Web Forms has three habits that escape a path prefix:
+**Status: audited and fixed, 2026-08-23.** This section was speculative in the second planning
+pass. It has now been run for real, against the authenticated legacy admin screen, and the
+speculation can be replaced with measurements.
 
-| Escape | Emitted as | Lands on |
-|---|---|---|
-| `Response.Redirect("~/Page.aspx")` | `Location: /Page.aspx` | This app → 404, or worse, this app's `/admin` |
-| Resource handlers | `/WebResource.axd`, `/ScriptResource.axd` | This app → 404 → dead JavaScript, broken postbacks |
-| Root-relative links | `href="/Something"` | This app |
+**How the audit was done** — worth repeating for any future legacy screen. Log in at `/clinic/`,
+then from that page's own JS context `fetch('/clinic/Admin/Index.aspx')`. The legacy session
+cookie is scoped to the Vercel host, so the request carries it *through the proxy* and returns the
+real authenticated markup (744 KB, HTTP 200). Then enumerate every `href`/`src`/`action` in it.
+No hosting-panel access is needed, which matters because there isn't any.
+
+**What the audit found.** The prefix hypothesis holds far better than feared. Of 67 internal
+references on the admin index, **65 are relative** (`Index.aspx`, `ViewPatient.aspx`,
+`../assets/css/app.css`). There are **no `~/` paths and no directory-style links**. Only two
+escapes are reachable through normal use, and both are now fixed. A third is real but no legacy
+link can reach it, so it is documented rather than patched:
+
+| # | Escape | Measured | Lands on | Fix |
+|---|---|---|---|---|
+| 1 | Post-login redirect | `302 Location: /Admin/Index.aspx` | This app → `/login` → 404 — **staff could not log in at all** | `redirects()` in `next.config.mjs` |
+| 2 | Resource handlers | `/WebResource.axd`, `/ScriptResource.axd`, **21 refs** on one page | This app → `302 /login` → dead JS, broken postbacks | `beforeFiles` rewrite + middleware matcher |
+| 3 | Trailing-slash directories | `/clinic/Admin/` → rewrite drops the slash → IIS `301` to **absolute** `https://www.therapyjo.com/Admin/` | Raw legacy domain, outside the proxy | **Not fixed — unreachable.** No legacy link is directory-style; only hand-typed URLs hit it |
+
+Escape 1 was the live bug: the legacy app replies root-relative, the browser resolves it against
+the Vercel host rather than IIS, and the staff member is bounced into *this* app's login. The
+`Location` is capital-`A` `/Admin/…`, while the role gate in `auth.config.ts` tests lowercase
+`/admin`, so the landing is a **404, not the `/unauthorized` 403** — worth knowing when reading
+bug reports about this.
 
 Symptom: a staff screen fails to load, is unstyled, or a click lands on the marketing site.
 **Not a data risk** — nothing is lost or corrupted.
 
-Find them in Phase 3 step 7, with the browser network panel open and Vercel's logs alongside:
-every 404 on a root path that the marketing site does not own is an escape. Then add exactly the
-rules those escapes require — not these speculatively:
+The rules now in the tree, both verified present in `.next/routes-manifest.json` after a build:
 
 ```js
-// beforeFiles — resource handlers, rewritten so there is no extra round trip
-{ source: "/:file((?!clinic/).*\\.axd)", destination: `${LEGACY_ORIGIN}/:file` },
-
-// redirects — page navigations, bounced back under the prefix so the address
-// bar stays honest. 307 preserves method and body, so postbacks survive.
+// redirects() — page navigations, bounced back under the prefix so the address
+// bar stays honest. Emits 307: preserves method and body, so postbacks survive.
 { source: "/:file((?!clinic/).*\\.aspx)", destination: "/clinic/:file", permanent: false },
+
+// rewrites().beforeFiles — resource handlers, rewritten so there is no extra round trip
+{ source: "/:file((?!clinic/).*\\.axd)", destination: `${LEGACY_ORIGIN}/:file` },
 ```
 
-The `(?!clinic/)` lookahead is not optional. Without it the `.aspx` rule matches its own
+Two constraints that are not obvious and cost real debugging time:
+
+**The `(?!clinic/)` lookahead is not optional.** Without it the `.aspx` rule matches its own
 destination, and every legacy page enters an infinite redirect.
 
-If the escapes turn out to be numerous or structural, the answer is not more rules — it is
+**The `.axd` rewrite is dead code without a matching middleware exclusion.** Next's routing order
+is `headers → redirects → MIDDLEWARE → beforeFiles rewrites → filesystem`. A `beforeFiles`
+rewrite therefore runs *after* middleware, so NextAuth answers `/WebResource.axd` with a redirect
+to `/login` before the rewrite is ever consulted. `src/middleware.ts` must exclude `axd` from its
+matcher — which is the same reason the `/clinic/` rewrite works at all. **The rewrite and the
+matcher exclusion are a pair; removing either silently disables the other.** The `.aspx` rule
+needs no such pairing because `redirects()` runs *ahead* of middleware.
+
+Note that Next compiles these sources case-insensitively (`/^…/i`), so capital-`A` `/Admin/…`
+is caught and `/CLINIC/…` is correctly excluded from the loop guard.
+
+If further escapes turn out to be numerous or structural, the answer is not more rules — it is
 `clinic.therapyjo.com` as a subdomain, which sidesteps the entire class of problem for the cost
-of one DNS record and one binding. Keep that in your pocket.
+of one DNS record and one binding. **On the evidence above that is not needed**: the surface was
+two rules wide, not structural. Keep it in your pocket anyway — and note it is unavailable until
+the nameservers move, since it needs a DNS record nobody can currently create.
 
 ### 6. Session cookies cross between the two systems
 
