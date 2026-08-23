@@ -1,6 +1,16 @@
 // Clinic operates in Jordan — pin the Node process timezone so date-only
 // strings (reservation dates, "today" boundaries) resolve to Asia/Amman
 // instead of whatever timezone the deploy host defaults to (e.g. UTC on Vercel).
+//
+// This line only takes effect where this module is actually evaluated:
+// `next dev`, and the build-time process that prerenders static pages. It
+// does NOT reach Vercel's deployed serverless runtime — Vercel serializes
+// the resolved config to JSON rather than re-running this file, so this
+// assignment never executes there. src/instrumentation.ts sets the same
+// process.env.TZ, but for that runtime instead, via Next's register() hook
+// which Next calls once per server instance at bootstrap. The two are
+// complementary, not redundant — do not delete either one thinking it
+// duplicates the other.
 process.env.TZ = "Asia/Amman";
 
 // Absolute origin of the legacy ASP.NET clinic system (e.g. "https://www.therapyjo.com").
