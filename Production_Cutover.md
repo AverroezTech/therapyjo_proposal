@@ -774,29 +774,60 @@ Two more panel specifics worth knowing before editing that zone again:
 **Open as of 2026-08-24.** The seven records are saved and correct in the panel, but no nameserver
 reachable from outside serves them:
 
-| Nameserver | `zone:diff` | What it means |
+| Nameserver family | `zone:diff` | How it declines |
 |---|---|---|
-| `ns1`/`ns2.hostgator.com` | `NOZONE` | Catch-all parking address; no zone for this domain |
-| `ns3.hostgator.com` | — | Answers a different parking address; no zone |
-| `dns1`–`dns5.name-services.com` | `NOZONE` | eNom/Newfold's nameservers. `EREFUSED` — they do not host the zone |
+| `ns1`–`ns3.hostgator.com` | `NOZONE` | Catch-all → `162.214.129.144`, a parking host |
+| `dns1`–`dns5.name-services.com` | `NOZONE` | eNom/Newfold. `EREFUSED` — refuses the domain outright |
+| **`ns1`–`ns4.launchpad.com`** | `NOZONE` | **HostGator's documented registrar defaults.** Catch-all → **`127.0.0.1`** |
 
-The likely explanation is that **HostGator does not publish the zone until the domain is actually
-delegated to their nameservers** — the registrar stores the records, and the zone goes live only
+`launchpad.com` is the important row: HostGator's own documentation names those four as the
+default nameservers for domains registered with them, so they are almost certainly what
+*Revert to Defaults* would set. They answer, and they do not have this zone.
+
+Note what their catch-all returns — **`127.0.0.1`**. A domain delegated to `launchpad` before its
+zone exists does not land on a parking page; it resolves to **localhost**, which is a total
+blackhole for web *and* mail. That is a worse failure than the HostGator parking address, and it
+raises the cost of delegating early rather than lowering it.
+
+Three independent nameserver families, none serving the zone, minutes-to-hours after the records
+were saved. The likely explanation is that **HostGator does not publish the zone until the domain
+is actually delegated to them** — the registrar stores the records, and the zone goes live only
 once the delegation points at it. If that is right, Phase 3's gate is circular as written: the
 parity check cannot pass *before* the nameserver change, because there is nothing to check.
 
-**Do not resolve this by guessing.** Two things settle it, in order:
+**What the gate was actually protecting, and what still covers it.** Its job was to catch a
+transcription error before a slow-to-reverse delegation. Part of that is now covered by a
+different route: the seven records were read back out of the panel and compared character for
+character against this file's table, and they match. What that read-back *cannot* tell you is how
+HostGator's DNS will **render** them — and one specific rendering question is the whole ballgame:
 
-1. **Ask HostGator support which nameservers this account's Advanced DNS publishes to**, and
-   whether the zone goes live before or only after delegation. Support chat is in the panel. This
-   is one question with a definite answer, and it is cheaper than any amount of probing.
-2. **Re-run the check first** — the panel warns changes can take 24–48 hours, and the records were
-   only minutes old when this was measured. `npm run zone:diff -- --ns <name>` costs nothing.
+> `mail5010.site4now.net` and `igw10.site4now.net` had to be entered **without** trailing dots,
+> because the panel rejects the FQDN form. If HostGator treats a dotless value as relative and
+> appends the zone, the published records become `mail5010.site4now.net.therapyjo.com` and
+> `igw10.site4now.net.therapyjo.com` — and clinic mail stops, under `p=reject`, with no error in
+> the panel.
 
-If publication really is gated on delegation, the gate has to be restructured rather than
-abandoned: delegate during clinic-closed hours, then run `zone:diff` immediately and continuously
-against the new nameservers, with the registrar rollback ready. That is materially riskier than
-the original design and should be a deliberate decision, not a default.
+The rejection of the trailing-dot form is weak evidence that it treats these as absolute, but it
+is not proof, and `zone:diff` answers it in one second once the zone is reachable. **That single
+question is what the gate is now for.**
+
+**The restructured gate.** If publication really is delegation-gated, the check moves after the
+flip rather than being abandoned:
+
+1. Delegate during clinic-closed hours (Asia/Amman), with someone watching.
+2. Run `npm run zone:diff -- --ns ns1.launchpad.com` **immediately**, then every minute.
+3. On anything other than `MATCH`/`MATCH-WARN`, **fix forward in the HostGator panel** — do not
+   roll the delegation back. Records are editable and TTLs are 900s, so a bad record is corrected
+   in about fifteen minutes; a nameserver rollback takes up to two days.
+
+That bounds the exposure at roughly *time-to-notice + 15 minutes*, which is minutes if it is
+watched and hours if it is not. It is still materially riskier than verifying first, and it should
+be a deliberate decision rather than a default — but it is a bounded, recoverable risk, not a
+blind one.
+
+Before accepting it, **re-run the check** — the panel warns changes can take 24–48 hours, and
+these records were minutes old when first measured. If they publish on their own, the original
+gate works as written and none of the above is needed.
 
 ### Reading `npm run zone:diff`
 
