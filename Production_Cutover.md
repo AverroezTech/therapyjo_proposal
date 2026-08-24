@@ -33,6 +33,9 @@ and still serves the legacy application, exactly as it did before this work star
 | Timezone | **Fixed and verified in production** — `Asia/Amman` |
 | Custom domain on Vercel | **Not attached.** Apex still `208.98.35.122` |
 | DNS | Still at site4now.net, **untouched**. Whole zone re-measured 2026-08-24, authoritatively and over DoH: **identical** to the 2026-08-23 table, `SOA` serial `2025031307` both times — unedited since March 2025 |
+| **HostGator zone** | **Built 2026-08-24.** All seven records entered in Domains → therapyjo.com → DNS and confirmed in the panel. The zone was **empty** beforehand — this is registrar-level *Advanced DNS*, not cPanel, so there were no default records to displace |
+| **HostGator TTLs** | **900s, not 300s.** The panel's TTL menu bottoms out at *15 Minutes*; there is no 300 option. See *The TTL floor* |
+| **Phase 3 gate** | **Not passable yet.** `zone:diff` reads `NOZONE` against every HostGator-side nameserver tried. See *The publication problem* |
 | HostGator nameservers | **Catch-all.** `ns1.hostgator.com` answers a parking address for any domain, including ones that do not exist — so an uncreated zone cannot announce itself as `NXDOMAIN`. See *Reading `npm run zone:diff`* |
 | SPF | Still `v=spf1 a mx …` — unfixed, and unfixable until Phase 3 |
 | **Legacy hosting panel** | **No access.** No login; vendor unreachable |
@@ -738,6 +741,62 @@ nameservers answer.
    hostname, a real certificate, real cookies. This is the dry run a temporary host URL cannot
    give you. **`/clinic/` should now work**, because `LEGACY_ORIGIN` is reachable. Run the escape
    hunt (Hazard 5) and the latency measurement (Hazard 7) here.
+
+### The TTL floor — 900s, not 300s
+
+**Measured 2026-08-24 while building the zone.** HostGator's Advanced DNS TTL menu offers
+1 Week / 1 Day / 12 Hours / 4 Hours / 2 Hours / 1 Hour / 1/2 Hour / **15 Minutes**, and nothing
+shorter. Every record in the new zone is therefore **900s**, where the site4now zone runs 300s.
+
+Two consequences, neither fatal:
+
+- **Phase 4's rollback is fifteen minutes, not five.** The apex `A` move is still reversible by
+  editing one record; it just takes three times as long to propagate. Plan the flip window
+  accordingly, and stop describing the rollback as five minutes.
+- **The fallback runbook's precondition "the apex `A` TTL is still 300s" is now false** and should
+  read 900s. Nothing else in that runbook depends on the figure.
+
+`zone:diff` reports a TTL that isn't 300 as a `WARN`, giving `MATCH-WARN` rather than `MATCH` — so
+expect that verdict, and treat it as the pass. If a shorter TTL is ever wanted, *Premium DNS* is
+offered in the panel as a paid add-on and was **not** purchased; whether it lifts the floor is
+unverified.
+
+Two more panel specifics worth knowing before editing that zone again:
+
+- **No trailing dots.** `mail5010.site4now.net.` was rejected with *"Invalid DNS Configuration:
+  One or more DNS records contain incorrect formatting."* The bare name saved fine. Same for the
+  `MX` target.
+- **TTL resets to 4 Hours** on every newly added row, and again whenever a row's *Refers to* is
+  changed. Set it last, and re-check it after any other edit to that row.
+
+### The publication problem — why the gate has not passed
+
+**Open as of 2026-08-24.** The seven records are saved and correct in the panel, but no nameserver
+reachable from outside serves them:
+
+| Nameserver | `zone:diff` | What it means |
+|---|---|---|
+| `ns1`/`ns2.hostgator.com` | `NOZONE` | Catch-all parking address; no zone for this domain |
+| `ns3.hostgator.com` | — | Answers a different parking address; no zone |
+| `dns1`–`dns5.name-services.com` | `NOZONE` | eNom/Newfold's nameservers. `EREFUSED` — they do not host the zone |
+
+The likely explanation is that **HostGator does not publish the zone until the domain is actually
+delegated to their nameservers** — the registrar stores the records, and the zone goes live only
+once the delegation points at it. If that is right, Phase 3's gate is circular as written: the
+parity check cannot pass *before* the nameserver change, because there is nothing to check.
+
+**Do not resolve this by guessing.** Two things settle it, in order:
+
+1. **Ask HostGator support which nameservers this account's Advanced DNS publishes to**, and
+   whether the zone goes live before or only after delegation. Support chat is in the panel. This
+   is one question with a definite answer, and it is cheaper than any amount of probing.
+2. **Re-run the check first** — the panel warns changes can take 24–48 hours, and the records were
+   only minutes old when this was measured. `npm run zone:diff -- --ns <name>` costs nothing.
+
+If publication really is gated on delegation, the gate has to be restructured rather than
+abandoned: delegate during clinic-closed hours, then run `zone:diff` immediately and continuously
+against the new nameservers, with the registrar rollback ready. That is materially riskier than
+the original design and should be a deliberate decision, not a default.
 
 ### Reading `npm run zone:diff`
 
