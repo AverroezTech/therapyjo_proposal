@@ -199,10 +199,20 @@ async function checkMailCname(resolver) {
     // renumbers its own mail host, with no warning. Probe A so the failure
     // names the actual error instead of just saying "no CNAME".
     const asA = await query(() => resolver.resolve4(name));
-    const hint = asA.answered
-      ? ` — an A record answers instead (${asA.data.join(", ")}). It must be a CNAME.`
-      : "";
-    record("FAIL", "mail", "CNAME", `${r.code} — no CNAME served${hint}`);
+    if (asA.answered) {
+      record(
+        "FAIL",
+        "mail",
+        "CNAME",
+        `${r.code} — an A record answers instead (${asA.data.join(", ")}). It must be a CNAME.`
+      );
+      return;
+    }
+    // Nothing of either type came back, so this is the server declining to
+    // answer for the name at all — not a record of the wrong type. Recorded
+    // as NOANSWER so the zone-wide verdict below can tell "this server does
+    // not serve the zone" from "this record is wrong."
+    record("NOANSWER", "mail", "CNAME", `${r.code} — no CNAME served`);
     return;
   }
   const got = r.data.map(stripTrailingDot);
@@ -386,6 +396,17 @@ async function main() {
   // while the record types the catch-all has no default for (MX, TXT) come
   // back empty. Recognising that shape is what keeps the operator from
   // hunting for a typo in a zone that was never created.
+  // The absence assertions (no CAA, no AAAA) PASS when the server declines to
+  // answer — which is correct for them individually, but means they must be
+  // excluded when judging whether the server serves this zone at all.
+  // Otherwise a nameserver refusing every query reports "7 of 10 checks did
+  // not match", sending the operator hunting for a typo in a zone that
+  // server has never heard of. Measured against dns1.name-services.com,
+  // 2026-08-24.
+  const ABSENT_TYPES = new Set(["CAA", "AAAA"]);
+  const positives = results.filter((r) => !ABSENT_TYPES.has(r.type));
+  const nothingServed = positives.length > 0 && positives.every((r) => r.status === "NOANSWER");
+
   const aResults = results.filter((r) => r.type === "A");
   const looksUncreated =
     control.catchAll &&
@@ -397,10 +418,10 @@ async function main() {
   let exitCode;
   let meaning;
 
-  if (noAnswer === results.length) {
+  if (nothingServed) {
     verdict = "NOZONE";
     exitCode = EXIT.NOZONE;
-    meaning = `${ns} answers for nothing in ${ZONE} — the zone is not created there yet. This is not a transcription error`;
+    meaning = `${ns} serves no record of ${ZONE} — it refuses or has no data for every name. The zone is not published there. This is not a transcription error`;
   } else if (looksUncreated) {
     verdict = "NOZONE";
     exitCode = EXIT.NOZONE;
