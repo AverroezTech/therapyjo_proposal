@@ -25,8 +25,8 @@ and still serves the legacy application, exactly as it did before this work star
 
 | | State |
 |---|---|
-| Deployed | **`16d35dd`** = `origin/master`. Vercel builds from GitHub — **`git push` is the deploy trigger** |
-| Local `master` | **`090eb6e`, seven commits ahead of `origin/master` and unpushed.** All ops tooling and documentation — the cert tripwire, the fallback runbook, the Phase 4 gate. Nothing in it changes the running site, which is why it has not been pushed. Pushing is a deploy; do it deliberately, not incidentally |
+| Deployed | `master` = `origin/master`, **pushed 2026-08-24**. Vercel builds from GitHub — **`git push` is the deploy trigger** |
+| What that push contained | **Ops tooling and documentation only** — the cert tripwire, the zone parity check, the fallback runbook, the Phase 4 gate, this file. No `src/`, no `next.config.mjs`, no `prisma/`, no env; `build`, `postinstall` and `start` untouched. The rebuild is functionally a no-op. The last change to the *running site* is still **`16d35dd`** |
 | Live at | `therapyjo-proposal.vercel.app` |
 | `/clinic/` proxy | **Working and verified in production**, including relative assets and the authenticated admin screen |
 | `/clinic/` escapes | **Fixed and verified in production**, `16d35dd`. Two escapes found and patched; see Hazard 5. Before this, a successful login at `/clinic/` bounced staff into this app and 404'd — they could not reach the clinic system at all |
