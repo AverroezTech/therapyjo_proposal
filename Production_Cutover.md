@@ -37,10 +37,10 @@ and still serves the legacy application, exactly as it did before this work star
 | **HostGator TTLs** | **900s, not 300s.** The panel's TTL menu bottoms out at *15 Minutes*; there is no 300 option. See *The TTL floor* |
 | **Phase 3 gate** | **Not passable yet.** `zone:diff` reads `NOZONE` against every HostGator-side nameserver tried. See *The publication problem* |
 | HostGator nameservers | **Catch-all.** `ns1.hostgator.com` answers a parking address for any domain, including ones that do not exist — so an uncreated zone cannot announce itself as `NXDOMAIN`. See *Reading `npm run zone:diff`* |
-| SPF | Still `v=spf1 a mx …` — unfixed, and unfixable until Phase 3 |
-| **Legacy hosting panel** | **No access.** No login; vendor unreachable |
-| **Ability to edit DNS** | **None** until the nameservers move |
-| **Hazard 9** | **Decided 2026-08-24.** Options 1 + 3 + 4, Option 5 held with named triggers. See *Decision, 2026-08-24* |
+| SPF | Still `v=spf1 a mx …` — unfixed. **No longer unfixable:** Phase 1 runs again through the vendor. Chain fully resolved 2026-08-26 — see *Who actually hosts the legacy system* |
+| **Legacy hosting panel** | **No direct login. Vendor reachable as of 2026-08-26** and acting on request. See *Vendor contact — 2026-08-26* |
+| **Ability to edit DNS** | **Indirect** — through the vendor, as of 2026-08-26. Direct control still waits on Phase 3 |
+| **Hazard 9** | **Reopened favourably 2026-08-26.** Option 4 landed as a move to `online.therapyjo.com`. Gated on one certificate question. See *Decision, 2026-08-26* |
 | **Legacy certificate** | Serial `06575A81…`, expires **2026-10-22**, SAN still covers **both** names. Re-measured 2026-08-24 |
 | **Cert tripwire** | `npm run cert:check` — **built (TJ-036), reads `OK` at 59 days on 2026-08-24. Not yet armed**: arming is `-- --update` plus a weekly cadence, the moment Phase 3 lands |
 | **Zone parity check** | `npm run zone:diff` — **built and verified 2026-08-24.** Reads `MATCH` on the live site4now zone with `--legacy-spf`, `NOZONE` against HostGator. This is the Phase 3 step-2 gate |
@@ -53,32 +53,93 @@ is editable at all* until the nameservers move to HostGator. Phase 3 is therefor
 migration step — it is the step that **returns control of the domain to its owner**, and every
 other DNS-dependent action sits downstream of it.
 
+### Vendor contact — 2026-08-26. This changes the shape of the problem
+
+**The vendor was reached and has agreed to move the legacy clinical system to
+`online.therapyjo.com`.** User report, 2026-08-26. This is Hazard 9 Option 4 landing, in a
+stronger form than the plan aimed at: rather than narrowing the shared certificate to `www` after
+the apex has already moved, the legacy system moves to a hostname that never carried the apex at
+all.
+
+| | Before 2026-08-26 | After |
+|---|---|---|
+| Legacy hosting panel | No access, vendor unreachable | **Vendor reachable and cooperating.** Still no direct login — every panel action goes through them |
+| Proxy origin | `www.therapyjo.com`, on the shared certificate | **`online.therapyjo.com`**, on its own certificate — *if* the question below answers yes |
+| Hazard 9 | A permanent ~60-day fallback cycle | **Potentially eliminated** |
+| Phase 1 (SPF) | Unrunnable, folded into Phase 3 | **Runnable again** — the vendor can edit the live zone |
+| DNS editing | None until the nameservers move | Indirect, through the vendor |
+
+**All of it rests on one unanswered question.** Ask it before anything moves:
+
+> **Does `online.therapyjo.com` get its own certificate, separate from the one covering
+> `therapyjo.com` and `www.therapyjo.com`?**
+
+If it is added to the existing SAN list instead, **nothing is solved.** That certificate still
+fails renewal the moment the apex leaves the legacy host, and it takes `online` down with it —
+the same 502 through `/clinic/*`, reached by a different route. This is Phase 0 step 2b restated
+as the gate it always was.
+
+**Measured 2026-08-26, before any vendor action:**
+
+| Probe | Result | Reading |
+|---|---|---|
+| `online.therapyjo.com` `A` | `208.98.35.122` | **The wildcard, not a record.** `zzz-nonexistent-check.therapyjo.com` answers identically |
+| `https://online.therapyjo.com/` | No TLS response | No IIS binding and no certificate yet. Consistent with the unknown-SNI reset in the verified-state table |
+
+The wildcard has a useful consequence: the vendor can complete HTTP-01 validation for
+`online.therapyjo.com` **without any DNS change at all**, because the name already routes to their
+server. An explicit `A` record is still worth adding — a wildcard is a safety net, not a
+declaration — but its absence does not block them.
+
+**What must not happen yet.** The vendor asked for "the A records for your project." That value is
+**Vercel's**, and it is neither in this repo nor in the HostGator zone — the HostGator records are
+a transcription of the *legacy* zone and point at `208.98.35.122`. Sending those would tell the
+vendor to point the domain at his own server. The Vercel value only exists once the domain is
+attached to the project (Settings to Domains), which has not been done; read it off that screen
+rather than from memory or documentation, as Vercel has changed these values over time.
+**Do not send it until the certificate question is answered and SPF is fixed** — a cooperative
+vendor may apply it the same day, and the apex moving ahead of the SPF correction bounces clinic
+mail under `p=reject`.
+
 ### Next actions, in order
 
-**Hazard 9 was decided on 2026-08-24 — see *Decision, 2026-08-24* — and that decision sets this
-order. Phase 3 is now urgent for a calendar reason, and Phase 4 is gated behind an observation
-that can only be made in late September.**
+**Superseded 2026-08-26 by the vendor contact above.** The 2026-08-24 order put Phase 3 first and
+ran Option 4 as slow background work with ~4 months of runway. Option 4 landed in two days, so the
+origin change now leads — it is the step that takes the calendar pressure off everything else.
 
-1. **Phase 3 — move the nameservers to HostGator.** Nothing blocks it; the registrar panel is
-   the user's. Transcribe the seven records in Phase 3, **with the corrected SPF** (Phase 1 folds
-   into this — see the note there), then **gate the registrar change on `npm run zone:diff`
-   printing `MATCH`** against the account's assigned nameservers. Delegating to a zone that is not
-   populated yet does not fail safe — it parks the domain and drops all mail.
-   **Deadline: comfortably before ~2026-09-22** (~29 days from 2026-08-24), because the
-   renewal that answers Test B has to be observed from *behind* this phase to be worth anything.
-2. **Arm the tripwire** as soon as Phase 3 lands: `npm run cert:check -- --update`, then weekly.
-   Before Phase 4 it answers Test B; after Phase 4 it is the Option 3 tripwire. Same script,
-   two jobs.
-3. **Pursue Hazard 9 Option 4 in parallel, starting now.** Find whoever is billed for the
-   SmarterASP.NET account. This is the only action that ends the ~60-day fallback cycle, it is
-   the slowest and least controllable item on this list, and it has ~4 months of runway if the
-   Phase 4 gate is respected. Give it a decision date, not an open end.
-4. **Phase 4 — only after the ~2026-09-22 renewal is observed.** See the entry gate on that
-   phase. A changed serial means Test B passed and the new certificate runs to ~2026-12-21.
-5. **Ask the clinic two questions:** is any `therapyjo.com` email address actually used, and is
+1. **Answer the certificate question.** Own certificate for `online.therapyjo.com`, or a seat on
+   the existing SAN list? Everything below assumes the former. If it is the latter, this is
+   Shape C: the fallback cycle stays, the 2026-08-24 order resumes unchanged, and Phase 4 goes
+   back behind the ~2026-09-22 renewal gate.
+2. **Get `online.therapyjo.com` live, and verify it from outside.** `[USER]` via vendor: the IIS
+   binding plus its own certificate. `[PLANNER]`: confirm `https://online.therapyjo.com/` serves
+   the clinic login under a valid certificate whose SAN does **not** name the apex. Purely
+   additive — the apex and `www` are untouched and nothing public changes.
+3. **Phase 1 — fix SPF, through the vendor.** `v=spf1 ip4:208.98.35.122 mx
+   include:_spf.site4now.net -all`, confirming the outbound mail IP against the zone export
+   first. This must land before any apex move. See the revived Phase 1.
+4. **Get the zone export.** Still owed (Phase 0 step 1), and now obtainable by asking. It is worth
+   most *before* the Phase 3 transcription, not after it.
+5. **Switch the proxy origin.** `LEGACY_ORIGIN` to `https://online.therapyjo.com` on Vercel, then
+   re-run the Phase 2c `/clinic/*` checks on the `*.vercel.app` address. Env var only — no code
+   change (`next.config.mjs:18`).
+6. **Rework the cert tripwire.** `scripts/check-legacy-cert.mjs` hardcodes `www.therapyjo.com` and
+   `therapyjo.com` as its SAN constants (lines 30-31); pointed at the new origin it reads
+   `FOREIGN` and the signal becomes noise. See *What the origin change does to the tripwire*.
+7. **Phase 3 — move the nameservers to HostGator.** Unchanged in substance, and still the step
+   that returns control of the domain to its owner. Add `online` to the HostGator zone, then gate
+   the registrar change on `npm run zone:diff` printing `MATCH` against the account's assigned
+   nameservers — delegating to an unpopulated zone parks the domain and drops all mail.
+   **The ~2026-09-22 deadline relaxes if and only if step 1 answers yes**, because Test B stops
+   being load-bearing once the legacy certificate no longer contains the apex.
+8. **Phase 4 — flip the front door.** Only after 2, 3 and 5. Vercel's A record goes to the vendor
+   at this point and not before.
+9. **Ask the clinic two questions:** is any `therapyjo.com` email address actually used, and is
    anything automated pointing at the bare domain?
-6. **Run the two Phase 2c checks that need a login:** the 6 MB upload and a patient-document
-   round trip.
+10. **Run the two Phase 2c checks that need a login:** the 6 MB upload and a patient-document
+    round trip.
+11. **Keep asking for the direct panel login, or a named billing contact.** One granted request is
+    not access. Phase 0's ask survives this development.
 
 ### Owed cleanup
 
@@ -176,6 +237,39 @@ anyone can; do not treat its absence as a reason to stop.
 
 ---
 
+### Who actually hosts the legacy system — measured 2026-08-26
+
+This file asserted SmarterASP.NET from the start with no measurement behind it. Confirmed now,
+because a vendor conversation depends on addressing the right company.
+
+| Probe | Result | What it establishes |
+|---|---|---|
+| SPF of `smarterasp.net` itself | `v=spf1 a mx include:_spf.site4now.net -all` | **The clincher.** SmarterASP.NET's own domain publishes site4now's include — character-for-character the record `therapyjo.com` carries |
+| `_netblocks.site4now.net` | contains `ip4:208.98.36.38` | That address **is** `mail.smarterasp.net`. SmarterASP's mail server is authorised inside site4now's SPF data |
+| `PTR` of `208.98.34.60` | `Mail5010.site4now.net.` | site4now holds reverse DNS on the block |
+| `ns2.site4now.net` | `208.98.36.41` | A site4now nameserver sits in the same `/19` as the clinic's server |
+| RDAP of `208.98.35.122` | `SHARKTECH-LAS` / Sharktech, `208.98.32.0/19`, no sub-allocation | **The datacenter, not the host.** Sharktech leases SmarterASP the space. Do not contact them — a whois naming Sharktech is not evidence the account sits elsewhere |
+
+**`site4now.net` is not a separate vendor and there is no separate account to obtain.** It is
+SmarterASP.NET's infrastructure domain — their nameservers, their mail gateway, their SPF include,
+their control-panel branding. One login covers everything this file asks for.
+
+**Corollary for Hazard 2 — it upgrades that reasoning from inference to measurement.** The full
+SPF chain resolves to:
+
+```
+_spf.site4now.net  → 70.39.75.128/26, 70.39.90.0/24, 70.39.73.0/25, 14.1.20.0/22
+_netblocks…        → 208.98.36.38, 85.239.242.115, 209.145.50.244, 157.173.197.211,
+                     208.98.34.9, 45.58.159.216, 204.188.228.46, 70.39.73.73
+```
+
+`208.98.35.122` appears nowhere in it. The clinic's own server is authorised to send mail **only**
+by the `a` mechanism, exactly as Hazard 2 reasoned. The planned replacement — `ip4:208.98.35.122`
+— is correct as written, and the record it replaces is SmarterASP.NET's **stock template**, not
+anything the clinic chose.
+
+---
+
 ## Who can do what
 
 | Marker | Meaning | Examples |
@@ -194,7 +288,8 @@ anyone can; do not treat its absence as a reason to stop.
 | `/blog`, `/blog/[slug]` | This app — public blog |
 | `/login`, `/admin`, `/doctor`, `/secretary` | This app — dashboards and content admin. Already at these paths; no code change. |
 | `/clinic/*` | **Legacy clinical system**, proxied by Vercel to its existing origin |
-| `www.therapyjo.com` | **The legacy origin.** Unchanged, still pointing at `208.98.35.122`. Doubles as staff's direct fallback. |
+| `www.therapyjo.com` | **The legacy origin until 2026-08-26; being retired from that role.** Still `208.98.35.122`, still staff's direct fallback. Once `online` takes over, `www` is free to redirect to the apex like a normal site — which removes the wart noted below |
+| `online.therapyjo.com` | **The legacy origin, from 2026-08-26.** Vendor-agreed. Its certificate never contains the apex, and that is what defuses Hazard 9 |
 | `new.therapyjo.com` | Temporary — this app on Vercel during Phase 3, removed after Phase 5 |
 
 `/admin` is unavailable as the legacy prefix — the legacy app already answers there.
@@ -512,6 +607,17 @@ and 2 need nothing from it and can proceed.
 ---
 
 ## Phase 1 — Fix SPF, before anything moves
+
+> **Revived 2026-08-26. This phase runs again, close to as first written.** The 2026-08-23
+> correction below folded it into Phase 3 because no record in the site4now zone could be edited
+> by anyone reachable. The vendor is now reachable and will make zone edits on request, so the SPF
+> fix happens in the live zone, days ahead of the apex move, exactly as this phase first
+> specified. The 24-hour soak is worth keeping this time — the apex move is no longer bundled into
+> the same change window.
+>
+> Steps 1 and 2 are `[USER]`-via-vendor rather than `[USER]`-in-panel. Step 4 still needs a working
+> mailbox on the domain, which is Phase 0 step 5b and still unanswered — if nobody holds one, say
+> so explicitly rather than skipping the check quietly.
 
 > **Sequencing correction, 2026-08-23. This phase cannot run where it is written.** It was
 > specified as "done in the current DNS panel, days ahead of the nameserver move" — but the
@@ -1087,6 +1193,30 @@ flip DNS, wait an unpredictable number of days, and flip back. That is the runni
 keeping the apex on Vercel without access to the legacy host, and it is the argument for
 Option 4 — this runbook is a bridge to that, not a destination.
 
+### What the origin change does to the tripwire — 2026-08-26
+
+`scripts/check-legacy-cert.mjs` was written against a fixed pair of names: `LEGACY_WWW_HOST`
+(`www.therapyjo.com`) and `LEGACY_APEX_HOST` (`therapyjo.com`), lines 30-31. Its verdicts are built
+on them — `FOREIGN` fires when the observed SAN does not name `www`, and `RESOLVED` fires when the
+SAN names `www` without the apex.
+
+Once `LEGACY_ORIGIN` points at `online.therapyjo.com`, both constants are wrong:
+
+| Run | Verdict | Why it is wrong |
+|---|---|---|
+| Default (`www`) | Whatever `www` happens to serve | `www` is no longer the origin. The certificate it serves stops mattering to `/clinic/*` |
+| `-- --host online.therapyjo.com` | **`FOREIGN`** | The SAN will name `online`, not `www`, so the `FOREIGN` gate trips on the *correct* certificate |
+
+`--host` already exists (line 53), so the measurement target is parameterised; the **SAN constants
+are not**. The rework is to make the expected name and the forbidden name configurable alongside
+the host, so the script can watch `online.therapyjo.com` and assert the apex is absent from *its*
+SAN.
+
+**Do not repoint the host and mentally excuse the `FOREIGN`.** This file's own rule stands:
+`FOREIGN` and `ERROR` never mean "fine." A tripwire that has to be explained away is not a
+tripwire. Until the rework lands the fallback runbook has no automated trigger — a second reason
+not to retire the runbook early.
+
 ---
 ## Known hazards
 
@@ -1315,6 +1445,13 @@ appears, `remaining connection slots` in the Postgres logs.
 **Severity is on a par with Hazard 2, and the mechanism is the same: a delayed, silent failure
 caused by moving the apex.**
 
+> **Status, 2026-08-26 — provisionally solved, pending one answer.** The vendor has agreed to move
+> the legacy system to `online.therapyjo.com`. A certificate covering only that name cannot be
+> broken by the apex moving, so the mechanism described below stops applying to `/clinic/*`
+> altogether. Everything here is kept in full because the solution is *provisional*: it holds if
+> and only if `online` gets its **own** certificate. Folded into the existing SAN list, every word
+> below still applies unchanged. See *Vendor contact — 2026-08-26* and *Decision, 2026-08-26*.
+
 Measured 2026-08-23: `therapyjo.com` and `www.therapyjo.com` are served by **one certificate**,
 not two — identical serial `06575A8139BB2762A52C9A079CFB28F80EE8`, SAN covering both names,
 Let's Encrypt, expiring **2026-10-22**.
@@ -1488,6 +1625,41 @@ lands, the apex stays on Vercel and the legacy certificate is kept alive by a ma
 cycle: notice, flip, wait, flip back. `[USER]` owns the DNS flips and the staff notice;
 `[PLANNER]` owns the weekly check and the call to fire. If Option 4 has not landed by the second
 fallback cycle, that is the signal to reconsider Option 5 rather than continue indefinitely.
+
+### Decision, 2026-08-26 — supersedes the above
+
+**Take Option 4 in its stronger form: move the legacy system off the shared certificate entirely,
+onto `online.therapyjo.com`.** Vendor agreement obtained 2026-08-26.
+
+The 2026-08-24 decision accepted a permanent ~60-day fallback cycle as the price of not reaching
+the host, and ran Option 4 as background work with ~4 months of runway. Option 4 landed in two
+days, and what it bought is better than the reissue this file was aiming at. A reissue narrows the
+shared certificate to `www` *after* the apex has already moved, which leaves a window in between;
+moving the origin to a fresh hostname means the apex never has to appear on the legacy certificate
+at any point.
+
+| Element | Status after 2026-08-26 |
+|---|---|
+| Option 1 — timing | **No longer load-bearing**, if the certificate question answers yes. Phase 4 stops depending on the ~2026-09-22 renewal |
+| Option 2 — ACME proxy | Dead, unchanged. Vercel owns `/.well-known/acme-challenge/*` |
+| Option 3 — tripwire | **Kept, but repointed.** It stops watching a shared certificate and starts watching the new origin's. Needs the rework named in the next-actions list before it means anything |
+| Option 4 — reach the host | **Landed, in a stronger form than specified.** Not a reissue — a move |
+| Option 5 — never move the apex | **Released** as the standing fallback, conditional on the certificate answer. If `online` shares the SAN list, Option 5 comes straight back |
+| Fallback runbook | **Not retired yet.** It retires when `online` is verified on its own certificate *and* `LEGACY_ORIGIN` points at it. Until both hold, it is still the safety net |
+
+**What is being accepted, in writing.** The clinic now depends on a vendor *relationship* for panel
+actions rather than on a login. That is better than unreachable and worse than control. A direct
+login, or a named billing contact, is still worth obtaining — Phase 0's ask does not lapse because
+one request was granted.
+
+**What has not changed.** Phase 3 still happens. Moving the nameservers to HostGator was never
+about Hazard 9; it is about the zone being hosted where the clinic cannot reach it. A cooperative
+vendor is not the same thing as control, and this decision does not weaken that step — it only
+takes the deadline off it.
+
+**What would reverse this.** Either answer to the certificate question coming back wrong, or
+`online.therapyjo.com` failing the outside verification in next-action 2. In either case the
+2026-08-24 decision resumes unchanged and Phase 4 goes back behind the renewal gate.
 
 ### The test ladder
 
