@@ -34,7 +34,7 @@ and still serves the legacy application, exactly as it did before this work star
 | Custom domain on Vercel | **Apex attached 2026-08-26**, `therapyjo.com` only, Production, apex-to-`www` redirect deliberately **off**. Reads *Invalid Configuration* — correct, DNS has not moved. Apex still resolves `208.98.35.122`. `www` deliberately **not** added — it is still the proxy origin |
 | **Vercel apex `A` value** | **`216.198.79.1`** — read off the domain panel 2026-08-26, not from memory. Not the legacy `76.76.21.21`. Corroborated: `X-Vercel-Acme-Ips` measured earlier in this file names `216.198.79.3`, the same `/24`. **Not yet sent to the vendor** — see *What must not happen yet* |
 | DNS | Still at site4now.net, **untouched**. Whole zone re-measured 2026-08-24, authoritatively and over DoH: **identical** to the 2026-08-23 table, `SOA` serial `2025031307` both times — unedited since March 2025 |
-| **HostGator zone** | **Built 2026-08-24; eight records as of 2026-08-26.** Read back row by row out of the panel on 2026-08-26 — see *The 2026-08-26 panel read-back*. `online` added, SPF confirmed already correct, one divergence found (`MX` priority). The zone was **empty** before it was built — registrar-level *Advanced DNS*, not cPanel, so there were no default records to displace |
+| **HostGator zone** | **Built 2026-08-24; nine records, complete as of 2026-08-26.** Read back row by row out of the panel — see *The 2026-08-26 panel read-back*. `online` and `new` added, SPF confirmed already correct, the `MX` priority divergence found and corrected. **Nothing further is owed to this zone before delegation.** It was **empty** before it was built — registrar-level *Advanced DNS*, not cPanel, so there were no default records to displace |
 | **HostGator TTLs** | **900s, not 300s.** The panel's TTL menu bottoms out at *15 Minutes*; there is no 300 option. See *The TTL floor* |
 | **Phase 3 gate** | **Not passable, and now believed structurally so.** `zone:diff` reads `NOZONE` against every HostGator-side nameserver tried — **re-measured 2026-08-26, ~48h after the records were saved**, so the panel's own 24–48h window has elapsed with nothing published. Treat *"HostGator publishes only once the domain is delegated"* as fact rather than hypothesis. See *The publication problem* |
 | HostGator nameservers | **Catch-all.** `ns1.hostgator.com` answers a parking address for any domain, including ones that do not exist — so an uncreated zone cannot announce itself as `NXDOMAIN`. See *Reading `npm run zone:diff`* |
@@ -810,7 +810,7 @@ nameservers answer.
    | `@` | `MX` | `10 igw10.site4now.net.` | 300 |
    | `@` | `TXT` | the **Phase 1** SPF record | 300 |
    | `_dmarc` | `TXT` | `v=DMARC1;p=reject;pct=100;rua=mailto:postmaster@therapyjo.com` | 300 |
-   | `new` | `CNAME` | the value Vercel's domain panel gives you | — |
+   | `new` | `CNAME` | `31e97fa68447aa19.vercel-dns-017.com` — read off Vercel 2026-08-26 | 300 |
 
    That table is the **entire** confirmed zone as of 2026-08-23 — verified over DoH, with no
    CAA, no DKIM selector and no SRV record anywhere in it. It is short enough to get right.
@@ -825,7 +825,7 @@ nameservers answer.
    - **The `MX` priority must be `10`, and the panel hides it.** HostGator's list view shows the
      exchange but not the preference number, which defaults to `0` on entry. It was `0` here until
      2026-08-26 and nothing on screen said so. See *The `MX` priority divergence*.
-   - **The zone must end up containing these eight records and nothing else.** cPanel zones
+   - **The zone must end up containing these nine records and nothing else.** cPanel zones
      usually ship with their own apex `A` and often a self-pointing `MX`. Left alongside the
      transcribed rows, a leftover default `MX` quietly takes delivery of clinic mail. Transcribing
      is *replacing* the defaults, not adding to them.
@@ -851,6 +851,9 @@ nameservers answer.
    `therapyjo.com` and `www.therapyjo.com`.
 5. `[USER]` **Send and receive a test email again.** Do not skip this.
 6. `[USER]` Add `new.therapyjo.com` to the Vercel project and wait for its certificate.
+   **Attached 2026-08-26**, Production, no redirect; it reads *Invalid Configuration*, which is
+   correct while DNS has not moved. The certificate cannot issue until the delegation lands, so
+   only the waiting half of this step remains.
 7. `[PLANNER]` Re-run the whole **Phase 2c** checklist against `https://new.therapyjo.com` — a real
    hostname, a real certificate, real cookies. This is the dry run a temporary host URL cannot
    give you. **`/clinic/` should now work**, because `LEGACY_ORIGIN` is reachable. Run the escape
@@ -895,6 +898,7 @@ each record's *Edit* dialog opened to see the fields the list view hides. This i
 | `A` | `@` | `208.98.35.122` | 15 minutes |
 | `A` | `www` | `208.98.35.122` | 15 minutes |
 | `A` | **`online`** | `208.98.35.122` | 15 minutes |
+| `CNAME` | **`new`** | `31e97fa68447aa19.vercel-dns-017.com` — **no trailing dot** | 15 minutes |
 | `CNAME` | `mail` | `mail5010.site4now.net` — **no trailing dot** | 15 minutes |
 | `MX` | `@` | `igw10.site4now.net`, priority **`0`** | 15 minutes |
 | `TXT` | `@` | `v=spf1 ip4:208.98.35.122 mx include:_spf.site4now.net -all` | 15 minutes |
@@ -909,10 +913,19 @@ Four things this settled:
 - **The four TTLs `zone:diff` cannot verify** — `MX`, both `TXT`, and the `mail` `CNAME` — are all
   900s. That closes the "check those four in the panel by eye" caveat under *Reading `npm run
   zone:diff`*.
-- **No stray rows.** Eight records, no duplicates, confirmed across two reads that rendered the
-  list in different orders.
+- **No stray rows.** Eight records at the time of the read-back, nine once `new` was added later
+  the same day — no duplicates, confirmed across repeated reads that rendered the list in
+  different orders.
 - **`online` was added** on 2026-08-26. The wildcard already covered the name; an explicit record
   means the clinic's new origin does not depend on a wildcard surviving future edits to this zone.
+
+`new` followed on 2026-08-26, once `new.therapyjo.com` had been attached to the Vercel project and
+its target read off that panel. **The target is per-project — `31e97fa68447aa19.vercel-dns-017.com`,
+not the generic `cname.vercel-dns.com`** — which is the same lesson the apex `A` taught: read it off
+the panel, never from documentation. Vercel's own notice on that screen says the legacy
+`cname.vercel-dns.com` and `76.76.21.21` do still work, so the earlier warning here is about which
+value is *recommended*, not about the old ones having been switched off. Vercel displays the target
+with a trailing dot; HostGator rejects that form, so it is entered bare.
 
 Two panel behaviours worth adding to the two already recorded under *The TTL floor*:
 
@@ -940,10 +953,10 @@ regardless of its preference. It matters for two other reasons.
 - **It breaks the property the whole phase rests on** — that both zones answer identically, which
   is what makes a split resolver population harmless during the two-day delegation TTL.
 
-**Status: outstanding.** The correction to `10` was attempted on 2026-08-26 and **blocked** by a
-HostGator session timeout before any record was opened. Fix it before delegating, and re-check the
-row's TTL afterwards — editing an existing row is exactly the case where the panel resets TTL to
-4 Hours.
+**Status: corrected 2026-08-26.** Read back from the record's *Edit* dialog afterwards: priority
+`10`, exchange `igw10.site4now.net`, TTL `15 Minutes` — the TTL did **not** reset on the edit,
+despite that being the case where this panel is known to reset it. Both zones now agree on this
+record.
 
 ### The publication problem — why the gate has not passed
 
