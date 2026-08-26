@@ -18,7 +18,7 @@ Read it completely before acting on any part of it.
 | Prefix mechanics | "relative paths survive" | Verified true for the legacy login shell, plus the `trailingSlash` loop and the escape catalogue — the catalogue has since been **measured against the authenticated admin screen** and came back two escapes wide, both fixed (Hazard 5) |
 | Env | 7 variables | 10 — `LEGACY_ORIGIN`, `SUPABASE_SERVICE_ROLE_KEY` and `TZ` were missing, and each breaks something |
 
-### Where things stand — 2026-08-24
+### Where things stand — 2026-08-26
 
 **Read this first.** Nothing public has moved. `therapyjo.com` still resolves to the legacy host
 and still serves the legacy application, exactly as it did before this work started.
@@ -31,13 +31,16 @@ and still serves the legacy application, exactly as it did before this work star
 | `/clinic/` proxy | **Working and verified in production**, including relative assets and the authenticated admin screen |
 | `/clinic/` escapes | **Fixed and verified in production**, `16d35dd`. Two escapes found and patched; see Hazard 5. Before this, a successful login at `/clinic/` bounced staff into this app and 404'd — they could not reach the clinic system at all |
 | Timezone | **Fixed and verified in production** — `Asia/Amman` |
-| Custom domain on Vercel | **Not attached.** Apex still `208.98.35.122` |
+| Custom domain on Vercel | **Apex attached 2026-08-26**, `therapyjo.com` only, Production, apex-to-`www` redirect deliberately **off**. Reads *Invalid Configuration* — correct, DNS has not moved. Apex still resolves `208.98.35.122`. `www` deliberately **not** added — it is still the proxy origin |
+| **Vercel apex `A` value** | **`216.198.79.1`** — read off the domain panel 2026-08-26, not from memory. Not the legacy `76.76.21.21`. Corroborated: `X-Vercel-Acme-Ips` measured earlier in this file names `216.198.79.3`, the same `/24`. **Not yet sent to the vendor** — see *What must not happen yet* |
 | DNS | Still at site4now.net, **untouched**. Whole zone re-measured 2026-08-24, authoritatively and over DoH: **identical** to the 2026-08-23 table, `SOA` serial `2025031307` both times — unedited since March 2025 |
-| **HostGator zone** | **Built 2026-08-24.** All seven records entered in Domains → therapyjo.com → DNS and confirmed in the panel. The zone was **empty** beforehand — this is registrar-level *Advanced DNS*, not cPanel, so there were no default records to displace |
+| **HostGator zone** | **Built 2026-08-24; eight records as of 2026-08-26.** Read back row by row out of the panel on 2026-08-26 — see *The 2026-08-26 panel read-back*. `online` added, SPF confirmed already correct, one divergence found (`MX` priority). The zone was **empty** before it was built — registrar-level *Advanced DNS*, not cPanel, so there were no default records to displace |
 | **HostGator TTLs** | **900s, not 300s.** The panel's TTL menu bottoms out at *15 Minutes*; there is no 300 option. See *The TTL floor* |
-| **Phase 3 gate** | **Not passable yet.** `zone:diff` reads `NOZONE` against every HostGator-side nameserver tried. See *The publication problem* |
+| **Phase 3 gate** | **Not passable, and now believed structurally so.** `zone:diff` reads `NOZONE` against every HostGator-side nameserver tried — **re-measured 2026-08-26, ~48h after the records were saved**, so the panel's own 24–48h window has elapsed with nothing published. Treat *"HostGator publishes only once the domain is delegated"* as fact rather than hypothesis. See *The publication problem* |
 | HostGator nameservers | **Catch-all.** `ns1.hostgator.com` answers a parking address for any domain, including ones that do not exist — so an uncreated zone cannot announce itself as `NXDOMAIN`. See *Reading `npm run zone:diff`* |
-| SPF | Still `v=spf1 a mx …` — unfixed. **No longer unfixable:** Phase 1 runs again through the vendor. Chain fully resolved 2026-08-26 — see *Who actually hosts the legacy system* |
+| **HostGator's assigned NS** | **Unknown, and not readable from the panel.** Its *Nameservers* tab shows only the *current* delegation — `NS1`/`NS2`/`NS3.SITE4NOW.NET`, flagged *"not using default nameservers"* (read 2026-08-26). The only control that reveals the defaults is **REVERT TO DEFAULTS**, and clicking it **is** Phase 3 step 3. So the delegation target stays unknown until the moment it is committed. Ask support |
+| SPF | **Live zone still `v=spf1 a mx …`** — unfixed, re-confirmed 2026-08-26. **The HostGator zone already carries the corrected `ip4:` form**, read back the same day: the 2026-08-24 build typed the Phase 1 record, not the legacy one. The two zones therefore *differ* on this record, so Phase 1 must land on the live zone before delegation or the delegation itself changes SPF. **No longer unfixable:** Phase 1 runs again through the vendor. Chain fully resolved 2026-08-26 — see *Who actually hosts the legacy system* |
+| **`online.therapyjo.com`** | **Not live yet.** Re-probed 2026-08-26: `npm run cert:check -- --host online.therapyjo.com` returns `ERROR` / `ECONNRESET`. No IIS binding and no certificate — the vendor's work has not landed |
 | **Legacy hosting panel** | **No direct login. Vendor reachable as of 2026-08-26** and acting on request. See *Vendor contact — 2026-08-26* |
 | **Ability to edit DNS** | **Indirect** — through the vendor, as of 2026-08-26. Direct control still waits on Phase 3 |
 | **Hazard 9** | **Reopened favourably 2026-08-26.** Option 4 landed as a move to `online.therapyjo.com`. Gated on one certificate question. See *Decision, 2026-08-26* |
@@ -94,9 +97,10 @@ declaration — but its absence does not block them.
 **What must not happen yet.** The vendor asked for "the A records for your project." That value is
 **Vercel's**, and it is neither in this repo nor in the HostGator zone — the HostGator records are
 a transcription of the *legacy* zone and point at `208.98.35.122`. Sending those would tell the
-vendor to point the domain at his own server. The Vercel value only exists once the domain is
-attached to the project (Settings to Domains), which has not been done; read it off that screen
-rather than from memory or documentation, as Vercel has changed these values over time.
+vendor to point the domain at his own server. **The value was obtained 2026-08-26 — `216.198.79.1`** —
+by attaching the apex to the project (Settings to Domains) and reading it off that screen, which is
+the only trustworthy source: Vercel has changed these values over time, and the figure most
+documentation still carries, `76.76.21.21`, is not what the panel now returns.
 **Do not send it until the certificate question is answered and SPF is fixed** — a cooperative
 vendor may apply it the same day, and the apex moving ahead of the SPF correction bounces clinic
 mail under `p=reject`.
@@ -801,6 +805,7 @@ nameservers answer.
    | `@` | `A` | `208.98.35.122` | 300 |
    | `*` | `A` | `208.98.35.122` | 300 |
    | `www` | `A` | `208.98.35.122` | 300 |
+   | `online` | `A` | `208.98.35.122` | 300 |
    | `mail` | **`CNAME`** | `mail5010.site4now.net.` | 300 |
    | `@` | `MX` | `10 igw10.site4now.net.` | 300 |
    | `@` | `TXT` | the **Phase 1** SPF record | 300 |
@@ -817,7 +822,10 @@ nameservers answer.
      the day site4now renumbers its mail host.
    - **The wildcard `*`.** Omit it and every subdomain dies at once.
    - **`www` must keep pointing at `208.98.35.122`** — it is the proxy origin, not a spare.
-   - **The zone must end up containing these seven records and nothing else.** cPanel zones
+   - **The `MX` priority must be `10`, and the panel hides it.** HostGator's list view shows the
+     exchange but not the preference number, which defaults to `0` on entry. It was `0` here until
+     2026-08-26 and nothing on screen said so. See *The `MX` priority divergence*.
+   - **The zone must end up containing these eight records and nothing else.** cPanel zones
      usually ship with their own apex `A` and often a self-pointing `MX`. Left alongside the
      transcribed rows, a leftover default `MX` quietly takes delivery of clinic mail. Transcribing
      is *replacing* the defaults, not adding to them.
@@ -874,6 +882,68 @@ Two more panel specifics worth knowing before editing that zone again:
   `MX` target.
 - **TTL resets to 4 Hours** on every newly added row, and again whenever a row's *Refers to* is
   changed. Set it last, and re-check it after any other edit to that row.
+
+### The 2026-08-26 panel read-back
+
+Every row was read out of the HostGator panel on 2026-08-26 — twice, character for character, with
+each record's *Edit* dialog opened to see the fields the list view hides. This is what the zone
+**actually contains**, as distinct from what it was intended to contain:
+
+| Type | Refers to | Value | TTL |
+|---|---|---|---|
+| `A` | `*` | `208.98.35.122` | 15 minutes |
+| `A` | `@` | `208.98.35.122` | 15 minutes |
+| `A` | `www` | `208.98.35.122` | 15 minutes |
+| `A` | **`online`** | `208.98.35.122` | 15 minutes |
+| `CNAME` | `mail` | `mail5010.site4now.net` — **no trailing dot** | 15 minutes |
+| `MX` | `@` | `igw10.site4now.net`, priority **`0`** | 15 minutes |
+| `TXT` | `@` | `v=spf1 ip4:208.98.35.122 mx include:_spf.site4now.net -all` | 15 minutes |
+| `TXT` | `_dmarc` | `v=DMARC1;p=reject;pct=100;rua=mailto:postmaster@therapyjo.com` | 15 minutes |
+
+Four things this settled:
+
+- **The SPF row was already the corrected form.** The 2026-08-24 build entered the Phase 1 record,
+  not the legacy one. Which of the two had been typed was an open question until this read — the
+  build commit never recorded it. The consequence runs the other way now: the *live* zone is the
+  one carrying the legacy `a` mechanism, so Phase 1 through the vendor is what closes the gap.
+- **The four TTLs `zone:diff` cannot verify** — `MX`, both `TXT`, and the `mail` `CNAME` — are all
+  900s. That closes the "check those four in the panel by eye" caveat under *Reading `npm run
+  zone:diff`*.
+- **No stray rows.** Eight records, no duplicates, confirmed across two reads that rendered the
+  list in different orders.
+- **`online` was added** on 2026-08-26. The wildcard already covered the name; an explicit record
+  means the clinic's new origin does not depend on a wildcard surviving future edits to this zone.
+
+Two panel behaviours worth adding to the two already recorded under *The TTL floor*:
+
+- **`Refers to` is a dropdown** offering `@`, `www`, and **Other Host**. The last reveals a
+  free-text field with `.therapyjo.com` shown greyed beside it — enter the **label only**.
+  `online.therapyjo.com` typed there saves as `online.therapyjo.com.therapyjo.com`.
+- **A TTL set inside the *Add* dialog is honoured.** The 4-Hours reset applies to *edits* of
+  existing rows, not to newly added ones where the TTL was chosen before saving.
+
+### The `MX` priority divergence — found 2026-08-26
+
+The HostGator `MX` record carries priority **`0`**. The live zone answers **`10`** — measured
+authoritatively the same day against `ns1.site4now.net` and `ns2.site4now.net`, both returning
+`10 igw10.site4now.net`. The panel does not show the preference number in its list view, so this
+was invisible until the record's *Edit* dialog was opened.
+
+With a single `MX` host it changes nothing about delivery: one exchanger receives everything
+regardless of its preference. It matters for two other reasons.
+
+- **`scripts/check-zone-parity.mjs:36` hardcodes `MX_PREF = 10`** and compares the whole
+  `"<priority> <host>"` string, so a published zone would read **`MISMATCH`, exit 1** — a hard
+  stop. It would fire inside the watched delegation window, the one place the restructured gate
+  says fix forward and never roll back, and at a glance it is indistinguishable from a genuine
+  mail failure.
+- **It breaks the property the whole phase rests on** — that both zones answer identically, which
+  is what makes a split resolver population harmless during the two-day delegation TTL.
+
+**Status: outstanding.** The correction to `10` was attempted on 2026-08-26 and **blocked** by a
+HostGator session timeout before any record was opened. Fix it before delegating, and re-check the
+row's TTL afterwards — editing an existing row is exactly the case where the panel resets TTL to
+4 Hours.
 
 ### The publication problem — why the gate has not passed
 
