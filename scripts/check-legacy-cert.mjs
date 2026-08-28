@@ -8,7 +8,7 @@
 // Run it: `npm run cert:check` (add `-- --host <name>` to point elsewhere,
 // or `-- --update` to accept the current cert as the new baseline). It
 // prints a verdict word as the first token of its output — greppable from a
-// scheduler — and exits 0/1/2/3 depending on what it found. See the seven
+// scheduler — and exits 0/1/2/3 depending on what it found. See the six
 // states below.
 //
 // Node's `tls` module covers all of this; no dependency is added on
@@ -22,14 +22,14 @@ import { fileURLToPath } from "node:url";
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const BASELINE_PATH = path.join(__dirname, "legacy-cert-baseline.json");
 
-// The legacy cert's two SAN entries. RESOLVED and --update both need to
-// know, precisely, whether the *legacy* www name is present and whether the
-// apex is gone — not merely whether "therapyjo.com" appears as a substring,
-// since "www.therapyjo.com" contains that substring itself (see
-// parseSanNames below).
-const LEGACY_WWW_HOST = "www.therapyjo.com";
-const LEGACY_APEX_HOST = "therapyjo.com";
-const DEFAULT_HOST = LEGACY_WWW_HOST;
+// The host this tripwire tracks. Retargeted 2026-08-28: the legacy shared
+// certificate (SAN therapyjo.com + www.therapyjo.com) is now irrelevant —
+// neither name resolves to the legacy host any more, so that certificate
+// will simply fail renewal and lapse on 2026-10-22, harmlessly. The job now
+// is to watch the certificate on the /clinic/* origin itself, which is what
+// actually breaks staff logins if its renewal silently fails.
+const TRACKED_HOST = "online.therapyjo.com";
+const DEFAULT_HOST = TRACKED_HOST;
 const PORT = 443;
 const TIMEOUT_MS = 15_000;
 // Production_Cutover.md's fallback runbook: fire the tripwire two weeks
@@ -63,13 +63,12 @@ function issuerToString(issuer) {
   return issuer.O || issuer.CN || JSON.stringify(issuer);
 }
 
-// Splits a subjectaltname string ("DNS:therapyjo.com, DNS:www.therapyjo.com")
-// into exact hostnames. This exists because "www.therapyjo.com".includes
-// ("therapyjo.com") is true — a substring check would make RESOLVED
-// unreachable for the one host it was written for (the apex is always a
-// substring of the www name) while firing for any unrelated host whose SAN
-// simply doesn't happen to contain the string. Exact-name comparison is
-// what makes RESOLVED mean "the apex was specifically dropped."
+// Splits a subjectaltname string ("DNS:online.therapyjo.com") into exact
+// hostnames. This exists because a substring check on the raw SAN string
+// would mismatch names that merely contain the tracked host as a substring
+// (e.g. some-other.online.therapyjo.com) — exact-name comparison is what
+// makes FOREIGN mean "this is not the certificate we track," not "this
+// certificate's SAN happens to contain our string somewhere."
 function parseSanNames(san) {
   if (!san) return [];
   return san
@@ -88,12 +87,15 @@ function formatLine(label, value) {
 }
 
 // Connects with rejectUnauthorized:false and reads the certificate from the
-// secureConnect callback, then latches success. This host (www.therapyjo.com)
-// sends ECONNRESET *after* delivering a perfectly good certificate — measured
-// directly during planning. If the socket's "error" handler were left to own
-// the exit code, a healthy weekly check would report a false failure and
-// train the operator to ignore the tripwire by the third week. Once the
-// certificate has been read here, every later socket event is a no-op.
+// secureConnect callback, then latches success. The ECONNRESET-after-a-good-
+// certificate behavior this latch defends against was measured on the OLD
+// tracked host, www.therapyjo.com, during planning — not yet re-measured on
+// online.therapyjo.com. The latch is kept anyway, defensively: if the
+// socket's "error" handler were left to own the exit code and this new host
+// ever does the same thing, a healthy weekly check would report a false
+// failure and train the operator to ignore the tripwire by the third week.
+// Once the certificate has been read here, every later socket event is a
+// no-op, at negligible cost if the new host never resets at all.
 function readCertificate(host) {
   return new Promise((resolve) => {
     let latched = false;
@@ -186,15 +188,16 @@ async function main() {
   // It only runs behind this explicit flag.
   if (update) {
     const sanNames = parseSanNames(observation.san);
-    if (!sanNames.includes(LEGACY_WWW_HOST)) {
-      // A typo'd --host, or any host that isn't the legacy cert, must not be
-      // allowed to overwrite the one piece of state the tripwire depends on.
+    if (!sanNames.includes(TRACKED_HOST)) {
+      // A typo'd --host, or any host that isn't the tracked origin cert, must
+      // not be allowed to overwrite the one piece of state the tripwire
+      // depends on.
       printBlock([
         "ERROR",
         formatLine("host", host),
         formatLine(
           "reason",
-          `refusing --update — observed SAN does not name ${LEGACY_WWW_HOST} (san: ${observation.san})`
+          `refusing --update — observed SAN does not name ${TRACKED_HOST} (san: ${observation.san})`
         ),
         formatLine("meaning", "refusing to avoid clobbering the tracked baseline"),
       ]);
@@ -226,20 +229,24 @@ async function main() {
   const remaining = daysRemaining(notAfter);
   const serialMatches = observation.serial === baseline.serial;
   const sanNames = parseSanNames(observation.san);
-  // If the SAN doesn't even name the legacy www host, none of the other
+  // If the SAN doesn't even name the tracked origin host, none of the other
   // verdicts mean anything — not expiry, not the serial comparison, none of
   // it, because we're not looking at the certificate this script tracks.
-  // The realistic way to hit this isn't a --host typo: it's www.therapyjo.com
-  // itself getting repointed by a hand-edit at HostGator mid-fallback, which
-  // is exactly the mistake Production_Cutover.md warns against. Checked
-  // first, ahead of EXPIRED, so an unrelated expired certificate can never
-  // be reported as "the clinic is degraded."
-  const isForeign = !sanNames.includes(LEGACY_WWW_HOST);
-  // Once the FOREIGN gate below has passed, sanNames is guaranteed to
-  // contain LEGACY_WWW_HOST, so RESOLVED only needs to confirm the apex is
-  // gone — the www half of the old two-part check is now an invariant
-  // established upstream, not something this line needs to re-test.
-  const isResolved = !sanNames.includes(LEGACY_APEX_HOST);
+  // The realistic way to hit this isn't a --host typo: it's online.therapyjo.com
+  // itself getting repointed by a hand-edit at HostGator, which is exactly
+  // the mistake Production_Cutover.md warns against. Checked first, ahead of
+  // EXPIRED, so an unrelated expired certificate can never be reported as
+  // "the clinic is degraded."
+  const isForeign = !sanNames.includes(TRACKED_HOST);
+
+  // The RESOLVED verdict (isResolved = !sanNames.includes(LEGACY_APEX_HOST))
+  // was removed 2026-08-28: Hazard 9 — the shared apex+www certificate — is
+  // over, and this script now tracks online.therapyjo.com, whose SAN never
+  // contained the apex to begin with. Left in place, isResolved would have
+  // been permanently true here, so the verdict ladder below would print
+  // RESOLVED on every single run and could never reach TRIPWIRE — a tripwire
+  // that always reads green is worse than no tripwire. Do not re-add a
+  // verdict that is a tautology for the host it's checked against.
 
   let verdict;
   let exitCode;
@@ -248,15 +255,11 @@ async function main() {
   if (isForeign) {
     verdict = "FOREIGN";
     exitCode = EXIT.FOREIGN;
-    meaning = `not the tracked certificate — ${LEGACY_WWW_HOST} may have been repointed; check DNS before trusting any other verdict`;
+    meaning = `not the tracked certificate — ${TRACKED_HOST} may have been repointed; check DNS before trusting any other verdict`;
   } else if (notAfter.getTime() < Date.now()) {
     verdict = "EXPIRED";
     exitCode = EXIT.EXPIRED;
     meaning = "Missed tripwire; clinic is already degraded";
-  } else if (isResolved) {
-    verdict = "RESOLVED";
-    exitCode = EXIT.OK;
-    meaning = `Hazard 9 is over — SAN names ${LEGACY_WWW_HOST} without ${LEGACY_APEX_HOST}; runbook can be retired`;
   } else if (!serialMatches) {
     verdict = "RENEWED";
     exitCode = EXIT.OK;
