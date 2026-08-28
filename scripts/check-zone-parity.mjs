@@ -26,11 +26,17 @@ import { Resolver, lookup } from "node:dns/promises";
 import { randomBytes } from "node:crypto";
 
 // The zone as measured authoritatively against ns1.site4now.net on
-// 2026-08-24, unchanged from the 2026-08-23 planning measurement. The SOA
-// serial was 2025031307 both times — the zone has not been edited since
-// March 2025.
+// 2026-08-27, the day the legacy vendor pointed the apex, www and the
+// wildcard at Vercel and left `online` on the legacy host as the /clinic/*
+// proxy origin. The SOA serial moved 2025031307 -> 2026082704, confirming
+// the edit — this is no longer the unchanged-since-March-2025 zone.
 const ZONE = "therapyjo.com";
-const WEB_IP = "208.98.35.122";
+// Vercel's edge address — apex, www and the wildcard all point here now.
+const VERCEL_IP = "216.198.79.1";
+// The legacy site4now host. No longer the apex, but still `online`'s
+// target: it is the origin the /clinic/* proxy rule forwards to, so staff
+// access to the clinic system depends on this record specifically.
+const LEGACY_IP = "208.98.35.122";
 const MAIL_CNAME = "mail5010.site4now.net";
 const MX_HOST = "igw10.site4now.net";
 const MX_PREF = 10;
@@ -39,14 +45,22 @@ const EXPECTED_TTL = 300;
 
 // The one deliberate difference between the old zone and the new one. The
 // "a" mechanism means "whatever the apex A record points at may send mail as
-// this domain" — which silently stops authorising the legacy mail server the
-// moment Phase 4 points the apex at Vercel. Neither 208.98.35.122 nor
+// this domain" — which would have silently stopped authorising the legacy
+// mail server the moment the apex started pointing at Vercel instead of
+// 208.98.35.122. Neither 216.198.79.1 (Vercel) nor 208.98.35.122 nor
 // igw10's 208.98.34.60 appears anywhere inside _spf.site4now.net (checked:
 // it expands to 70.39.75.128/26, 70.39.90.0/24, 70.39.73.0/25, 14.1.20.0/22
-// and _netblocks.site4now.net), so "a" and "mx" really are the only things
-// authorising them today. Restating "a" as its literal address preserves
-// today's policy exactly while pinning it to the legacy server.
+// and _netblocks.site4now.net), so "a" and "mx" were the only things
+// authorising them before. On 2026-08-27 the vendor flipped the apex to
+// Vercel and applied this corrected record in the same edit, restating "a"
+// as its literal legacy address so the policy carries forward unchanged
+// instead of quietly dropping the legacy mail server's authorisation.
 const SPF_CORRECTED = "v=spf1 ip4:208.98.35.122 mx include:_spf.site4now.net -all";
+// Obsolete as of 2026-08-28: both zones now carry SPF_CORRECTED, since the
+// vendor applied the fix to the live site4now zone at the same time as the
+// apex flip rather than only in the HostGator transcription. Kept — with
+// --legacy-spf below — only so the documented Phase 3 procedure doesn't
+// break. Needing this flag now is itself a signal that something regressed.
 const SPF_LEGACY = "v=spf1 a mx include:_spf.site4now.net -all";
 
 const TIMEOUT_MS = 8_000;
@@ -148,23 +162,23 @@ async function probeCatchAll(resolver) {
   return { catchAll: true, control, ips: r.data };
 }
 
-async function checkA(resolver, name, label) {
+async function checkA(resolver, name, label, expectedIp) {
   const r = await query(() => resolver.resolve4(name, { ttl: true }));
   if (!r.answered) {
     record("NOANSWER", label, "A", `${r.code} — no A record served for ${name}`);
     return;
   }
   const addresses = r.data.map((a) => a.address);
-  if (addresses.length !== 1 || addresses[0] !== WEB_IP) {
-    record("FAIL", label, "A", `expected ${WEB_IP} / got ${addresses.join(", ") || "(empty)"}`);
+  if (addresses.length !== 1 || addresses[0] !== expectedIp) {
+    record("FAIL", label, "A", `expected ${expectedIp} / got ${addresses.join(", ") || "(empty)"}`);
     return;
   }
   const ttl = r.data[0].ttl;
   if (ttl !== EXPECTED_TTL) {
-    record("WARN", label, "A", `${WEB_IP} — value correct, but TTL is ${ttl}, expected ${EXPECTED_TTL}`);
+    record("WARN", label, "A", `${expectedIp} — value correct, but TTL is ${ttl}, expected ${EXPECTED_TTL}`);
     return;
   }
-  record("PASS", label, "A", `${WEB_IP}  ttl ${ttl}`);
+  record("PASS", label, "A", `${expectedIp}  ttl ${ttl}`);
 }
 
 async function checkWildcard(resolver) {
@@ -183,11 +197,11 @@ async function checkWildcard(resolver) {
     return;
   }
   const addresses = r.data.map((a) => a.address);
-  if (addresses.length !== 1 || addresses[0] !== WEB_IP) {
-    record("FAIL", "*", "A", `expected ${WEB_IP} / got ${addresses.join(", ") || "(empty)"}`);
+  if (addresses.length !== 1 || addresses[0] !== VERCEL_IP) {
+    record("FAIL", "*", "A", `expected ${VERCEL_IP} / got ${addresses.join(", ") || "(empty)"}`);
     return;
   }
-  record("PASS", "*", "A", `${WEB_IP}  ttl ${r.data[0].ttl}  (probed ${shortLabel})`);
+  record("PASS", "*", "A", `${VERCEL_IP}  ttl ${r.data[0].ttl}  (probed ${shortLabel})`);
 }
 
 async function checkMailCname(resolver) {
@@ -361,9 +375,22 @@ async function main() {
 
   const control = await probeCatchAll(resolver);
 
-  await checkA(resolver, ZONE, "@");
+  await checkA(resolver, ZONE, "@", VERCEL_IP);
   await checkWildcard(resolver);
-  await checkA(resolver, `www.${ZONE}`, "www");
+  await checkA(resolver, `www.${ZONE}`, "www", VERCEL_IP);
+  // `online` is the /clinic/* proxy origin, not a Vercel record — it stayed
+  // on the legacy host through the flip and is checked unconditionally
+  // because it exists as an explicit A record in both zones. If this one is
+  // wrong or missing after delegation, every staff member loses access to
+  // the clinic system.
+  await checkA(resolver, `online.${ZONE}`, "online", LEGACY_IP);
+  // Deliberately NOT checked: `new`. HostGator's zone has a CNAME
+  // new -> 31e97fa68447aa19.vercel-dns-017.com, but the live site4now zone
+  // has no `new` record at all and resolves it through the wildcard
+  // instead. Checking it here would fail every run against the live zone —
+  // one of this script's two supported targets (see --legacy-spf below) —
+  // for a divergence that is known and intentional, not a transcription
+  // error.
   await checkMailCname(resolver);
   await checkMx(resolver);
   const spfFlag = await checkSpf(resolver, legacySpf);
