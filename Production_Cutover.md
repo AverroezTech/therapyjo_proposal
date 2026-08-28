@@ -81,24 +81,124 @@ the live site, not against a plan.
 | `/clinic/` | Returns `200`, serves the clinic login through the proxy. Timezone read `Asia/Amman` on the live apex |
 | Legacy shared certificate | Serial `06575A81…`, apex + `www`, expires 2026-10-22. Will now fail renewal — neither name resolves to the legacy host any more. Nothing depends on it. **This is expected, not a fault** |
 
-**Still open:**
+**Open at the time of writing that table — and what became of each the same day:**
 
-- SPF (see below).
-- The HostGator zone still transcribes `@`, `www` and `*` as `208.98.35.122`, so delegating to it
-  today would roll the apex back to the legacy host — `zone:diff` will read `MISMATCH` on those
-  three rows and that is correct. The zone export is still owed.
+- **SPF — broken, then resolved, the same day.** See immediately below.
+- **The HostGator zone — corrected the same day.** See *The HostGator zone, corrected* below.
+- The zone export is still owed. The vendor's 2026-08-28 panel screenshots are the closest thing
+  to one so far; every record in them corroborates what was measured externally.
 
-**SPF is in a broken state as of 2026-08-28.** The vendor ADDED the corrected record instead of
-REPLACING the old one, so the apex now publishes TWO `v=spf1` records:
+**SPF: broken, then fixed, 2026-08-28.** The vendor first **added** the corrected record instead
+of **replacing** the old one, so the apex briefly published TWO `v=spf1` records:
 
 - `v=spf1 a mx include:_spf.site4now.net -all`
 - `v=spf1 ip4:208.98.35.122 mx include:_spf.site4now.net -all`
 
-Both measured live over DoH. Under RFC 7208 §4.5, more than one SPF record is a `permerror`, so
-SPF cannot pass for ANY sender, and under `DMARC p=reject` that is a hard fail. This is strictly
-worse than the original single wrong record. The fix is to DELETE the record without `ip4:`.
-Awaiting the vendor.
+Both measured live over DoH, on Google and Cloudflare independently. Under RFC 7208 §4.5 more than
+one SPF record is a `permerror`, so SPF could not pass for **any** sender — including the site4now
+relays the `include:` used to authorise. Under `DMARC p=reject` that is a hard fail, and strictly
+worse than the single wrong record it was meant to replace. The vendor deleted the legacy row on
+request; re-measured afterwards on both resolvers as exactly one record, the corrected `ip4:` form.
 
+**Phase 1 is therefore DONE** — the phase written off on 2026-08-23 as unrunnable, because no
+reachable person could edit the zone.
+
+### What else landed on 2026-08-28
+
+**`www` was attached to the Vercel project**, as a `308` redirect to the apex, and issued its own
+certificate (SAN `DNS:www.therapyjo.com`, expires 2026-11-26). Before that it resolved to Vercel
+while belonging to no project, so it was served the **apex's** certificate and every browser
+rejected it — `SEC_E_WRONG_PRINCIPAL`, a full-page security warning on the clinic's own domain.
+The reason `www` had been deliberately left unattached died when the proxy origin moved to
+`online`.
+
+**Escape 3 of the catalogue, both halves.** Measured in production, not inferred:
+
+| Path | Before | After |
+|---|---|---|
+| `/clinic/admin/` | `301` to `https://online.therapyjo.com/admin/` | `302` `Location: /Login.aspx` |
+| `/clinic/admin` | `301` to `https://online.therapyjo.com/admin/` | `302` `Location: /Login.aspx` |
+
+Cause: the rewrite used `:path*`, a path-to-regexp **repeated-segment** param that splits the
+remainder on `/` and rejoins it, dropping a trailing empty segment. `/clinic/admin/` reached the
+origin as `/admin`, and IIS answered with its directory-canonicalisation redirect — the one legacy
+redirect emitted as an **absolute** URL. Every other legacy redirect is root-relative and is
+already caught by escape 1. Fixed in two parts: `:path(.*)` to carry a trailing slash through
+verbatim, then a second rule appending the slash on the way out for extensionless paths, so IIS
+never has cause to canonicalise at all. That second rule rests on an assumption recorded in its
+comment — Web Forms pages carry extensions, so extensionless means directory — which could not be
+verified across the authenticated area without logging into the legacy application.
+
+**`AUTH_URL` was still the preview address.** Protected routes on the apex were bouncing users to
+`https://therapyjo-proposal.vercel.app/login`. Set to `https://therapyjo.com` and redeployed.
+Note for any future env change: `next.config.mjs` is serialised to JSON at build time, so an env
+var change does not reach a running deployment without a rebuild.
+
+**Tooling brought back in line with reality:**
+
+- `scripts/check-legacy-cert.mjs` retargeted from the dead shared apex+`www` certificate to
+  `online.therapyjo.com`, and its `RESOLVED` verdict **deleted**. Left in place it would have been
+  permanently true against the new host — the ladder checks it before expiry, so the script would
+  have printed `RESOLVED` on every run and could never have reached `TRIPWIRE`. A tripwire that
+  always reads green is worse than no tripwire. Re-baselined; reads `OK`, 89 days.
+- `scripts/check-zone-parity.mjs` updated for the post-flip zone: the single `WEB_IP` constant
+  split into `VERCEL_IP` and `LEGACY_IP`, and a check added for `online` — load-bearing now, and
+  never checked before. Left unchecked, deliberately: `new`, which HostGator carries as a CNAME
+  and the live zone resolves through the wildcard.
+- `src/app/api/public/diagnostics/route.ts` deleted, Phase 4 having passed. Last reading before
+  removal: `Asia/Amman`, `+0300`, on the live apex.
+- `prisma/seed.ts` no longer invents credentials. `ADMIN_USERNAME` and `ADMIN_PASSWORD` are
+  required, `admin123` is rejected by name, and validation runs before the connection pool is
+  built so it fails instantly rather than after a timeout.
+
+**The HostGator zone, corrected.** It still transcribed the pre-flip world. Three `A` records were
+changed by hand — `@`, `www` and `*` from `208.98.35.122` to `216.198.79.1` — leaving `online` on
+the legacy host. Read back row by row afterwards, and the `MX` preference re-checked in its Edit
+dialog at `10`, since the list view hides it and that is exactly how a wrong value hid last time.
+Nine records, one SPF row, no strays. `npm run zone:diff -- --ns ns1.site4now.net` reads **`MATCH`
+on all 11 checks**, so the two zones are now faithful copies of each other.
+
+**Why this mattered more than it looks:** before the correction, that zone would have rolled the
+apex back to the legacy host on delegation. The updated checker would have reported `MISMATCH`
+against a *correctly* updated zone, and the obvious way to make it pass would have been to restore
+the legacy IP — undoing the entire cutover while appearing to follow the procedure.
+
+**Test and QA data wiped.** See `Data_Reset.md`.
+
+### Phase 3 — the reason for it has changed, and that is now the open question
+
+Phase 3 was designed as the step that unblocked everything: DNS lived in a panel nobody could
+reach, so no record was editable by anyone. **That premise died on 2026-08-26.** The vendor makes
+zone edits on request, same day — three of them on 2026-08-27 and two more on 2026-08-28.
+
+What it still buys is **autonomy** and **fewer hands on a live medical domain**. The 2026-08-28 SPF
+incident is the evidence for the second: an ordinary add-instead-of-replace mistake put the domain
+into `permerror` under `p=reject` for some hours.
+
+**Two facts now govern the decision:**
+
+1. **The gate as written cannot pass.** Phase 3 says delegate only once `zone:diff` prints `MATCH`
+   against HostGator's nameservers. HostGator does not serve a zone until the domain is delegated
+   to it — re-measured 48 hours after the zone was built, and again on 2026-08-28, still `NOZONE`.
+   The panel read-back is the only available substitute, and it has now been done twice.
+2. **HostGator's assigned nameservers are still unknown.** The panel shows only the current
+   delegation. The one control that reveals the defaults is `REVERT TO DEFAULTS`, and clicking it
+   **is** the delegation — it answers the question by committing the change. Ask support instead.
+
+**The middle state is the worst one.** Two zones now exist and they currently match. Every future
+DNS change must be applied to both or the copy drifts, and a drifted unpublished zone is not
+neutral — on the morning of 2026-08-28 that copy still said the apex was `208.98.35.122`.
+
+So the decision is **commit or abandon**, and it is deliberately left open here:
+
+- **Commit** — ask support for the nameserver names, delegate on a day with an hour to watch it,
+  run `zone:diff` against the real nameservers immediately after, and fix forward. Rollback is a
+  TLD-TTL propagation measured in days, not the 15 minutes the records carry.
+- **Abandon** — delete the HostGator records so nothing can ever be delegated to a stale copy, and
+  accept vendor-mediated DNS as the permanent arrangement.
+
+The argument for deciding sooner rather than later is that the zones are verified identical *now*,
+which is the safest moment this will ever be, and that alignment decays on its own.
 ### Vendor contact — 2026-08-26. This changes the shape of the problem
 
 **The vendor was reached and has agreed to move the legacy clinical system to
@@ -150,43 +250,49 @@ mail under `p=reject`.
 
 ### Next actions, in order
 
-**Superseded 2026-08-26 by the vendor contact above.** The 2026-08-24 order put Phase 3 first and
-ran Option 4 as slow background work with ~4 months of runway. Option 4 landed in two days, so the
-origin change now leads — it is the step that takes the calendar pressure off everything else.
+**Rewritten 2026-08-28.** The 2026-08-26 list below has been overtaken: items 1, 2, 3, 5, 6 and 8
+are done, and 4, 7, 9, 10 and 11 survive. Phase 4 landed out of order when the vendor flipped the
+apex on 2026-08-27, which collapsed most of that ordering.
 
-1. **Answer the certificate question.** Own certificate for `online.therapyjo.com`, or a seat on
-   the existing SAN list? Everything below assumes the former. If it is the latter, this is
-   Shape C: the fallback cycle stays, the 2026-08-24 order resumes unchanged, and Phase 4 goes
-   back behind the ~2026-09-22 renewal gate.
-2. **Get `online.therapyjo.com` live, and verify it from outside.** `[USER]` via vendor: the IIS
-   binding plus its own certificate. `[PLANNER]`: confirm `https://online.therapyjo.com/` serves
-   the clinic login under a valid certificate whose SAN does **not** name the apex. Purely
-   additive — the apex and `www` are untouched and nothing public changes.
-3. **Phase 1 — fix SPF, through the vendor.** `v=spf1 ip4:208.98.35.122 mx
-   include:_spf.site4now.net -all`, confirming the outbound mail IP against the zone export
-   first. This must land before any apex move. See the revived Phase 1.
-4. **Get the zone export.** Still owed (Phase 0 step 1), and now obtainable by asking. It is worth
-   most *before* the Phase 3 transcription, not after it.
-5. **Switch the proxy origin.** `LEGACY_ORIGIN` to `https://online.therapyjo.com` on Vercel, then
-   re-run the Phase 2c `/clinic/*` checks on the `*.vercel.app` address. Env var only — no code
-   change (`next.config.mjs:18`).
-6. **Rework the cert tripwire.** `scripts/check-legacy-cert.mjs` hardcodes `www.therapyjo.com` and
-   `therapyjo.com` as its SAN constants (lines 30-31); pointed at the new origin it reads
-   `FOREIGN` and the signal becomes noise. See *What the origin change does to the tripwire*.
-7. **Phase 3 — move the nameservers to HostGator.** Unchanged in substance, and still the step
-   that returns control of the domain to its owner. Add `online` to the HostGator zone, then gate
-   the registrar change on `npm run zone:diff` printing `MATCH` against the account's assigned
-   nameservers — delegating to an unpopulated zone parks the domain and drops all mail.
-   **The ~2026-09-22 deadline relaxes if and only if step 1 answers yes**, because Test B stops
-   being load-bearing once the legacy certificate no longer contains the apex.
-8. **Phase 4 — flip the front door.** Only after 2, 3 and 5. Vercel's A record goes to the vendor
-   at this point and not before.
-9. **Ask the clinic two questions:** is any `therapyjo.com` email address actually used, and is
-   anything automated pointing at the bare domain?
-10. **Run the two Phase 2c checks that need a login:** the 6 MB upload and a patient-document
-    round trip.
-11. **Keep asking for the direct panel login, or a named billing contact.** One granted request is
-    not access. Phase 0's ask survives this development.
+**Done, 2026-08-26 to 2026-08-28** — kept here so the sequence is legible, not as work remaining:
+
+| Was | Outcome |
+|---|---|
+| 1. Answer the certificate question | **Yes** — `online.therapyjo.com` holds its own certificate, SAN `DNS:online.therapyjo.com` only, expires 2026-11-26. Hazard 9 is over |
+| 2. Get `online` live and verify from outside | Serves the clinic login, `200`, IIS 10.0 / ASP.NET, valid certificate that does not name the apex |
+| 3. Phase 1 — fix SPF | Done via the vendor, after one broken intermediate state. One record, corrected `ip4:` form |
+| 5. Switch the proxy origin | `LEGACY_ORIGIN` = `https://online.therapyjo.com`, deployed. `/clinic/` verified in production |
+| 6. Rework the cert tripwire | Retargeted to `online`, `RESOLVED` verdict removed, re-baselined, reads `OK` |
+| 8. Phase 4 — flip the front door | **Happened out of order**, by the vendor, on 2026-08-27 |
+
+**Remaining:**
+
+1. **Decide Phase 3: commit or abandon.** This is the open question, and it is a decision rather
+   than a check — see *Phase 3 — the reason for it has changed*. The gate as written cannot pass,
+   and the reason the phase existed no longer holds. Do not let it sit undecided: two zones that
+   must be kept in step is a standing liability.
+2. **If committing: ask HostGator support for the account's assigned nameservers.** Read-only, and
+   the last unknown. Do **not** use `REVERT TO DEFAULTS` to find out — that control *is* the
+   delegation. Expectation is `ns1`/`ns2.hostgator.com`, since the account carries the
+   registration with no hosting plan, but expectation is not knowledge.
+3. **Get the zone export.** Still owed (Phase 0 step 1). The vendor's 2026-08-28 panel screenshots
+   are the closest thing so far and corroborate every externally measured record, but they are not
+   an export and the top of the record list was cut off in them.
+4. **Arm the cert tripwire on a schedule.** `npm run cert:check` is re-baselined and reads `OK`,
+   but nothing runs it. A weekly cadence is what makes it a tripwire rather than a script. It now
+   watches `online.therapyjo.com`, whose certificate expires 2026-11-26.
+5. **Confirm the `AUTH_SECRET` rotation reached production.** It was rotated on Vercel on
+   2026-08-28 after five test accounts were deleted; auth here is JWT with no session table, so
+   until the rotation is *deployed* those accounts' tokens still verify. Vercel env changes need a
+   rebuild.
+6. **Run the two Phase 2c checks that need a login:** the 6 MB upload and a patient-document round
+   trip. **Newly unblocked** — there is now a working admin account and an empty database to test
+   against, which is the cleanest state these checks will ever run in.
+7. **Ask the clinic two questions:** is any `therapyjo.com` email address actually used, and is
+   anything automated pointing at the bare domain? Both matter more now that the apex has moved.
+8. **Keep asking for the direct legacy panel login, or a named billing contact.** One cooperative
+   vendor is not access, and every zone edit still routes through a person. Phase 0's ask survives.
+
 
 ### Owed cleanup
 
