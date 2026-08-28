@@ -4,6 +4,43 @@ import { PrismaPg } from "@prisma/adapter-pg";
 import pg from "pg";
 import bcrypt from "bcryptjs";
 
+// Admin identity/credentials come from the environment, not hardcoded — this
+// script now seeds the one real admin account behind a publicly reachable
+// login (https://therapyjo.com/login), not a local throwaway. There used to
+// be a fallback to a default "admin123" password for local-dev convenience;
+// it was removed because a known default password on a live medical clinic's
+// admin login is a real exposure, not a convenience. Run this validation
+// BEFORE the pg.Pool below is constructed, so a missing var fails instantly
+// with a clear message instead of after a Postgres connection timeout.
+function requireAdminCredentials(): { username: string; password: string; email: string | null } {
+    const username = process.env.ADMIN_USERNAME;
+    if (!username) {
+        console.error("Seed error: ADMIN_USERNAME is not set. Refusing to seed an admin account without one.");
+        process.exit(1);
+    }
+
+    const password = process.env.ADMIN_PASSWORD;
+    if (!password) {
+        console.error("Seed error: ADMIN_PASSWORD is not set. Refusing to seed an admin account without one.");
+        process.exit(1);
+    }
+    if (password === "admin123") {
+        console.error(
+            'Seed error: ADMIN_PASSWORD is "admin123", the old hardcoded default. Choose a real password — this login is publicly reachable.'
+        );
+        process.exit(1);
+    }
+
+    // ADMIN_EMAIL is optional. User.email is String? in the schema, so null is
+    // a valid value — do not synthesise a default address here. A fabricated
+    // email on an account that receives password resets is worse than none.
+    const email = process.env.ADMIN_EMAIL || null;
+
+    return { username, password, email };
+}
+
+const { username: adminUsername, password: adminPassword, email: adminEmail } = requireAdminCredentials();
+
 const pool = new pg.Pool({
     connectionString: process.env.DATABASE_URL!,
     ssl: { rejectUnauthorized: false },
@@ -16,7 +53,7 @@ async function main() {
 
     // Check if admin already exists
     const existingAdmin = await prisma.user.findUnique({
-        where: { username: "admin" },
+        where: { username: adminUsername },
     });
 
     if (existingAdmin) {
@@ -24,29 +61,24 @@ async function main() {
         return;
     }
 
-    // Create default admin — override with ADMIN_PASSWORD env var for anything beyond local dev
-    const seedPassword = process.env.ADMIN_PASSWORD || "admin123";
-    const hashedPassword = await bcrypt.hash(seedPassword, 12);
+    const hashedPassword = await bcrypt.hash(adminPassword, 12);
 
     await prisma.user.create({
         data: {
-            username: "admin",
+            username: adminUsername,
             passwordHash: hashedPassword,
             role: Role.ADMIN,
             name: "Admin",
-            email: "admin@therapyjo.com",
+            email: adminEmail,
             status: EmploymentStatus.ACTIVE,
         },
     });
 
+    // Never print the password, even the one just supplied via env var — this
+    // seeds a live medical clinic's admin login, not a local throwaway.
     console.log("✅ Admin user created:");
-    console.log("   Username: admin");
-    if (process.env.ADMIN_PASSWORD) {
-        console.log("   Password: (from ADMIN_PASSWORD env var)");
-    } else {
-        console.log("   Password: admin123");
-        console.log("   ⚠️  This is the default password. Set ADMIN_PASSWORD before seeding production, or change it after first login!");
-    }
+    console.log(`   Username: ${adminUsername}`);
+    console.log(`   Email: ${adminEmail ? "set" : "not set"}`);
 
     console.log("\n🌱 Seed complete!");
 }
