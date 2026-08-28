@@ -20,6 +20,10 @@ Read it completely before acting on any part of it.
 
 ### Where things stand — 2026-08-26
 
+**Superseded — see *Where things stand — 2026-08-28. Phase 4 landed out of order* below.** The
+table in this section describes a pre-flip state that no longer holds; read the 2026-08-28
+section first.
+
 **Read this first.** Nothing public has moved. `therapyjo.com` still resolves to the legacy host
 and still serves the legacy application, exactly as it did before this work started.
 
@@ -55,6 +59,45 @@ and still serves the legacy application, exactly as it did before this work star
 is editable at all* until the nameservers move to HostGator. Phase 3 is therefore not merely a
 migration step — it is the step that **returns control of the domain to its owner**, and every
 other DNS-dependent action sits downstream of it.
+
+### Where things stand — 2026-08-28. Phase 4 landed out of order
+
+The vendor edited the live site4now zone directly on 2026-08-27, flipping the apex to Vercel
+before Phase 3 (the nameserver move to HostGator) ever happened. What follows is measured against
+the live site, not against a plan.
+
+| | State |
+|---|---|
+| DNS zone edit | Vendor edited the live site4now zone on 2026-08-27. SOA serial moved `2025031307` -> `2026082704` |
+| Apex `A` | `216.198.79.1` (Vercel) |
+| `www` `A` | `216.198.79.1` (Vercel) |
+| Wildcard `*` `A` | `216.198.79.1` (Vercel) |
+| `online` `A` | `208.98.35.122` |
+| Nameservers | **UNCHANGED** — `ns1/2/3.site4now.net`. **Phase 3 has not happened** |
+| `https://therapyjo.com` | Serves this app, `200`. Own certificate, SAN `DNS:therapyjo.com`, expires 2026-11-26. `http` -> `https` is `308`. HSTS `max-age=63072000` |
+| `www.therapyjo.com` | Attached to the Vercel project on 2026-08-28, `308` redirect to the apex. Own certificate, SAN `DNS:www.therapyjo.com`, expires 2026-11-26. Before attachment it served the apex's certificate and every browser rejected it with a name mismatch |
+| `online.therapyjo.com` | Serves the clinic login, `200`. IIS 10.0 / ASP.NET. Own certificate, SAN `DNS:online.therapyjo.com` only, expires 2026-11-26. **Hazard 9 is over** |
+| Vercel env | `LEGACY_ORIGIN` = `https://online.therapyjo.com` and `AUTH_URL` = `https://therapyjo.com`, set and deployed 2026-08-28. Before `AUTH_URL` was fixed, protected routes on the apex bounced users to `https://therapyjo-proposal.vercel.app/login` |
+| `/clinic/` | Returns `200`, serves the clinic login through the proxy. Timezone read `Asia/Amman` on the live apex |
+| Legacy shared certificate | Serial `06575A81…`, apex + `www`, expires 2026-10-22. Will now fail renewal — neither name resolves to the legacy host any more. Nothing depends on it. **This is expected, not a fault** |
+
+**Still open:**
+
+- SPF (see below).
+- The HostGator zone still transcribes `@`, `www` and `*` as `208.98.35.122`, so delegating to it
+  today would roll the apex back to the legacy host — `zone:diff` will read `MISMATCH` on those
+  three rows and that is correct. The zone export is still owed.
+
+**SPF is in a broken state as of 2026-08-28.** The vendor ADDED the corrected record instead of
+REPLACING the old one, so the apex now publishes TWO `v=spf1` records:
+
+- `v=spf1 a mx include:_spf.site4now.net -all`
+- `v=spf1 ip4:208.98.35.122 mx include:_spf.site4now.net -all`
+
+Both measured live over DoH. Under RFC 7208 §4.5, more than one SPF record is a `permerror`, so
+SPF cannot pass for ANY sender, and under `DMARC p=reject` that is a hard fail. This is strictly
+worse than the original single wrong record. The fix is to DELETE the record without `ip4:`.
+Awaiting the vendor.
 
 ### Vendor contact — 2026-08-26. This changes the shape of the problem
 
@@ -147,9 +190,7 @@ origin change now leads — it is the step that takes the calendar pressure off 
 
 ### Owed cleanup
 
-- `src/app/api/public/diagnostics/route.ts` is **temporary** and still live. Kept deliberately —
-  it re-verifies the timezone cheaply after the Phase 4 rebuild, when `AUTH_URL` changes and
-  everything is rebuilt. **Delete it once Phase 4 passes.**
+- `src/app/api/public/diagnostics/route.ts` — **deleted 2026-08-28**, after Phase 4 passed.
 - `TJ-033` (4.5 MB upload limit), `TJ-034` (ambient timezone), `TJ-035` (SEO) are candidates
   named in this file and **not yet filed** in `tasks.md`.
 
@@ -752,7 +793,8 @@ and it is much easier to do now than to argue for after an incident.
    - A patient document uploads **and opens again.** `SUPABASE_SERVICE_ROLE_KEY` is set, so this
      should pass — but set and working are different claims, and a wrong key degrades to the
      same 503 as a missing one.
-   - **Timezone, measured not assumed:** `GET /api/public/diagnostics` reports
+   - **Timezone, measured not assumed:** `GET /api/public/diagnostics` (route removed 2026-08-28;
+     its last reading before removal was `Asia/Amman`, `+0300`, taken on the live apex) reports
      `timeZone: "Asia/Amman"` and `offsetMinutes: -180`, and its `sample` field — the instant
      `2026-08-23T23:30:00Z` — renders as **Aug 24**, not Aug 23. Request it twice and confirm
      `now` changes, proving it is served dynamically rather than prerendered at build time. A
