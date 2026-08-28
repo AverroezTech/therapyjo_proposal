@@ -104,6 +104,50 @@ const nextConfig = {
       // shadow the proxy.
       beforeFiles: [
         {
+          // The other half of Escape 3, measured in production 2026-08-28
+          // AFTER the fix directly below shipped:
+          //   /clinic/admin/  ->  302  Location: /Login.aspx           (fixed)
+          //   /clinic/admin   ->  301  Location: https://online.therapyjo.com/admin/  (still escapes)
+          // The rule below preserves a trailing slash that is PRESENT. When
+          // the user doesn't type one, there's nothing to preserve — IIS
+          // legitimately canonicalises "/admin" to "/admin/" itself and
+          // emits that redirect as an absolute URL, same as before.
+          //
+          // Fix: append the slash on the way OUT, so IIS never has cause to
+          // canonicalise anything. This rule matches a /clinic/ path whose
+          // final segment has no extension and doesn't already end in "/",
+          // and forwards it to the origin WITH a trailing slash appended.
+          // It must come before the general rule below so it gets first
+          // look at exactly the paths that rule would otherwise forward
+          // slash-less.
+          //
+          // ASSUMPTION, stated because it could not be verified: the legacy
+          // app is ASP.NET Web Forms, where pages carry an extension
+          // (.aspx, .axd) and pretty-URL routing is not known to be in use,
+          // so an extensionless path is assumed to be a directory rather
+          // than a page. This was verified for the anonymous /clinic/ login
+          // shell but NOT across the authenticated admin/secretary/doctor
+          // areas — doing so would mean logging into the legacy application,
+          // which is forbidden. What would falsify it: an extensionless
+          // legacy PAGE. This rule would append a slash to it, and the
+          // request would 404 on the origin instead of loading the page.
+          //
+          // Regex: "(?:.*/)?[^./]+" — an optional greedy prefix ending in a
+          // literal "/", then a final segment of one-or-more characters
+          // containing neither "." nor "/". That final-segment class is what
+          // does the real work: it can't match an empty string (so this
+          // never fires on a path already ending in "/" — the prefix would
+          // have to consume the whole remainder, leaving nothing for the
+          // final segment, which requires at least one character) and it
+          // can't match anything containing a dot (so "Login.aspx",
+          // "app.css" and "bundle.js" all fall through untouched to the
+          // general rule below, extension intact). Nested groups inside a
+          // custom :param(...) capture are already proven safe in this file
+          // — see the (?!clinic/) lookahead in the .axd rule further down.
+          source: "/clinic/:path((?:.*/)?[^./]+)",
+          destination: `${LEGACY_ORIGIN}/:path/`,
+        },
+        {
           // Escape 3 of the catalogue, measured in production 2026-08-28:
           //   https://therapyjo.com/clinic/admin/  ->  301  Location: https://online.therapyjo.com/admin/
           // ":path*" is a path-to-regexp repeated-segment param — it SPLITS
