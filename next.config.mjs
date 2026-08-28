@@ -104,8 +104,28 @@ const nextConfig = {
       // shadow the proxy.
       beforeFiles: [
         {
-          source: "/clinic/:path*",
-          destination: `${LEGACY_ORIGIN}/:path*`,
+          // Escape 3 of the catalogue, measured in production 2026-08-28:
+          //   https://therapyjo.com/clinic/admin/  ->  301  Location: https://online.therapyjo.com/admin/
+          // ":path*" is a path-to-regexp repeated-segment param — it SPLITS
+          // the remainder into "/"-separated segments and rejoins them when
+          // building the destination, which drops a trailing empty segment.
+          // "/clinic/admin/" therefore reached the origin as "/admin", not
+          // "/admin/", and IIS's directory-canonicalisation redirect fired —
+          // the ONLY redirect the legacy app emits as an ABSOLUTE URL (every
+          // other legacy redirect is root-relative; see Escape 1 above).
+          // Confirmed directly against the origin: "/admin/" replies
+          // "302 Location: /Login.aspx" (relative, harmless); "/admin"
+          // replies "301 Location: https://online.therapyjo.com/admin/",
+          // which escapes the /clinic/ wrapper entirely.
+          //
+          // ":path(.*)" is a named param with a literal regex capture, not a
+          // repeated segment — it takes the remainder as one raw string,
+          // trailing slash included, and substitutes it verbatim. A bare
+          // "/clinic/" still resolves correctly: the capture is "", so the
+          // destination is "${LEGACY_ORIGIN}/" (one slash, from the literal
+          // "/" before ":path"), not "${LEGACY_ORIGIN}//".
+          source: "/clinic/:path(.*)",
+          destination: `${LEGACY_ORIGIN}/:path`,
         },
         // Escape 2 of the catalogue. ASP.NET emits its script/resource handler
         // URLs root-relative and unconditionally: the authenticated admin page
