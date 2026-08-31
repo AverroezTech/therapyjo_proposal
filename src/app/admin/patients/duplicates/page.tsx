@@ -71,35 +71,37 @@ export default function DuplicatePatientsPage() {
                                 </div>
                                 <span className="dupe-count">{group.patients.length} matches</span>
                             </div>
-                            <table className="data-table">
-                                <thead>
-                                    <tr>
-                                        <th>ID</th>
-                                        <th>Name</th>
-                                        <th>Phone 2</th>
-                                        <th>Sessions</th>
-                                        <th>Created</th>
-                                        <th>Action</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    {group.patients.map((p) => (
-                                        <tr key={p.id} className={p.archived ? "row-archived" : undefined}>
-                                            <td style={{ color: "rgba(255,255,255,0.3)" }}>{p.id}</td>
-                                            <td>
-                                                {p.name}
-                                                {p.archived && <span className="archived-tag">Archived</span>}
-                                            </td>
-                                            <td>{p.phone2 || "—"}</td>
-                                            <td>{p.reservationCount}</td>
-                                            <td>{formatDate(p.createdAt)}</td>
-                                            <td>
-                                                <Link href={`/admin/patients/${p.id}`} className="btn-sm btn-view">View</Link>
-                                            </td>
+                            <div className="table-scroll">
+                                <table className="data-table">
+                                    <thead>
+                                        <tr>
+                                            <th>ID</th>
+                                            <th>Name</th>
+                                            <th>Phone 2</th>
+                                            <th>Sessions</th>
+                                            <th>Created</th>
+                                            <th>Action</th>
                                         </tr>
-                                    ))}
-                                </tbody>
-                            </table>
+                                    </thead>
+                                    <tbody>
+                                        {group.patients.map((p) => (
+                                            <tr key={p.id} className={p.archived ? "row-archived" : undefined}>
+                                                <td style={{ color: "rgba(255,255,255,0.3)" }}>{p.id}</td>
+                                                <td>
+                                                    {p.name}
+                                                    {p.archived && <span className="archived-tag">Archived</span>}
+                                                </td>
+                                                <td>{p.phone2 || "—"}</td>
+                                                <td>{p.reservationCount}</td>
+                                                <td>{formatDate(p.createdAt)}</td>
+                                                <td>
+                                                    <Link href={`/admin/patients/${p.id}`} className="btn-sm btn-view">View</Link>
+                                                </td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                            </div>
                         </div>
                     ))}
                 </div>
@@ -131,6 +133,7 @@ export default function DuplicatePatientsPage() {
                     display: flex; align-items: center; justify-content: space-between;
                     padding: 0.75rem 1rem; background: rgba(239,68,68,0.06);
                     border-bottom: 1px solid rgba(255,255,255,0.05);
+                    flex-wrap: wrap; gap: 0.5rem;
                 }
                 .group-header-left { display: flex; align-items: center; gap: 0.6rem; }
                 .phone-label { font-weight: 600; font-size: 0.9rem; }
@@ -152,7 +155,8 @@ export default function DuplicatePatientsPage() {
                     padding: 0.1rem 0.4rem; border-radius: 20px;
                     text-transform: uppercase; letter-spacing: 0.03em;
                 }
-                .data-table { width: 100%; border-collapse: collapse; }
+                .table-scroll { overflow-x: auto; overflow-y: hidden; -webkit-overflow-scrolling: touch; }
+                .data-table { width: 100%; min-width: 640px; border-collapse: collapse; }
                 .data-table th {
                     text-align: left; padding: 0.6rem 1rem; font-size: 0.74rem;
                     text-transform: uppercase; letter-spacing: 0.05em;
@@ -172,6 +176,11 @@ export default function DuplicatePatientsPage() {
                 }
                 .btn-view { background: rgba(76,175,147,0.12); color: #6ee7b7; }
                 .btn-view:hover { background: rgba(76,175,147,0.22); }
+
+                @media (max-width: 560px) {
+                    .page-header { flex-direction: column; align-items: stretch; gap: 0.75rem; }
+                    .btn-sm { padding: 0.42rem 0.75rem; }
+                }
             `}</style>
         </div>
     );

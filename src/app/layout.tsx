@@ -1,3 +1,4 @@
+import type { Viewport } from "next";
 import { Inter, Outfit, Noto_Kufi_Arabic, Bodoni_Moda } from "next/font/google";
 import "./globals.css";
 import { LanguageProvider } from "./i18n/LanguageContext";
@@ -50,6 +51,11 @@ export const metadata = {
     type: "website",
     locale: "en_US",
   },
+};
+
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
 };
 
 export default function RootLayout({

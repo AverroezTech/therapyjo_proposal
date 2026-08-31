@@ -106,9 +106,10 @@ export default function ArchivedPatientsPage() {
                 .btn-back:hover { color: #fff; }
                 .table-container {
                     background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.06);
-                    border-radius: var(--radius-md, 4px); overflow: hidden;
+                    border-radius: var(--radius-md, 4px); overflow-x: auto; overflow-y: hidden;
+                    -webkit-overflow-scrolling: touch;
                 }
-                .data-table { width: 100%; border-collapse: collapse; }
+                .data-table { width: 100%; min-width: 600px; border-collapse: collapse; }
                 .data-table th {
                     text-align: left; padding: 0.85rem 1rem; font-size: 0.76rem;
                     text-transform: uppercase; letter-spacing: 0.05em;
@@ -121,7 +122,7 @@ export default function ArchivedPatientsPage() {
                     color: rgba(255,255,255,0.8);
                 }
                 .data-table tr:hover { background: rgba(255,255,255,0.02); }
-                .action-buttons { display: flex; gap: 0.4rem; }
+                .action-buttons { display: flex; gap: 0.4rem; flex-wrap: wrap; }
                 .btn-sm {
                     padding: 0.28rem 0.65rem; border-radius: var(--radius-sm, 2px); font-size: 0.78rem;
                     border: none; cursor: pointer; font-weight: 500; font-family: inherit;
@@ -141,6 +142,11 @@ export default function ArchivedPatientsPage() {
                     cursor: pointer; font-size: 0.82rem; font-family: inherit;
                 }
                 .pagination button:disabled { opacity: 0.3; cursor: not-allowed; }
+
+                @media (max-width: 560px) {
+                    .page-header { flex-direction: column; align-items: stretch; gap: 0.75rem; }
+                    .btn-sm { padding: 0.42rem 0.75rem; }
+                }
             `}</style>
         </div>
     );

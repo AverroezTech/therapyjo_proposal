@@ -363,6 +363,17 @@ export default function BlogEditor({ initial }: { initial?: PostData }) {
                 @media (max-width: 900px) {
                     .editor-layout { grid-template-columns: 1fr; }
                 }
+
+                @media (max-width: 560px) {
+                    .editor-page { padding-bottom: 1rem; }
+                    .field-row { grid-template-columns: 1fr; gap: 0.75rem; }
+                    .status-buttons { flex-wrap: wrap; }
+                    .status-btn { flex: 1 1 45%; }
+                    .toolbar { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+                    .footer-row { flex-direction: column; align-items: stretch; gap: 0.75rem; }
+                    .footer-actions { justify-content: stretch; }
+                    .footer-actions .btn-cancel, .footer-actions .btn-save { flex: 1; }
+                }
             `}</style>
         </div>
     );

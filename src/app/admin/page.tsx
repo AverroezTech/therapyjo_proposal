@@ -594,10 +594,23 @@ export default function AdminDashboard() {
                 .soap-field { font-size: 0.82rem; color: rgba(255,255,255,0.7); margin-bottom: 0.3rem; }
 
                 @media (max-width: 768px) {
-                    .main-layout { flex-direction: column; }
+                    .main-layout { flex-direction: column; align-items: stretch; }
+                    .calendar-col { width: 100%; }
                     .sidebar-col { width: 100%; }
                     .controls { flex-direction: column; align-items: flex-start; }
                     .form-row { flex-direction: column; gap: 0; }
+                }
+
+                @media (max-width: 640px) {
+                    .controls-left { flex-direction: column; align-items: flex-start; gap: 0.6rem; width: 100%; }
+                    .date-nav { width: 100%; }
+                    .btn-nav { flex: 1; text-align: center; }
+                    .controls-right { width: 100%; }
+                    .doctor-select { flex: 1; }
+                    .btn-add { flex-shrink: 0; }
+                    .modal-overlay { padding: 1rem; align-items: flex-end; }
+                    .modal-card { padding: 1.25rem; max-height: 85vh; }
+                    .detail-grid { grid-template-columns: 1fr; }
                 }
             `}</style>
         </div>

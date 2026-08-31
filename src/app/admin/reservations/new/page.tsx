@@ -366,11 +366,12 @@ function NewReservationForm() {
                 .modal-overlay {
                     position: fixed; inset: 0; background: rgba(0,0,0,0.6);
                     display: flex; align-items: center; justify-content: center;
-                    z-index: 1000; backdrop-filter: blur(4px);
+                    z-index: 1000; backdrop-filter: blur(4px); padding: 1rem;
                 }
                 .modal-card {
                     background: var(--bg-dark-secondary, #243b44); border: 1px solid rgba(255,255,255,0.08);
                     border-radius: var(--radius-md, 4px); padding: 2rem; width: 100%; max-width: 440px;
+                    max-height: 85vh; overflow-y: auto;
                 }
                 .modal-card h2 { font-size: 1.2rem; margin-bottom: 1.25rem; font-weight: 600; }
                 .modal-error {
@@ -413,6 +414,9 @@ function NewReservationForm() {
                 @media (max-width: 640px) {
                     .form-layout { flex-direction: column; }
                     .field-row { grid-template-columns: 1fr; }
+                    .modal-card { padding: 1.25rem; }
+                    .form-actions { flex-direction: column-reverse; }
+                    .form-actions .btn-cancel, .form-actions .btn-save { width: 100%; }
                 }
             `}</style>
         </div>

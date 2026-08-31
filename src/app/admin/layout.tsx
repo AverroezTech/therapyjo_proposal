@@ -31,34 +31,33 @@ function NavDropdown({
     label,
     items,
     isActive,
+    onNavigate,
 }: {
     label: string;
     items: DropdownItem[];
     isActive: boolean;
+    onNavigate?: () => void;
 }) {
     const [open, setOpen] = useState(false);
-    const timeoutRef = useRef<NodeJS.Timeout | null>(null);
+    const wrapRef = useRef<HTMLDivElement>(null);
     const pathname = usePathname();
 
-    const handleEnter = () => {
-        if (timeoutRef.current) clearTimeout(timeoutRef.current);
-        setOpen(true);
-    };
-    const handleLeave = () => {
-        setOpen(false);
-    };
-
-    useEffect(() => () => {
-        if (timeoutRef.current) clearTimeout(timeoutRef.current);
+    useEffect(() => {
+        const handleClick = (e: MouseEvent) => {
+            if (wrapRef.current && !wrapRef.current.contains(e.target as Node)) {
+                setOpen(false);
+            }
+        };
+        document.addEventListener("mousedown", handleClick);
+        return () => document.removeEventListener("mousedown", handleClick);
     }, []);
 
     return (
-        <div
-            className="nav-dropdown"
-            onMouseEnter={handleEnter}
-            onMouseLeave={handleLeave}
-        >
-            <button className={`nav-link ${isActive ? "active" : ""}`}>
+        <div className="nav-dropdown" ref={wrapRef}>
+            <button
+                className={`nav-link ${isActive ? "active" : ""}`}
+                onClick={() => setOpen((o) => !o)}
+            >
                 {label}
                 <svg
                     className={`chevron ${open ? "open" : ""}`}
@@ -82,7 +81,7 @@ function NavDropdown({
                             key={item.href}
                             href={item.href}
                             className={`dropdown-item ${pathname === item.href ? "current" : ""}`}
-                            onClick={() => setOpen(false)}
+                            onClick={() => { setOpen(false); onNavigate?.(); }}
                         >
                             <span className="dropdown-icon">{item.icon}</span>
                             <span>{item.label}</span>
@@ -103,6 +102,10 @@ export default function AdminLayout({
     const { data: session, status } = useSession();
     const router = useRouter();
     const [pendingCount, setPendingCount] = useState(0);
+    const [mobileOpen, setMobileOpen] = useState(false);
+
+    // Close the mobile menu whenever the route changes.
+    useEffect(() => { setMobileOpen(false); }, [pathname]);
 
     useEffect(() => {
         fetch("/api/pending-changes")
@@ -136,72 +139,92 @@ export default function AdminLayout({
     return (
         <div className="admin-layout">
             <nav className="admin-nav">
-                <div className="nav-brand">
-                    <Link href="/admin">Therapy Jo</Link>
-                </div>
-
-                <div className="nav-links">
-                    <Link
-                        href="/admin"
-                        className={`nav-link ${pathname === "/admin" ? "active" : ""}`}
-                    >
-                        Dashboard
-                    </Link>
-
-                    <NavDropdown
-                        label="Employees"
-                        items={employeeItems}
-                        isActive={pathname.startsWith("/admin/employees")}
-                    />
-                    <NavDropdown
-                        label="Patients"
-                        items={patientItems}
-                        isActive={pathname.startsWith("/admin/patients")}
-                    />
-                    <NavDropdown
-                        label="Notes"
-                        items={noteItems}
-                        isActive={pathname.startsWith("/admin/notes")}
-                    />
-
-                    <span className="nav-divider" />
-
-                    <Link
-                        href="/admin/blog"
-                        className={`nav-link ${pathname.startsWith("/admin/blog") ? "active" : ""}`}
-                    >
-                        Blog
-                    </Link>
-                    <NavDropdown
-                        label="Doctors"
-                        items={doctorItems}
-                        isActive={pathname.startsWith("/admin/doctors")}
-                    />
-                    <Link
-                        href="/admin/approvals"
-                        className={`nav-link ${pathname.startsWith("/admin/approvals") ? "active" : ""}`}
-                    >
-                        Approvals
-                        {pendingCount > 0 && <span className="badge">{pendingCount}</span>}
-                    </Link>
-                </div>
-
-                <div className="nav-user">
-                    <div className="user-avatar">
-                        {(session?.user?.name?.[0] || "A").toUpperCase()}
+                <div className="nav-top-row">
+                    <div className="nav-brand">
+                        <Link href="/admin">Therapy Jo</Link>
                     </div>
-                    <span className="user-name">{session?.user?.name || "Admin"}</span>
+
                     <button
-                        onClick={() => signOut({ callbackUrl: "/login" })}
-                        className="logout-btn"
+                        className="nav-hamburger"
+                        aria-label={mobileOpen ? "Close menu" : "Open menu"}
+                        aria-expanded={mobileOpen}
+                        onClick={() => setMobileOpen((o) => !o)}
                     >
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                            <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
-                            <polyline points="16 17 21 12 16 7" />
-                            <line x1="21" y1="12" x2="9" y2="12" />
-                        </svg>
-                        Sign Out
+                        <span className={`hamburger-icon ${mobileOpen ? "open" : ""}`} />
                     </button>
+                </div>
+
+                <div className={`nav-collapsible ${mobileOpen ? "open" : ""}`}>
+                    <div className="nav-links">
+                        <Link
+                            href="/admin"
+                            className={`nav-link ${pathname === "/admin" ? "active" : ""}`}
+                            onClick={() => setMobileOpen(false)}
+                        >
+                            Dashboard
+                        </Link>
+
+                        <NavDropdown
+                            label="Employees"
+                            items={employeeItems}
+                            isActive={pathname.startsWith("/admin/employees")}
+                            onNavigate={() => setMobileOpen(false)}
+                        />
+                        <NavDropdown
+                            label="Patients"
+                            items={patientItems}
+                            isActive={pathname.startsWith("/admin/patients")}
+                            onNavigate={() => setMobileOpen(false)}
+                        />
+                        <NavDropdown
+                            label="Notes"
+                            items={noteItems}
+                            isActive={pathname.startsWith("/admin/notes")}
+                            onNavigate={() => setMobileOpen(false)}
+                        />
+
+                        <span className="nav-divider" />
+
+                        <Link
+                            href="/admin/blog"
+                            className={`nav-link ${pathname.startsWith("/admin/blog") ? "active" : ""}`}
+                            onClick={() => setMobileOpen(false)}
+                        >
+                            Blog
+                        </Link>
+                        <NavDropdown
+                            label="Doctors"
+                            items={doctorItems}
+                            isActive={pathname.startsWith("/admin/doctors")}
+                            onNavigate={() => setMobileOpen(false)}
+                        />
+                        <Link
+                            href="/admin/approvals"
+                            className={`nav-link ${pathname.startsWith("/admin/approvals") ? "active" : ""}`}
+                            onClick={() => setMobileOpen(false)}
+                        >
+                            Approvals
+                            {pendingCount > 0 && <span className="badge">{pendingCount}</span>}
+                        </Link>
+                    </div>
+
+                    <div className="nav-user">
+                        <div className="user-avatar">
+                            {(session?.user?.name?.[0] || "A").toUpperCase()}
+                        </div>
+                        <span className="user-name">{session?.user?.name || "Admin"}</span>
+                        <button
+                            onClick={() => signOut({ callbackUrl: "/login" })}
+                            className="logout-btn"
+                        >
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+                                <polyline points="16 17 21 12 16 7" />
+                                <line x1="21" y1="12" x2="9" y2="12" />
+                            </svg>
+                            Sign Out
+                        </button>
+                    </div>
                 </div>
             </nav>
 
@@ -217,12 +240,8 @@ export default function AdminLayout({
                 /* ── Navbar ── */
                 .admin-nav {
                     display: flex;
-                    align-items: center;
-                    flex-wrap: wrap;
-                    row-gap: 0.35rem;
-                    gap: 1.5rem;
+                    flex-direction: column;
                     padding: 0.5rem 2rem;
-                    min-height: 56px;
                     box-sizing: border-box;
                     background: rgba(26, 46, 53, 0.7);
                     backdrop-filter: blur(20px);
@@ -231,6 +250,18 @@ export default function AdminLayout({
                     position: sticky;
                     top: 0;
                     z-index: 100;
+                    /* Force its own compositing layer: sticky + backdrop-filter repaints
+                       incorrectly on scroll in mobile Safari/WebKit without this, leaving
+                       ghosted content behind the blur. */
+                    transform: translateZ(0);
+                    -webkit-transform: translateZ(0);
+                    will-change: transform;
+                }
+                .nav-top-row {
+                    display: flex;
+                    align-items: center;
+                    justify-content: space-between;
+                    min-height: 44px;
                 }
                 .nav-brand a {
                     font-family: var(--font-outfit, 'Outfit', sans-serif);
@@ -239,6 +270,47 @@ export default function AdminLayout({
                     font-weight: 700;
                     text-decoration: none;
                     letter-spacing: -0.02em;
+                }
+                .nav-hamburger {
+                    display: none;
+                    background: none;
+                    border: none;
+                    padding: 0.5rem;
+                    margin: -0.5rem;
+                    cursor: pointer;
+                }
+                .hamburger-icon,
+                .hamburger-icon::before,
+                .hamburger-icon::after {
+                    display: block;
+                    width: 20px;
+                    height: 2px;
+                    background: #fff;
+                    border-radius: 2px;
+                    transition: transform 0.2s ease, opacity 0.2s ease;
+                }
+                .hamburger-icon {
+                    position: relative;
+                }
+                .hamburger-icon::before,
+                .hamburger-icon::after {
+                    content: "";
+                    position: absolute;
+                    left: 0;
+                }
+                .hamburger-icon::before { top: -6px; }
+                .hamburger-icon::after { top: 6px; }
+                .hamburger-icon.open { background: transparent; }
+                .hamburger-icon.open::before { top: 0; transform: rotate(45deg); }
+                .hamburger-icon.open::after { top: 0; transform: rotate(-45deg); }
+
+                .nav-collapsible {
+                    display: flex;
+                    align-items: center;
+                    flex-wrap: wrap;
+                    row-gap: 0.35rem;
+                    gap: 1.5rem;
+                    min-height: 56px;
                 }
                 .nav-links {
                     display: flex;
@@ -403,6 +475,74 @@ export default function AdminLayout({
                     padding: 2rem;
                     max-width: 1400px;
                     margin: 0 auto;
+                }
+
+                @media (max-width: 860px) {
+                    .admin-nav { padding: 0.5rem 1rem; }
+                    .nav-hamburger { display: block; }
+
+                    .nav-collapsible {
+                        display: none;
+                        flex-direction: column;
+                        align-items: stretch;
+                        gap: 0;
+                        min-height: 0;
+                    }
+                    .nav-collapsible.open {
+                        display: flex;
+                        padding: 0.75rem 0 1rem;
+                        border-top: 1px solid rgba(255, 255, 255, 0.06);
+                        margin-top: 0.5rem;
+                    }
+
+                    .nav-links {
+                        flex-direction: column;
+                        align-items: stretch;
+                        gap: 0.15rem;
+                    }
+                    :global(.nav-link) {
+                        width: 100%;
+                        justify-content: space-between;
+                        padding: 0.7rem 0.5rem;
+                        font-size: 0.9rem;
+                    }
+                    .nav-divider {
+                        display: none;
+                    }
+
+                    /* Dropdowns become inline accordions instead of floating panels. */
+                    :global(.nav-dropdown) {
+                        width: 100%;
+                    }
+                    :global(.dropdown-panel) {
+                        position: static;
+                        transform: none !important;
+                        left: auto;
+                        padding-top: 0;
+                        display: none;
+                    }
+                    :global(.dropdown-panel.visible) {
+                        display: block;
+                    }
+                    :global(.dropdown-inner) {
+                        box-shadow: none;
+                        background: rgba(255, 255, 255, 0.03);
+                        min-width: 0;
+                        margin: 0.15rem 0 0.35rem;
+                    }
+
+                    .nav-user {
+                        margin-top: 0.5rem;
+                        padding-top: 0.75rem;
+                        border-top: 1px solid rgba(255, 255, 255, 0.06);
+                        justify-content: space-between;
+                        width: 100%;
+                    }
+                    .user-name { flex: 1; }
+                }
+
+                @media (max-width: 640px) {
+                    .admin-content { padding: 1rem; }
                 }
             `}</style>
         </div>

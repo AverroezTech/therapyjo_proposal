@@ -667,9 +667,10 @@ export default function DoctorsPage() {
         }
         .table-container {
           background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.06);
-          border-radius: 12px; overflow: hidden;
+          border-radius: 12px; overflow-x: auto; overflow-y: hidden;
+          -webkit-overflow-scrolling: touch;
         }
-        .data-table { width: 100%; border-collapse: collapse; }
+        .data-table { width: 100%; min-width: 720px; border-collapse: collapse; }
         .data-table th {
           text-align: left; padding: 0.9rem 1rem; font-size: 0.78rem;
           text-transform: uppercase; letter-spacing: 0.05em;
@@ -687,7 +688,7 @@ export default function DoctorsPage() {
         }
         .status-badge.active { background: rgba(16,185,129,0.15); color: #6ee7b7; }
         .status-badge.resigned { background: rgba(239,68,68,0.15); color: #fca5a5; }
-        .action-buttons { display: flex; gap: 0.5rem; }
+        .action-buttons { display: flex; gap: 0.5rem; flex-wrap: wrap; }
         .btn-sm {
           padding: 0.3rem 0.7rem; border-radius: 6px; font-size: 0.8rem;
           border: none; cursor: pointer; font-weight: 500; font-family: inherit;
@@ -780,6 +781,14 @@ export default function DoctorsPage() {
         }
         .grant-row span { font-size: 0.85rem; color: rgba(255,255,255,0.85); font-weight: 400; }
         .field-hint { font-size: 0.72rem; color: rgba(255,255,255,0.35); }
+
+        @media (max-width: 560px) {
+          .page-header { flex-direction: column; align-items: stretch; gap: 0.75rem; }
+          .modal-overlay { padding: 1rem; }
+          .modal-card { padding: 1.25rem; }
+          .form-grid { grid-template-columns: 1fr; }
+          .btn-sm { padding: 0.45rem 0.75rem; }
+        }
       `}</style>
         </div>
     );

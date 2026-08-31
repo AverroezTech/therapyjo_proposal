@@ -143,9 +143,10 @@ export default function ArchivedDoctorsPage() {
                 .btn-back:hover { color: #fff; }
                 .table-container {
                     background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.06);
-                    border-radius: 10px; overflow: hidden;
+                    border-radius: 10px; overflow-x: auto; overflow-y: hidden;
+                    -webkit-overflow-scrolling: touch;
                 }
-                .data-table { width: 100%; border-collapse: collapse; }
+                .data-table { width: 100%; min-width: 640px; border-collapse: collapse; }
                 .data-table th {
                     text-align: left; padding: 0.85rem 1rem; font-size: 0.76rem;
                     text-transform: uppercase; letter-spacing: 0.05em;
@@ -159,7 +160,7 @@ export default function ArchivedDoctorsPage() {
                 }
                 .data-table tr:hover { background: rgba(255,255,255,0.02); }
                 .empty-cell { text-align: center; color: rgba(255,255,255,0.35); padding: 2rem !important; }
-                .action-buttons { display: flex; gap: 0.5rem; }
+                .action-buttons { display: flex; gap: 0.5rem; flex-wrap: wrap; }
                 .btn-restore {
                     background: rgba(16,185,129,0.15); color: #6ee7b7; border: none;
                     padding: 0.3rem 0.75rem; border-radius: 6px; font-size: 0.8rem;
@@ -208,6 +209,13 @@ export default function ArchivedDoctorsPage() {
                     background: rgba(220,38,38,0.1); border: 1px solid rgba(220,38,38,0.2);
                     color: #fca5a5; padding: 0.5rem 0.75rem; border-radius: 6px;
                     font-size: 0.82rem; margin-bottom: 0.75rem;
+                }
+
+                @media (max-width: 560px) {
+                    .page-header { flex-direction: column; align-items: stretch; gap: 0.75rem; }
+                    .btn-restore, .btn-delete { padding: 0.45rem 0.75rem; }
+                    .modal-overlay { padding: 1rem; }
+                    .modal-card { padding: 1.25rem; max-height: 85vh; overflow-y: auto; }
                 }
             `}</style>
         </div>

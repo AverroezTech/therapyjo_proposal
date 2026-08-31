@@ -265,7 +265,7 @@ export default function Calendar({
 
             <style jsx>{`
                 .calendar {
-                    background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.06);
+                    background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.12);
                     border-radius: var(--radius-md, 4px); overflow: hidden;
                 }
                 .scroll-outer {
@@ -275,14 +275,15 @@ export default function Calendar({
                     width: max(100%, var(--pane-min-width, 100%));
                 }
                 .time-row {
-                    display: flex; border-bottom: 1px solid rgba(255,255,255,0.04);
+                    display: flex; border-bottom: 1px solid rgba(255,255,255,0.14);
                     height: ${ROW_HEIGHT}px;
                 }
+                .time-row:nth-child(even) { background: rgba(255,255,255,0.02); }
                 .time-row:last-child { border-bottom: none; }
                 .time-label {
                     width: ${LABEL_WIDTH}px; flex-shrink: 0; padding: 0.5rem 0.6rem;
-                    font-size: 0.72rem; color: rgba(255,255,255,0.35);
-                    font-weight: 500; text-align: right; border-right: 1px solid rgba(255,255,255,0.05);
+                    font-size: 0.72rem; color: rgba(255,255,255,0.4);
+                    font-weight: 500; text-align: right; border-right: 1px solid rgba(255,255,255,0.14);
                     font-variant-numeric: tabular-nums;
                     position: sticky; left: 0; z-index: 3;
                     background: var(--bg-dark, #1a2e35);
@@ -291,7 +292,12 @@ export default function Calendar({
                     flex: 1; min-width: 0; position: relative;
                 }
                 .card-wrap { position: absolute; }
-                .empty-slot { position: absolute; inset: 0; }
+                .empty-slot {
+                    position: absolute; inset: 0;
+                    background: rgba(255,255,255,0.03);
+                    border: 1px solid rgba(255,255,255,0.08);
+                    border-radius: var(--radius-sm, 2px);
+                }
 
                 @media (max-width: 768px) {
                     .scroll-outer { overflow-x: visible; }

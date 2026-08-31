@@ -505,13 +505,13 @@ export default function PatientProfilePage({ params }: { params: Promise<{ id: s
                     display: inline-block; font-family: inherit;
                 }
                 .btn-back:hover { color: #fff; }
-                .header-main { display: flex; align-items: flex-start; justify-content: space-between; gap: 1rem; }
+                .header-main { display: flex; align-items: flex-start; justify-content: space-between; gap: 1rem; flex-wrap: wrap; }
                 .header-info h1 { font-size: 1.5rem; font-weight: 600; margin-bottom: 0.35rem; }
                 .header-meta { display: flex; gap: 1.25rem; flex-wrap: wrap; color: rgba(255,255,255,0.45); font-size: 0.85rem; }
                 .header-meta a { color: var(--primary, #4CAF93); text-decoration: none; }
                 .header-meta a:hover { text-decoration: underline; }
                 .updated-by { margin-top: 0.4rem; color: rgba(255,255,255,0.3); font-size: 0.76rem; }
-                .header-actions { display: flex; align-items: center; gap: 0.5rem; flex-shrink: 0; }
+                .header-actions { display: flex; align-items: center; gap: 0.5rem; flex-shrink: 0; flex-wrap: wrap; }
                 .badge-archived {
                     background: rgba(239,68,68,0.12); color: #fca5a5;
                     padding: 0.2rem 0.6rem; border-radius: var(--radius-sm, 2px);
@@ -528,18 +528,20 @@ export default function PatientProfilePage({ params }: { params: Promise<{ id: s
                 .tabs {
                     display: flex; gap: 0; margin-bottom: 1rem;
                     border-bottom: 1px solid rgba(255,255,255,0.06);
+                    overflow-x: auto; -webkit-overflow-scrolling: touch;
                 }
                 .tab {
                     background: none; border: none; color: rgba(255,255,255,0.4);
                     padding: 0.7rem 1.2rem; font-size: 0.85rem; font-weight: 500;
                     cursor: pointer; border-bottom: 2px solid transparent;
-                    transition: all 0.15s; font-family: inherit;
+                    transition: all 0.15s; font-family: inherit; white-space: nowrap; flex-shrink: 0;
                 }
                 .tab:hover { color: rgba(255,255,255,0.7); }
                 .tab.active { color: var(--primary, #4CAF93); border-bottom-color: var(--primary, #4CAF93); }
                 .section-card {
                     background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.06);
                     border-radius: var(--radius-md, 4px); padding: 1.5rem;
+                    overflow-x: auto; -webkit-overflow-scrolling: touch;
                 }
                 .success-msg {
                     background: rgba(76,175,147,0.1); border: 1px solid rgba(76,175,147,0.2);
@@ -564,7 +566,7 @@ export default function PatientProfilePage({ params }: { params: Promise<{ id: s
                     cursor: pointer; font-family: inherit;
                 }
                 .btn-save:disabled { opacity: 0.5; cursor: not-allowed; }
-                .data-table { width: 100%; border-collapse: collapse; }
+                .data-table { width: 100%; min-width: 600px; border-collapse: collapse; }
                 .data-table th {
                     text-align: left; padding: 0.7rem 0.85rem; font-size: 0.74rem;
                     text-transform: uppercase; letter-spacing: 0.05em;
@@ -620,11 +622,12 @@ export default function PatientProfilePage({ params }: { params: Promise<{ id: s
                 .modal-overlay {
                     position: fixed; inset: 0; background: rgba(0,0,0,0.6);
                     display: flex; align-items: center; justify-content: center;
-                    z-index: 1000; backdrop-filter: blur(4px);
+                    z-index: 1000; backdrop-filter: blur(4px); padding: 1rem;
                 }
                 .modal-card {
                     background: var(--bg-dark-secondary, #243b44); border: 1px solid rgba(255,255,255,0.08);
                     border-radius: var(--radius-md, 4px); padding: 2rem; width: 100%; max-width: 440px;
+                    max-height: 85vh; overflow-y: auto;
                 }
                 .modal-card h2 { font-size: 1.2rem; margin-bottom: 1.25rem; font-weight: 600; }
                 .form-stack { display: flex; flex-direction: column; gap: 0.9rem; }
@@ -633,6 +636,18 @@ export default function PatientProfilePage({ params }: { params: Promise<{ id: s
                     background: rgba(255,255,255,0.06); color: rgba(255,255,255,0.6);
                     border: 1px solid rgba(255,255,255,0.1); border-radius: var(--radius-sm, 2px);
                     padding: 0.5rem 1rem; font-size: 0.85rem; cursor: pointer; font-family: inherit;
+                }
+
+                @media (max-width: 640px) {
+                    .section-card { padding: 1rem; }
+                    .intake-grid { grid-template-columns: 1fr; }
+                    .modal-card { padding: 1.25rem; }
+                    .btn-sm { padding: 0.42rem 0.75rem; }
+                }
+
+                @media (max-width: 560px) {
+                    .header-main { flex-direction: column; align-items: stretch; }
+                    .header-actions { justify-content: flex-start; }
                 }
             `}</style>
         </div>

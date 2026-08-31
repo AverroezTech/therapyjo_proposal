@@ -285,9 +285,11 @@ export default function NewSecretaryPage() {
                 @media (max-width: 640px) {
                     .form-layout { flex-direction: column; }
                     .avatar-column { width: 100%; }
-                    .avatar-card { flex-direction: row; gap: 1rem; padding: 1rem; }
+                    .avatar-card { flex-direction: row; flex-wrap: wrap; gap: 1rem; padding: 1rem; }
                     .avatar-circle { width: 80px; height: 80px; flex-shrink: 0; }
                     .field-row { grid-template-columns: 1fr; }
+                    .form-actions { flex-wrap: wrap; }
+                    .form-actions button { flex: 1 1 auto; }
                 }
             `}</style>
         </div>

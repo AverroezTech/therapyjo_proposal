@@ -237,8 +237,9 @@ export default function BlogListPage() {
                 .table-container {
                     background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.06);
                     border-radius: 10px; overflow: hidden; overflow-x: auto;
+                    -webkit-overflow-scrolling: touch;
                 }
-                .data-table { width: 100%; border-collapse: collapse; }
+                .data-table { width: 100%; border-collapse: collapse; min-width: 680px; }
                 .data-table th {
                     text-align: left; padding: 0.9rem 1rem; font-size: 0.72rem; text-transform: uppercase;
                     letter-spacing: 0.05em; color: rgba(255,255,255,0.4); border-bottom: 1px solid rgba(255,255,255,0.06);
@@ -260,7 +261,7 @@ export default function BlogListPage() {
                 .status-scheduled { background: rgba(96,165,250,0.15); color: #93c5fd; }
                 .status-archived { background: rgba(245,158,11,0.13); color: #fcd34d; }
                 .status-draft { background: rgba(255,255,255,0.08); color: rgba(255,255,255,0.5); }
-                .action-buttons { display: flex; gap: 0.5rem; }
+                .action-buttons { display: flex; gap: 0.5rem; flex-wrap: wrap; }
                 .btn-sm { padding: 0.3rem 0.7rem; border-radius: 6px; font-size: 0.8rem; border: none; cursor: pointer; font-weight: 500; font-family: inherit; }
                 .btn-edit { background: rgba(96,165,250,0.15); color: #93c5fd; }
                 .btn-edit:hover { background: rgba(96,165,250,0.25); }
@@ -310,6 +311,12 @@ export default function BlogListPage() {
                     font-size: 0.82rem; margin-bottom: 0.75rem;
                 }
                 .empty-state { text-align: center; color: rgba(255,255,255,0.35); padding: 2rem !important; }
+
+                @media (max-width: 560px) {
+                    .page-header { flex-direction: column; align-items: stretch; }
+                    .btn-primary { width: 100%; }
+                    .modal-card { padding: 1.25rem; }
+                }
             `}</style>
         </div>
     );

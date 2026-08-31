@@ -174,6 +174,9 @@ export default function ApprovalsPage() {
 
                 @media (max-width: 700px) {
                     .diff-row { grid-template-columns: 1fr; }
+                    .change-header { flex-wrap: wrap; gap: 0.4rem; }
+                    .change-actions { flex-wrap: wrap; }
+                    .toast { left: 1rem; right: 1rem; bottom: 1rem; text-align: center; }
                 }
             `}</style>
         </div>

@@ -366,10 +366,13 @@ export default function NewDoctorPage() {
 
                 @media (max-width: 640px) {
                     .form-layout { flex-direction: column; }
-                    .avatar-column { width: 100%; flex-direction: row; }
-                    .avatar-card { flex-direction: row; gap: 1rem; padding: 1rem; }
+                    .avatar-column { width: 100%; flex-direction: row; flex-wrap: wrap; }
+                    .avatar-card { flex-direction: row; flex-wrap: wrap; gap: 1rem; padding: 1rem; }
                     .avatar-circle { width: 80px; height: 80px; flex-shrink: 0; }
+                    .color-card { flex: 1 1 200px; }
                     .field-row { grid-template-columns: 1fr; }
+                    .form-actions { flex-wrap: wrap; }
+                    .form-actions button { flex: 1 1 auto; }
                 }
             `}</style>
         </div>

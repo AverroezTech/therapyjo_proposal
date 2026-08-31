@@ -222,9 +222,10 @@ export default function PatientsPage() {
                 .search-bar input::placeholder { color: rgba(255,255,255,0.25); }
                 .table-container {
                     background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.06);
-                    border-radius: var(--radius-md, 4px); overflow: hidden;
+                    border-radius: var(--radius-md, 4px); overflow-x: auto; overflow-y: hidden;
+                    -webkit-overflow-scrolling: touch;
                 }
-                .data-table { width: 100%; border-collapse: collapse; }
+                .data-table { width: 100%; min-width: 680px; border-collapse: collapse; }
                 .data-table th {
                     text-align: left; padding: 0.85rem 1rem; font-size: 0.76rem;
                     text-transform: uppercase; letter-spacing: 0.05em;
@@ -239,7 +240,7 @@ export default function PatientsPage() {
                 .data-table tr:hover { background: rgba(255,255,255,0.02); }
                 .id-cell { color: rgba(255,255,255,0.35); font-variant-numeric: tabular-nums; }
                 .name-cell { font-weight: 500; color: #fff; }
-                .action-buttons { display: flex; gap: 0.4rem; }
+                .action-buttons { display: flex; gap: 0.4rem; flex-wrap: wrap; }
                 .btn-sm {
                     padding: 0.28rem 0.65rem; border-radius: var(--radius-sm, 2px); font-size: 0.78rem;
                     border: none; cursor: pointer; font-weight: 500; font-family: inherit;
@@ -262,11 +263,12 @@ export default function PatientsPage() {
                 .modal-overlay {
                     position: fixed; inset: 0; background: rgba(0,0,0,0.6);
                     display: flex; align-items: center; justify-content: center;
-                    z-index: 1000; backdrop-filter: blur(4px);
+                    z-index: 1000; backdrop-filter: blur(4px); padding: 1rem;
                 }
                 .modal-card {
                     background: var(--bg-dark-secondary, #243b44); border: 1px solid rgba(255,255,255,0.08);
                     border-radius: var(--radius-md, 4px); padding: 2rem; width: 100%; max-width: 440px;
+                    max-height: 85vh; overflow-y: auto;
                 }
                 .modal-card h2 { font-size: 1.2rem; margin-bottom: 1.25rem; font-weight: 600; }
                 .form-error {
@@ -296,6 +298,14 @@ export default function PatientsPage() {
                     cursor: pointer; font-family: inherit;
                 }
                 .btn-save:disabled { opacity: 0.5; cursor: not-allowed; }
+
+                @media (max-width: 560px) {
+                    .page-header { flex-direction: column; align-items: stretch; gap: 0.75rem; }
+                    .btn-add { width: 100%; padding: 0.65rem 1.2rem; }
+                    .search-bar input { max-width: 100%; }
+                    .modal-card { padding: 1.25rem; }
+                    .btn-sm { padding: 0.42rem 0.75rem; }
+                }
             `}</style>
         </div>
     );

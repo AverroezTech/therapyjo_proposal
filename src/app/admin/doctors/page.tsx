@@ -388,6 +388,16 @@ export default function DoctorsCmsPage() {
                     background: #06281f; color: #10b981; border-radius: 8px; padding: 0.8rem 1.2rem;
                     font-size: 0.88rem; font-weight: 600; box-shadow: 0 12px 32px rgba(16,185,129,0.35);
                 }
+
+                @media (max-width: 560px) {
+                    .modal-overlay { padding: 1rem; }
+                    .modal-card { padding: 1.25rem; }
+                    .modal-top-row { flex-direction: column; align-items: center; text-align: center; }
+                    .modal-top-fields { width: 100%; }
+                    .field-row { grid-template-columns: 1fr; }
+                    .btn-sm { padding: 0.45rem 0.7rem; }
+                    .toast { left: 1rem; right: 1rem; bottom: 1rem; }
+                }
             `}</style>
         </div>
     );

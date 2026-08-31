@@ -235,9 +235,15 @@ export default function NewPatientPage() {
                 @media (max-width: 640px) {
                     .form-layout { flex-direction: column; }
                     .avatar-column { width: 100%; }
-                    .avatar-card { flex-direction: row; gap: 1rem; padding: 1rem; }
+                    .avatar-card { flex-direction: row; flex-wrap: wrap; gap: 0.6rem 1rem; padding: 1rem; }
                     .avatar-circle { width: 80px; height: 80px; flex-shrink: 0; }
+                    .upload-hint { flex: 1 1 100%; text-align: left; }
                     .field-row { grid-template-columns: 1fr; }
+                }
+
+                @media (max-width: 480px) {
+                    .form-actions { flex-direction: column-reverse; align-items: stretch; }
+                    .form-actions button { width: 100%; padding: 0.65rem 1.2rem; }
                 }
             `}</style>
         </div>
