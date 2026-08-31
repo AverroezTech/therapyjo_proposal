@@ -4,15 +4,26 @@ import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
 
 interface DuplicateGroup {
-    phone1: string;
+    phone: string;
+    phoneDisplay: string;
+    nameMatch: "same" | "variant" | "different";
     patients: {
         id: number;
         name: string;
         phone1: string;
         phone2: string | null;
+        archived: boolean;
         createdAt: string;
+        lastVisitDate: string | null;
+        reservationCount: number;
     }[];
 }
+
+const NAME_MATCH_LABEL: Record<DuplicateGroup["nameMatch"], string> = {
+    same: "Same name",
+    variant: "Name variant",
+    different: "Different names",
+};
 
 export default function DuplicatePatientsPage() {
     const [duplicates, setDuplicates] = useState<DuplicateGroup[]>([]);
@@ -50,9 +61,14 @@ export default function DuplicatePatientsPage() {
             ) : (
                 <div className="groups">
                     {duplicates.map((group) => (
-                        <div key={group.phone1} className="dupe-group">
+                        <div key={group.phone} className="dupe-group">
                             <div className="group-header">
-                                <span className="phone-label">📞 {group.phone1}</span>
+                                <div className="group-header-left">
+                                    <span className="phone-label">📞 {group.phoneDisplay}</span>
+                                    <span className={`match-badge match-${group.nameMatch}`}>
+                                        {NAME_MATCH_LABEL[group.nameMatch]}
+                                    </span>
+                                </div>
                                 <span className="dupe-count">{group.patients.length} matches</span>
                             </div>
                             <table className="data-table">
@@ -61,16 +77,21 @@ export default function DuplicatePatientsPage() {
                                         <th>ID</th>
                                         <th>Name</th>
                                         <th>Phone 2</th>
+                                        <th>Sessions</th>
                                         <th>Created</th>
                                         <th>Action</th>
                                     </tr>
                                 </thead>
                                 <tbody>
                                     {group.patients.map((p) => (
-                                        <tr key={p.id}>
+                                        <tr key={p.id} className={p.archived ? "row-archived" : undefined}>
                                             <td style={{ color: "rgba(255,255,255,0.3)" }}>{p.id}</td>
-                                            <td>{p.name}</td>
+                                            <td>
+                                                {p.name}
+                                                {p.archived && <span className="archived-tag">Archived</span>}
+                                            </td>
                                             <td>{p.phone2 || "—"}</td>
+                                            <td>{p.reservationCount}</td>
                                             <td>{formatDate(p.createdAt)}</td>
                                             <td>
                                                 <Link href={`/admin/patients/${p.id}`} className="btn-sm btn-view">View</Link>
@@ -111,10 +132,25 @@ export default function DuplicatePatientsPage() {
                     padding: 0.75rem 1rem; background: rgba(239,68,68,0.06);
                     border-bottom: 1px solid rgba(255,255,255,0.05);
                 }
+                .group-header-left { display: flex; align-items: center; gap: 0.6rem; }
                 .phone-label { font-weight: 600; font-size: 0.9rem; }
                 .dupe-count {
                     background: rgba(239,68,68,0.12); color: #fca5a5;
                     padding: 0.15rem 0.55rem; border-radius: 20px; font-size: 0.72rem; font-weight: 600;
+                }
+                .match-badge {
+                    padding: 0.15rem 0.55rem; border-radius: 20px; font-size: 0.68rem; font-weight: 600;
+                    text-transform: uppercase; letter-spacing: 0.03em;
+                }
+                .match-same { background: rgba(255,255,255,0.08); color: rgba(255,255,255,0.5); }
+                .match-variant { background: rgba(251,191,36,0.15); color: #fbbf24; }
+                .match-different { background: rgba(239,68,68,0.15); color: #fca5a5; }
+                .row-archived { opacity: 0.55; }
+                .archived-tag {
+                    margin-left: 0.5rem; font-size: 0.65rem; font-weight: 600;
+                    background: rgba(255,255,255,0.08); color: rgba(255,255,255,0.5);
+                    padding: 0.1rem 0.4rem; border-radius: 20px;
+                    text-transform: uppercase; letter-spacing: 0.03em;
                 }
                 .data-table { width: 100%; border-collapse: collapse; }
                 .data-table th {
