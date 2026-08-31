@@ -139,6 +139,32 @@ const CONNECTOR_TOKENS = new Set([
     "abd", "abdel",
 ]);
 
+// In Arabic the definite article is written JOINED to the following word —
+// "الحمامي" (al-Hamami), not "ال حمامي" as two tokens — so the standalone
+// CONNECTOR_TOKENS entry for "ال" only ever matches the transliterated
+// Latin form ("ali al hamami"), never how Arabic script actually spells it.
+// Without this, "علي الحمامي" and "علي حمامي" tokenize to disjoint-looking
+// sets ({علي, الحمامي} vs {علي, حمامي}) and score as barely related instead
+// of the same connector divergence the Latin case already handles.
+//
+// Guarded to only strip when at least 3 characters remain, so a name that
+// merely STARTS with the same two letters — "الياس" (Elias) — isn't
+// mangled into a shorter, different-looking token by a rule meant for
+// grammatical prefixes, not name roots.
+function stripAttachedDefiniteArticle(token: string): string {
+    if (token.startsWith("ال") && token.length - 2 >= 3) {
+        return token.slice(2);
+    }
+    return token;
+}
+
+function nameTokens(normalized: string): string[] {
+    return normalized
+        .split(" ")
+        .filter((t) => t && !CONNECTOR_TOKENS.has(t))
+        .map(stripAttachedDefiniteArticle);
+}
+
 /**
  * How alike two names are, from 0 (nothing in common) to 1 (the same name).
  * This is a CONFIDENCE SIGNAL for staff reviewing a phone-matched group —
@@ -153,8 +179,8 @@ export function nameSimilarity(a: string, b: string): number {
     const nb = normalizeName(b);
     if (na === nb) return 1;
 
-    const ta = new Set(na.split(" ").filter((t) => t && !CONNECTOR_TOKENS.has(t)));
-    const tb = new Set(nb.split(" ").filter((t) => t && !CONNECTOR_TOKENS.has(t)));
+    const ta = new Set(nameTokens(na));
+    const tb = new Set(nameTokens(nb));
 
     if (ta.size === 0 && tb.size === 0) return 1;
     if (ta.size === 0 || tb.size === 0) return 0;
