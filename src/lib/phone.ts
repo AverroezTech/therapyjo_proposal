@@ -158,10 +158,33 @@ function stripAttachedDefiniteArticle(token: string): string {
     return token;
 }
 
+// "عبد" ("servant of") prefixes a large share of Arabic male
+// names (عبدالله, عبدالرحمن, عبدالعزيز, ...), and staff type the compound joined or
+// split about equally often. Unlike the definite article, this isn’t a
+// per-token strip — "عبد" split from its own name is a separate token, so the
+// joined and split forms tokenize to different-SIZED sets no amount of
+// dropping can reconcile. Instead, glue a standalone "عبد" onto the token
+// that follows it before anything else runs, so "عبد الرحمن" (split) becomes
+// one token identical to the joined form's own "عبدالرحمن" — which then goes
+// through the same definite-article strip as any other token. A trailing
+// "عبد" with nothing after it (no next token to glue to) is left as-is.
+function mergeStandaloneAbdPrefix(tokens: string[]): string[] {
+    const out: string[] = [];
+    for (let i = 0; i < tokens.length; i++) {
+        if (tokens[i] === "عبد" && i + 1 < tokens.length) {
+            out.push(tokens[i] + tokens[i + 1]);
+            i++; // the next token was consumed into the merge above
+        } else {
+            out.push(tokens[i]);
+        }
+    }
+    return out;
+}
+
 function nameTokens(normalized: string): string[] {
-    return normalized
-        .split(" ")
-        .filter((t) => t && !CONNECTOR_TOKENS.has(t))
+    const raw = normalized.split(" ").filter(Boolean);
+    return mergeStandaloneAbdPrefix(raw)
+        .filter((t) => !CONNECTOR_TOKENS.has(t))
         .map(stripAttachedDefiniteArticle);
 }
 
