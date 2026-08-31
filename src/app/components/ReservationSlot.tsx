@@ -47,6 +47,57 @@ const STATUS_COLORS: Record<string, string> = {
     NO_SHOW: "#f87171",
 };
 
+// Statuses that read fine on their own steam (plain, or via opacity/hatch)
+// don't get a dot — only the "in progress" ones do.
+const DOT_STATUSES = new Set(["WAITING", "CHECKED_IN", "WITH_DOCTOR"]);
+
+// --- Contrast helper ---------------------------------------------------
+// The doctor palette is all light pastels, so a filled card needs dark text
+// on most of them — but doctorColor can also be the "#666" fallback for a
+// deleted doctor, or (from old/bad data) a malformed, short, or non-hex
+// string. Never throw: fall back to white whenever the color can't be
+// parsed, and otherwise pick whichever of white / var(--text-primary)
+// actually gives the better WCAG contrast against that background.
+function hexToRgb(hex: string): [number, number, number] | null {
+    if (typeof hex !== "string") return null;
+    let h = hex.trim();
+    if (h.startsWith("#")) h = h.slice(1);
+    if (h.length === 3) h = h.split("").map((c) => c + c).join("");
+    if (h.length !== 6 || !/^[0-9a-fA-F]{6}$/.test(h)) return null;
+    return [parseInt(h.slice(0, 2), 16), parseInt(h.slice(2, 4), 16), parseInt(h.slice(4, 6), 16)];
+}
+
+function relativeLuminance([r, g, b]: [number, number, number]): number {
+    const chan = (v: number) => {
+        const c = v / 255;
+        return c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4);
+    };
+    return 0.2126 * chan(r) + 0.7152 * chan(g) + 0.0722 * chan(b);
+}
+
+function contrastRatio(l1: number, l2: number): number {
+    const lighter = Math.max(l1, l2);
+    const darker = Math.min(l1, l2);
+    return (lighter + 0.05) / (darker + 0.05);
+}
+
+const DARK_TEXT_LUMINANCE = relativeLuminance(hexToRgb("1a2e35") as [number, number, number]);
+
+function readableTextColor(bg: string): string {
+    const rgb = hexToRgb(bg);
+    if (!rgb) return "#fff";
+    const bgL = relativeLuminance(rgb);
+    const withWhite = contrastRatio(bgL, 1);
+    const withDark = contrastRatio(bgL, DARK_TEXT_LUMINANCE);
+    return withDark >= withWhite ? "var(--text-primary, #1a2e35)" : "#fff";
+}
+
+// Dropdown sizing used both for the CSS and for the on-open position math.
+const MENU_WIDTH = 200;
+const MENU_ITEM_HEIGHT = 34;
+const MENU_PADDING = 10;
+const EDGE_MARGIN = 8;
+
 export default function ReservationSlot({
     id,
     patientName,
@@ -65,7 +116,9 @@ export default function ReservationSlot({
     canDelete = false,
 }: ReservationSlotProps) {
     const [menuOpen, setMenuOpen] = useState(false);
+    const [menuPos, setMenuPos] = useState({ top: 0, left: 0 });
     const menuRef = useRef<HTMLDivElement>(null);
+    const triggerRef = useRef<HTMLButtonElement>(null);
 
     useEffect(() => {
         const handleClick = (e: MouseEvent) => {
@@ -76,6 +129,22 @@ export default function ReservationSlot({
         document.addEventListener("mousedown", handleClick);
         return () => document.removeEventListener("mousedown", handleClick);
     }, []);
+
+    // The calendar can scroll horizontally, so a dropdown positioned
+    // relative to the card would get clipped by that scroll container. The
+    // menu is `position: fixed` instead, placed from the trigger's real
+    // screen coordinates (computed on open, below) and closed on scroll so
+    // it never drifts from the button it belongs to.
+    useEffect(() => {
+        if (!menuOpen) return;
+        const close = () => setMenuOpen(false);
+        window.addEventListener("scroll", close, true);
+        window.addEventListener("resize", close);
+        return () => {
+            window.removeEventListener("scroll", close, true);
+            window.removeEventListener("resize", close);
+        };
+    }, [menuOpen]);
 
     const actions: SlotAction[] = [];
     if (status === "SCHEDULED" || status === "WAITING") {
@@ -106,38 +175,78 @@ export default function ReservationSlot({
         actions.push({ label: "Delete", icon: "🗑️", onClick: () => onDelete(id), danger: true });
     }
 
-    const slotHeight = isTwoHours ? 120 : 60;
+    const openMenu = () => {
+        const btn = triggerRef.current;
+        if (!btn) return;
+        const rect = btn.getBoundingClientRect();
+        const menuHeight = actions.length * MENU_ITEM_HEIGHT + MENU_PADDING;
+
+        // Default: right edge of the menu aligns with the trigger's right
+        // edge (grows leftward), matching the old in-flow look. Flip to
+        // grow rightward instead if that would run off the left edge of
+        // the viewport, then clamp either way so it always stays reachable.
+        let left = rect.right - MENU_WIDTH;
+        if (left < EDGE_MARGIN) left = rect.left;
+        left = Math.min(Math.max(left, EDGE_MARGIN), window.innerWidth - MENU_WIDTH - EDGE_MARGIN);
+
+        // Default: open downward below the trigger. Flip upward if it
+        // would run off the bottom of the viewport.
+        let top = rect.bottom + 4;
+        if (top + menuHeight > window.innerHeight - EDGE_MARGIN) {
+            top = rect.top - menuHeight - 4;
+        }
+        top = Math.max(top, EDGE_MARGIN);
+
+        setMenuPos({ top, left });
+    };
+
+    const textColor = readableTextColor(doctorColor);
+    const edgeColor = `color-mix(in srgb, ${doctorColor} 75%, black)`;
+    const isCheckedOut = status === "CHECKED_OUT";
+    const isVoided = status === "CANCELLED" || status === "NO_SHOW";
+    const showDot = DOT_STATUSES.has(status);
+    const statusLabel = STATUS_LABELS[status] ?? status;
 
     return (
         <div
-            className="slot"
+            className={`slot ${isVoided ? "voided" : ""}`}
             style={{
-                borderLeftColor: doctorColor,
-                height: slotHeight,
-                opacity: status === "CHECKED_OUT" ? 0.5 : 1,
+                background: doctorColor,
+                color: textColor,
+                borderLeftColor: edgeColor,
+                opacity: isCheckedOut ? 0.5 : 1,
             }}
             onClick={() => onClick(id)}
+            title={`${patientName} — ${statusLabel} — ${doctorName}`}
+            aria-label={`${patientName}, ${statusLabel}, with ${doctorName} at ${time}`}
         >
+            {showDot && (
+                <span className="status-dot" style={{ background: STATUS_COLORS[status] }} />
+            )}
             <div className="slot-main">
-                <span className="slot-name">{patientName}</span>
-                <span className="slot-phone">{patientPhone}</span>
+                <span className={`slot-name ${isVoided ? "strike" : ""}`}>{patientName}</span>
+                <span className="slot-sub">
+                    {patientPhone} <span className="slot-time">· {time}</span>
+                </span>
                 {showNoteOnCalendar && note && (
                     <span className="slot-note">📝 {note}</span>
                 )}
             </div>
             <div className="slot-right">
-                <span className="slot-status" style={{ background: STATUS_COLORS[status] + "22", color: STATUS_COLORS[status] }}>
-                    {STATUS_LABELS[status]}
-                </span>
                 <div className="menu-wrap" ref={menuRef}>
                     <button
+                        ref={triggerRef}
                         className="menu-trigger"
-                        onClick={(e) => { e.stopPropagation(); setMenuOpen(!menuOpen); }}
+                        onClick={(e) => {
+                            e.stopPropagation();
+                            if (!menuOpen) openMenu();
+                            setMenuOpen(!menuOpen);
+                        }}
                     >
                         ⋮
                     </button>
                     {menuOpen && (
-                        <div className="menu-panel">
+                        <div className="menu-panel" style={{ top: menuPos.top, left: menuPos.left }}>
                             {actions.map((a) => (
                                 <button
                                     key={a.label}
@@ -155,31 +264,58 @@ export default function ReservationSlot({
             <style jsx>{`
                 .slot {
                     display: flex; align-items: center; justify-content: space-between;
-                    padding: 0.45rem 0.75rem; border-left: 3px solid;
-                    background: rgba(255,255,255,0.04); border-radius: var(--radius-sm, 2px);
-                    cursor: pointer; transition: background 0.15s;
-                    min-height: 48px;
+                    padding: 0.4rem 0.65rem; border-left: 3px solid;
+                    border-radius: var(--radius-sm, 2px);
+                    cursor: pointer; transition: box-shadow var(--transition-fast, 0.2s ease);
+                    width: 100%; height: 100%; min-height: 48px; box-sizing: border-box;
+                    position: relative; overflow: hidden;
                 }
-                .slot:hover { background: rgba(255,255,255,0.07); }
-                .slot-main { display: flex; flex-direction: column; gap: 0.1rem; min-width: 0; flex: 1; }
-                .slot-name { font-weight: 600; font-size: 0.82rem; color: #fff; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-                .slot-phone { font-size: 0.73rem; color: rgba(255,255,255,0.4); }
-                .slot-note { font-size: 0.7rem; color: rgba(255,255,255,0.5); font-style: italic; }
-                .slot-right { display: flex; align-items: center; gap: 0.5rem; flex-shrink: 0; }
-                .slot-status {
-                    font-size: 0.65rem; font-weight: 600; padding: 0.15rem 0.45rem;
-                    border-radius: 10px; white-space: nowrap;
+                .slot:hover { box-shadow: inset 0 0 0 1000px rgba(0,0,0,0.08); }
+                .slot.voided::before {
+                    content: ""; position: absolute; inset: 0; pointer-events: none;
+                    background: repeating-linear-gradient(
+                        135deg, rgba(0,0,0,0.14) 0 6px, transparent 6px 12px
+                    );
                 }
+                .status-dot {
+                    position: absolute; top: 5px; right: 5px;
+                    width: 7px; height: 7px; border-radius: 50%;
+                    box-shadow: 0 0 0 1px rgba(0,0,0,0.25);
+                }
+                .slot-main {
+                    display: flex; flex-direction: column; gap: 0.05rem; min-width: 0; flex: 1;
+                    /* lets .slot-note react to the card's own rendered width via @container below */
+                    container-type: inline-size;
+                }
+                .slot-name {
+                    font-weight: 700; font-size: 0.8rem; white-space: nowrap;
+                    overflow: hidden; text-overflow: ellipsis;
+                }
+                .slot-name.strike { text-decoration: line-through; }
+                .slot-sub {
+                    font-size: 0.7rem; opacity: 0.8; white-space: nowrap;
+                    overflow: hidden; text-overflow: ellipsis;
+                }
+                .slot-time { opacity: 0.85; }
+                .slot-note {
+                    font-size: 0.68rem; opacity: 0.75; font-style: italic;
+                    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+                }
+                @container (max-width: 220px) {
+                    .slot-note { display: none; }
+                }
+                .slot-right { display: flex; align-items: center; gap: 0.4rem; flex-shrink: 0; margin-left: 0.3rem; }
                 .menu-wrap { position: relative; }
                 .menu-trigger {
-                    background: none; border: none; color: rgba(255,255,255,0.5);
-                    font-size: 1.2rem; cursor: pointer; padding: 0.2rem 0.4rem;
-                    border-radius: 4px;
+                    background: none; border: none; color: inherit; opacity: 0.7;
+                    font-size: 1.2rem; cursor: pointer; padding: 0.1rem 0.3rem;
+                    border-radius: 4px; line-height: 1;
                 }
-                .menu-trigger:hover { background: rgba(255,255,255,0.08); color: #fff; }
+                .menu-trigger:hover { background: rgba(0,0,0,0.12); opacity: 1; }
                 .menu-panel {
-                    position: absolute; right: 0; top: 100%; z-index: 200;
-                    min-width: 160px; background: var(--bg-dark-secondary, #243b44);
+                    position: fixed; z-index: 200;
+                    min-width: 160px; max-width: ${MENU_WIDTH}px;
+                    background: var(--bg-dark-secondary, #243b44);
                     border: 1px solid rgba(255,255,255,0.1); border-radius: var(--radius-sm, 2px);
                     padding: 0.25rem; box-shadow: 0 8px 32px rgba(0,0,0,0.4);
                 }
@@ -192,6 +328,10 @@ export default function ReservationSlot({
                 .menu-item:hover { background: rgba(255,255,255,0.06); }
                 .menu-item.danger { color: #fca5a5; }
                 .menu-item.danger:hover { background: rgba(220,38,38,0.1); }
+
+                @media (max-width: 768px) {
+                    .slot { height: auto; min-height: 54px; }
+                }
             `}</style>
         </div>
     );
