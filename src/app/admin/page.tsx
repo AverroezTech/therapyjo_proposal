@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
+import Link from "next/link";
 import Calendar from "@/app/components/Calendar";
 import DatePickerCalendar from "@/app/components/DatePicker";
 
@@ -51,6 +52,7 @@ export default function AdminDashboard() {
     const [doctors, setDoctors] = useState<Doctor[]>([]);
     const [reservations, setReservations] = useState<Reservation[]>([]);
     const [loading, setLoading] = useState(true);
+    const [dupCount, setDupCount] = useState(0);
 
     // Add Reservation modal
     const [showAdd, setShowAdd] = useState(false);
@@ -85,6 +87,12 @@ export default function AdminDashboard() {
         setDoctors(data.filter((d: Doctor & { status: string }) => d.status === "ACTIVE"));
     }, []);
 
+    const fetchDuplicateCount = useCallback(async () => {
+        const res = await fetch("/api/patients/duplicates");
+        const data = await res.json();
+        setDupCount(data.total || 0);
+    }, []);
+
     const fetchReservations = useCallback(async () => {
         setLoading(true);
         const params = new URLSearchParams({ date: selectedDate });
@@ -97,6 +105,7 @@ export default function AdminDashboard() {
 
     useEffect(() => { fetchDoctors(); }, [fetchDoctors]);
     useEffect(() => { fetchReservations(); }, [fetchReservations]);
+    useEffect(() => { fetchDuplicateCount(); }, [fetchDuplicateCount]);
 
     // Patient search for add modal
     useEffect(() => {
@@ -291,6 +300,16 @@ export default function AdminDashboard() {
                         <div className="summary-row"><span>With Doctor</span><span className="summary-val">{reservations.filter((r) => r.status === "WITH_DOCTOR").length}</span></div>
                         <div className="summary-row"><span>Checked Out</span><span className="summary-val">{reservations.filter((r) => r.status === "CHECKED_OUT").length}</span></div>
                     </div>
+                    {dupCount > 0 && (
+                        <div className="dupe-card">
+                            <h3>Possible Duplicates</h3>
+                            <div className="dupe-card-count">{dupCount}</div>
+                            <p className="dupe-card-desc">
+                                {dupCount} phone number{dupCount === 1 ? "" : "s"} used by more than one patient record
+                            </p>
+                            <Link href="/admin/patients/duplicates" className="dupe-card-link">Review →</Link>
+                        </div>
+                    )}
                 </div>
             </div>
 
@@ -485,6 +504,15 @@ export default function AdminDashboard() {
                     border-bottom: 1px solid rgba(255,255,255,0.03);
                 }
                 .summary-val { font-weight: 600; color: #fff; }
+                .dupe-card {
+                    background: rgba(251,191,36,0.08); border: 1px solid rgba(251,191,36,0.2);
+                    border-radius: var(--radius-md, 4px); padding: 0.85rem;
+                }
+                .dupe-card h3 { font-size: 0.82rem; font-weight: 600; margin-bottom: 0.4rem; color: #fbbf24; }
+                .dupe-card-count { font-size: 1.6rem; font-weight: 700; color: #fbbf24; line-height: 1; margin-bottom: 0.35rem; }
+                .dupe-card-desc { font-size: 0.76rem; color: rgba(255,255,255,0.55); margin-bottom: 0.55rem; }
+                .dupe-card-link { font-size: 0.78rem; color: #fbbf24; text-decoration: none; font-weight: 600; }
+                .dupe-card-link:hover { text-decoration: underline; }
                 .modal-overlay {
                     position: fixed; inset: 0; background: rgba(0,0,0,0.6);
                     display: flex; align-items: center; justify-content: center;

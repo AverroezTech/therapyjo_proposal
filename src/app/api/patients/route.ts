@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
+import { normalizePhone, phoneKeys } from "@/lib/phone";
 
 // GET /api/patients — list patients with search + pagination
 export async function GET(req: NextRequest) {
@@ -74,18 +75,37 @@ export async function POST(req: NextRequest) {
         );
     }
 
-    // Duplicate check by phone1
-    const existing = await prisma.patient.findFirst({
-        where: { phone1 },
-    });
-    if (existing) {
-        return NextResponse.json(
-            {
-                error: "A patient with this phone number already exists",
-                duplicate: { id: existing.id, name: existing.name },
-            },
-            { status: 409 }
+    // Duplicate check by normalized phone1/phone2 — raw-string equality let
+    // the same person through under "0790022404" and "+962 7 9002 2404"
+    // because those strings are never equal even though they're the same
+    // number (TJ-037). If phone1 doesn't normalize to a usable key (too
+    // short / not phone-shaped), skip the check entirely rather than
+    // matching every other unusable phone in the table.
+    if (normalizePhone(phone1) !== "") {
+        const incomingKeys = new Set(phoneKeys({ phone1, phone2 }));
+        const existingPatients = await prisma.patient.findMany({
+            select: { id: true, name: true, phone1: true, phone2: true, archived: true },
+        });
+        const collisions = existingPatients.filter((p) =>
+            phoneKeys(p).some((key) => incomingKeys.has(key))
         );
+
+        if (collisions.length > 0) {
+            const first = collisions[0];
+            return NextResponse.json(
+                {
+                    error: `A patient with this phone number already exists: ${first.name} (${first.phone1})`,
+                    duplicate: { id: first.id, name: first.name },
+                    duplicates: collisions.map((c) => ({
+                        id: c.id,
+                        name: c.name,
+                        phone1: c.phone1,
+                        archived: c.archived,
+                    })),
+                },
+                { status: 409 }
+            );
+        }
     }
 
     const patient = await prisma.patient.create({
