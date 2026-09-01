@@ -63,6 +63,9 @@ Two things that bear repeating here, because this is the file both agents open:
 | TJ-017 | Let a proxy fall-through fail cleanly | DONE — task commit `33cb466`, merged to `master` as `68cc31d` with `--no-ff`; runtime-proven against a measured master baseline | `chore/clinic-path-public` |
 | TJ-018 | Document the production environment variables | DONE — task commit `8bb70df`, merged to `master` as `cd3d4cf` with `--no-ff`; all seven deployment variables now documented, `.env` still ignored | `docs/env-example` |
 | TJ-019 | Migrate the `middleware` file convention to `proxy` | BACKLOG — deferred until after the cutover; see `Production_Cutover.md` | — |
+| TJ-037 | Detect implicit duplicate patients by normalized phone | DONE — task commits `c5b1234`, `52c0291`, `924d597`; merged to `master` in `910322b`; build-proven | `feat/dashboard-duplicates-and-calendar` |
+| TJ-038 | Rebuild the dashboard calendar for dense reservations | DONE — task commit `efe4165`; merged to `master` in `910322b`; build- and geometry-proven | `feat/dashboard-duplicates-and-calendar` |
+| TJ-039 | Fix calendar action-menu stacking and continuous-time placement | DONE — task commits `8ed5206`, `6526020`; merged to `master` as `108aa7c`; build- and interval-proven | `codex/fix-calendar-action-menu` |
 
 ---
 
@@ -6561,6 +6564,31 @@ GOOGLE_PLACES_PLACE_ID=
 - `git status` clean apart from the two new files and `package.json`.
 
 **Report back:** the exact verdict lines and exit codes for all four hosts, and the real days-remaining figure. If `ECONNRESET` shows up anywhere in the output, say where — the planner wants to know whether the latch held.
+
+---
+
+### TJ-037 — Detect implicit duplicate patients by normalized phone
+
+- **Status:** DONE — task commits `c5b1234`, `52c0291`, `924d597` on `feat/dashboard-duplicates-and-calendar`, merged to `master` in `910322b` and pushed 2026-08-31.
+- **Change:** canonicalizes Jordanian mobile and landline forms, checks both `phone1` and `phone2`, applies the same guard during patient creation, and labels phone-matched groups with a name-confidence band. Arabic attached `ال` and joined/split `عبد` compounds are reconciled for the badge; phone equality remains the grouping authority.
+- **Verification:** seven spellings of one Jordanian mobile collapse to one key; unusable values produce no key; phone fields cannot self-group; Latin and Arabic name variants were exercised; TypeScript and the production build passed. No schema or database write.
+
+---
+
+### TJ-038 — Rebuild the dashboard calendar for dense reservations
+
+- **Status:** DONE — task commit `efe4165` on `feat/dashboard-duplicates-and-calendar`, merged to `master` in `910322b` and pushed 2026-08-31.
+- **Change:** packs simultaneous reservations into columns with a 150px floor and shared horizontal scroll, fills cards with doctor colours using contrast-picked text, keeps the time gutter sticky, supports two-hour cards, and extends the visible hour range so out-of-range reservations no longer disappear.
+- **Verification:** rendered-component checks covered one and eight reservations per hour, single and chained two-hour sessions, minute offsets, 08:30 and 19:15 range extension, and deleted-doctor colour fallback. TypeScript and the production build passed.
+
+---
+
+### TJ-039 — Fix calendar action-menu stacking and continuous-time placement
+
+- **Status:** DONE — task commits `8ed5206` and `6526020` on `codex/fix-calendar-action-menu`, merged to `master` as `108aa7c` on 2026-09-01. Push recorded in the turn that closes this entry.
+- **Change:** renders the reservation action menu through a `document.body` portal so later card stacking contexts cannot split or obscure it. Replaces the calendar's 20px minute nudge with a continuous time scale: card top is proportional to the minute, normal cards represent 60 minutes, two-hour cards represent 120, and first-free-column assignment uses true half-open `[start,end)` intervals.
+- **No-overlap invariant:** any reservations sharing real clock time receive separate columns; a reservation ending exactly when another begins may reuse its column. Every hour row connected by a boundary-crossing card shares one column divisor, preventing a carried card from widening into its neighbour.
+- **Verification:** a 10:30 one-hour reservation renders 42px into an 84px row with an 80px card, visually crossing halfway into 11:00 after the 4px separation gap; a 10:30 two-hour reservation renders at 164px; three concurrent intervals use three columns; back-to-back 10:30/11:30 intervals reuse one column. `npx tsc --noEmit --incremental false`, scoped ESLint, `git diff --check`, and `npm run build` all passed. Authenticated browser review remains unavailable because no existing browser tab held a TherapyJo session; no credentials were retrieved or entered.
 
 ---
 
