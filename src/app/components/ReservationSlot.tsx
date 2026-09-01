@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
+import { createPortal } from "react-dom";
 
 interface SlotAction {
     label: string;
@@ -118,11 +119,17 @@ export default function ReservationSlot({
     const [menuOpen, setMenuOpen] = useState(false);
     const [menuPos, setMenuPos] = useState({ top: 0, left: 0 });
     const menuRef = useRef<HTMLDivElement>(null);
+    const menuPanelRef = useRef<HTMLDivElement>(null);
     const triggerRef = useRef<HTMLButtonElement>(null);
 
     useEffect(() => {
         const handleClick = (e: MouseEvent) => {
-            if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+            const target = e.target as Node;
+            if (
+                menuRef.current &&
+                !menuRef.current.contains(target) &&
+                !menuPanelRef.current?.contains(target)
+            ) {
                 setMenuOpen(false);
             }
         };
@@ -245,8 +252,12 @@ export default function ReservationSlot({
                     >
                         ⋮
                     </button>
-                    {menuOpen && (
-                        <div className="menu-panel" style={{ top: menuPos.top, left: menuPos.left }}>
+                    {menuOpen && createPortal(
+                        <div
+                            ref={menuPanelRef}
+                            className="menu-panel"
+                            style={{ top: menuPos.top, left: menuPos.left }}
+                        >
                             {actions.map((a) => (
                                 <button
                                     key={a.label}
@@ -256,7 +267,8 @@ export default function ReservationSlot({
                                     <span>{a.icon}</span> {a.label}
                                 </button>
                             ))}
-                        </div>
+                        </div>,
+                        document.body
                     )}
                 </div>
             </div>

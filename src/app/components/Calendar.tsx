@@ -29,9 +29,7 @@ interface CalendarProps {
 const DEFAULT_MIN_HOUR = 9;
 const DEFAULT_MAX_HOUR = 18; // 9 AM – 6 PM reads by default, but nothing outside it is ever dropped
 const ROW_HEIGHT = 84; // px, fixed height of one hour row
-const ROW_SLACK = 20; // px of vertical room a card's minute offset can use within its row
-const CARD_HEIGHT = ROW_HEIGHT - ROW_SLACK; // one-hour card
-const TWO_HOUR_CARD_HEIGHT = ROW_HEIGHT * 2 - ROW_SLACK; // overflows into the next row
+const CARD_GAP = 4; // keeps back-to-back reservations visually distinct without changing their time geometry
 const MIN_COL_WIDTH = 150; // never pack columns narrower than this — scroll instead of clipping
 const MAX_COL_WIDTH = 320; // never let a lone card stretch absurdly wide
 const COL_GAP = 6;
@@ -54,52 +52,60 @@ function getMinute(timeStr: string) {
     return new Date(timeStr).getMinutes();
 }
 
-// min(9, earliest reservation hour) .. max(18, latest occupied hour) — a
-// two-hour reservation occupies its start hour AND the next one, so the
-// range must cover that overflow too or the tall card has nowhere to bleed
-// into and gets clipped by the calendar's own bounds.
+function getStartMinute(r: Reservation) {
+    return getHour(r.sessionTime) * 60 + getMinute(r.sessionTime);
+}
+
+function getDurationMinutes(r: Reservation) {
+    return r.isTwoHours ? 120 : 60;
+}
+
+function getEndMinute(r: Reservation) {
+    return getStartMinute(r) + getDurationMinutes(r);
+}
+
+// min(9, earliest reservation hour) .. max(18, latest occupied hour). The
+// final row is based on the reservation's real end time: a 19:15 one-hour
+// session needs both the 19:00 and 20:00 rows, while an 18:00 session ending
+// exactly at 19:00 fits in the 18:00 row.
 function computeHourRange(reservations: Reservation[]) {
     let minHour = DEFAULT_MIN_HOUR;
     let maxHour = DEFAULT_MAX_HOUR;
     for (const r of reservations) {
-        const h = getHour(r.sessionTime);
-        const endH = r.isTwoHours ? h + 1 : h;
-        if (h < minHour) minHour = h;
-        if (endH > maxHour) maxHour = endH;
+        const startHour = Math.floor(getStartMinute(r) / 60);
+        const lastOccupiedHour = Math.ceil(getEndMinute(r) / 60) - 1;
+        if (startHour < minHour) minHour = startHour;
+        if (lastOccupiedHour > maxHour) maxHour = lastOccupiedHour;
     }
     return { minHour, maxHour };
 }
 
 // Assigns each reservation a stable column index so any two reservations
-// whose hour ranges overlap never land in the same column — the classic
-// "first free column" packing used by day-view calendars, at hour
-// granularity (a two-hour reservation occupies its hour and the next one).
+// whose real time intervals overlap never land in the same column. Endpoints
+// are half-open, so a session ending at 11:30 can safely share a column with
+// one beginning at 11:30.
 function assignColumns(reservations: Reservation[]): Map<number, number> {
     const sorted = [...reservations].sort((a, b) => {
-        const ha = getHour(a.sessionTime);
-        const hb = getHour(b.sessionTime);
-        if (ha !== hb) return ha - hb;
-        const ma = getMinute(a.sessionTime);
-        const mb = getMinute(b.sessionTime);
-        if (ma !== mb) return ma - mb;
+        const startDiff = getStartMinute(a) - getStartMinute(b);
+        if (startDiff !== 0) return startDiff;
         return a.id - b.id;
     });
-    const colEnd: number[] = []; // colEnd[i] = last hour column i is occupied through
+    const colEnd: number[] = []; // exclusive end minute of the last reservation in each column
     const colOf = new Map<number, number>();
     for (const r of sorted) {
-        const h = getHour(r.sessionTime);
-        const endH = r.isTwoHours ? h + 1 : h;
+        const start = getStartMinute(r);
+        const end = getEndMinute(r);
         let placed = -1;
         for (let i = 0; i < colEnd.length; i++) {
-            if (colEnd[i] < h) {
-                colEnd[i] = endH;
+            if (colEnd[i] <= start) {
+                colEnd[i] = end;
                 placed = i;
                 break;
             }
         }
         if (placed === -1) {
             placed = colEnd.length;
-            colEnd.push(endH);
+            colEnd.push(end);
         }
         colOf.set(r.id, placed);
     }
@@ -149,16 +155,17 @@ export default function Calendar({
         });
     }
 
-    const twoHourAt: Record<number, Reservation[]> = {};
-    for (const key of Object.keys(ownAt)) {
-        const h = Number(key);
-        twoHourAt[h] = ownAt[h].filter((r) => r.isTwoHours);
-    }
-
     const colOf = assignColumns(reservations);
 
     function activeAt(h: number): Reservation[] {
-        return [...(ownAt[h] || []), ...(twoHourAt[h - 1] || [])];
+        const rowStart = h * 60;
+        const rowEnd = rowStart + 60;
+        return reservations.filter((r) => getStartMinute(r) < rowEnd && getEndMinute(r) > rowStart);
+    }
+
+    function crossesBoundaryAfter(h: number): boolean {
+        const boundary = (h + 1) * 60;
+        return reservations.some((r) => getStartMinute(r) < boundary && getEndMinute(r) > boundary);
     }
 
     // Column count each row needs before cross-row equalization.
@@ -170,24 +177,15 @@ export default function Calendar({
             : Math.max(...active.map((r) => colOf.get(r.id) ?? 0)) + 1;
     }
 
-    // A two-hour card is drawn once, in its starting row, and visually
-    // overflows into the next row. Columns are percentage-based, so for that
-    // overflow to never collide with the next row's own cards, both rows
-    // must divide their width by the SAME column count (matching
-    // denominators is what keeps the reserved gap and the card's real width
-    // identical). Hour h is linked to h+1 whenever twoHourAt[h] is
-    // non-empty; a run of two or more back-to-back two-hour sessions chains
-    // several rows together transitively (h linked to h+1 linked to h+2...),
-    // and EVERY row in that chain must agree on one column count — the max
-    // needed anywhere in the chain. A single left-to-right pass that only
-    // pushes a value forward is not enough: it can raise nFinal[h+1] after
-    // nFinal[h] was already finalized, leaving them mismatched. So instead,
-    // walk HOURS once to find each maximal linked run, take the max nNeeded
-    // over the whole run, then write that max back to every row in it.
+    // Any card crossing an hour boundary is drawn once and visually continues
+    // into the next row. Because columns use percentages, every row linked by
+    // those crossings must share one divisor; otherwise the carried card can
+    // widen into a neighbour. Resolve each maximal chain of linked rows as a
+    // single component and give the whole component its maximum needed count.
     const nFinal: Record<number, number> = { ...nNeeded };
     for (let i = 0; i < HOURS.length; i++) {
         let j = i;
-        while (j < HOURS.length - 1 && (twoHourAt[HOURS[j]] || []).length > 0) {
+        while (j < HOURS.length - 1 && crossesBoundaryAfter(HOURS[j])) {
             j++;
         }
         if (j > i) {
@@ -222,8 +220,8 @@ export default function Calendar({
                                     {own.map((r) => {
                                         const idx = colOf.get(r.id) ?? 0;
                                         const minute = getMinute(r.sessionTime);
-                                        const top = (minute / 60) * ROW_SLACK;
-                                        const height = r.isTwoHours ? TWO_HOUR_CARD_HEIGHT : CARD_HEIGHT;
+                                        const top = (minute / 60) * ROW_HEIGHT;
+                                        const height = (getDurationMinutes(r) / 60) * ROW_HEIGHT - CARD_GAP;
                                         return (
                                             <div
                                                 key={r.id}
