@@ -90,10 +90,10 @@ Two things that bear repeating here, because this is the file both agents open:
 | TJ-041 | Open the booking form from a click on the schedule, at the hour clicked | DONE — merged to `master` 2026-09-15 with `--no-ff` | `feat/click-schedule-to-book` |
 | TJ-042 | Constrain the schedule to 07:00–19:00 | SPLIT — passed 2026-09-15; see TJ-042a, TJ-042b | — |
 | TJ-042a | Refuse bookings outside 07:00–19:00 | DONE — merged to `master` 2026-09-15 with `--no-ff`; **one write path of three, see TJ-046** | `feat/booking-window-validation` |
-| TJ-042b | Make 07:00–19:00 the calendar's display window | BLOCKED — **needs a working `DATABASE_URL`**; the local credential is invalid | — |
+| TJ-042b | Make 07:00–19:00 the calendar's display window | BLOCKED — **user decision 2026-09-15: hold as-is** until the out-of-window count is known | — |
 | TJ-043 | Give the schedule more horizontal room without moving the hour labels | SPLIT — design pass run and measured 2026-09-15; placement chosen; see TJ-043a, TJ-043b | — |
 | TJ-043a | Admin: date picker to a popover, summary to header chips, sidebar deleted | DONE — merged to `master` 2026-09-15 with `--no-ff` | `feat/schedule-full-width-admin` |
-| TJ-043b | Secretary: same treatment, plus the 1200px shell cap | READY — planning pass 2026-09-15, six anchors verified unique | `feat/schedule-full-width-secretary` |
+| TJ-043b | Secretary: same treatment, plus the 1200px shell cap | DONE — merged to `master` 2026-09-15 with `--no-ff` | `feat/schedule-full-width-secretary` |
 | TJ-044 | Make the reservation cards shorter | DONE — merged to `master` 2026-09-15 with `--no-ff` | `feat/shorter-reservation-cards` |
 | TJ-045 | The Add Reservation modal is unreachable on both dashboards | BACKLOG — found during TJ-041's first dispatch; needs a pass | — |
 | TJ-046 | Two booking paths still accept any hour | BACKLOG — found during TJ-042a; needs a pass | — |
@@ -7139,7 +7139,7 @@ Replace with:
 
 ### TJ-042b — Make 07:00–19:00 the calendar's display window
 
-- **Status:** BLOCKED — **needs a working `DATABASE_URL`.** The local credential is invalid (see below), so the one fact this task turns on could not be measured. Per the standing rule at the top of this file, this stays open, is not worked around, and does not gate TJ-042a.
+- **Status:** BLOCKED — **user decision, 2026-09-15: leave the calendar's display window exactly as it is** until the out-of-window reservation count can be obtained. This is now a deliberate hold rather than only a missing credential. The window still defaults to 9–18 and still widens to swallow anything outside it, so no booking is ever hidden — which is the property that made deferring safe. The blocking question is unchanged and is one query: how many reservations start before 07:00 or end after 19:00. **If that count is zero this becomes a two-constant change.** Note the *booking* window is already enforced on the create path by TJ-042a; only the display is untouched.
 - **Why:** With bookings constrained by TJ-042a, the calendar should show exactly the clinic's day — thirteen rows, 07:00 to 19:00 — instead of today's 9-to-18 default that silently widens.
 - **The blocker, precisely.** `computeHourRange` (`Calendar.tsx:71–81`) widens the window so that **no reservation is ever invisible**. Replacing it with a fixed range is only safe if no reservation falls outside 07:00–19:00; if any does, it would vanish from the calendar while still existing in the database — a booked patient nobody can see. Answering that needs one query against live data.
 
@@ -7565,7 +7565,9 @@ Replace with:
 
 ### TJ-043b — Secretary: same treatment, plus the 1200px shell cap
 
-- **Status:** READY
+- **Status:** DONE — task commit `5bda12d`, merged to `master` with `--no-ff` on 2026-09-15. Planner-verified with every command re-run: two files only, `tsc` **0**, `npm run build` **0** before and after the merge, `git diff --check` clean, and lint **3** findings on both branch and `master` — identical rule and positions, zero new. All four assertion greps hold: no `sidebar-col`, no `DatePickerCalendar`, no `current-date`, and exactly one `setShowAdd(true)` still inside the never-called `openAddModal`, so the dead modal TJ-045 will remove was left alone. **Runtime review deferred to the live site by user decision.**
+
+**Parity check after merge.** Both dashboards now read the same structurally: zero `sidebar-col` references, `DatePickerPopover` wired on each, and both shells at `max-width: 1400px; margin: 0 auto`. They are deliberately **not** identical — the secretary dashboard never had a summary card or a doctor legend, so it has no chips. Adding them would be a new feature, not parity, and was explicitly refused in this task's scope.
 - **Branch:** `feat/schedule-full-width-secretary`
 - **Why:** TJ-043a freed 276px on the admin dashboard by moving the date picker into a popover and deleting the sidebar. The secretary dashboard still has that sidebar, so the primary user of the booking calendar is the one who did not get the space. It is additionally capped at `max-width: 1200px` against admin's 1400, so its calendar freezes at 922px from 1280px upward and never widens. Measured in TJ-043's pass: **5 columns today, 7 with the sidebar gone, 8 with the cap raised as well.**
 
