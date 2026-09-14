@@ -33,3 +33,21 @@ export function canAccessClinical(
     if (!user) return false;
     return user.role === "ADMIN" || user.role === "DOCTOR";
 }
+
+/**
+ * May this user permanently delete a reservation?
+ *
+ * ADMIN and SECRETARY may; DOCTOR may not. Front-desk staff own the booking
+ * calendar and must be able to remove a session booked in error without
+ * finding an admin. Doctors record what happened in a session and do not
+ * decide whether it exists — they cancel via PATCH status=CANCELLED.
+ *
+ * Deletion is permanent and is recorded against the patient's audit log with
+ * the acting user's id, so "who removed this" stays answerable. (TJ-040)
+ */
+export function canDeleteReservation(
+    user: Session["user"] | undefined | null
+): boolean {
+    if (!user) return false;
+    return user.role === "ADMIN" || user.role === "SECRETARY";
+}
