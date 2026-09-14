@@ -87,12 +87,14 @@ Two things that bear repeating here, because this is the file both agents open:
 | TJ-038 | Rebuild the dashboard calendar for dense reservations | DONE — task commit `efe4165`; merged to `master` in `910322b`; build- and geometry-proven | `feat/dashboard-duplicates-and-calendar` |
 | TJ-039 | Fix calendar action-menu stacking and continuous-time placement | DONE — task commits `8ed5206`, `6526020`; merged to `master` as `108aa7c`; build- and interval-proven | `codex/fix-calendar-action-menu` |
 | TJ-040 | Let a secretary delete a reservation | VISUAL REVIEW — committed `c22447d`; planner-verified and re-run, **authenticated runtime half owed** | `feat/secretary-delete-reservation` |
-| TJ-041 | Open the booking form from a click on the schedule, at the hour clicked | BACKLOG — no planning pass | — |
-| TJ-042 | Constrain the schedule to 07:00–19:00 | BACKLOG — no planning pass | — |
+| TJ-041 | Open the booking form from a click on the schedule, at the hour clicked | READY — planning pass 2026-09-15, anchors verified | `feat/click-schedule-to-book` |
+| TJ-042 | Constrain the schedule to 07:00–19:00 | SPLIT — passed 2026-09-15; see TJ-042a, TJ-042b | — |
+| TJ-042a | Refuse bookings outside 07:00–19:00 | READY — planning pass 2026-09-15; server-side gate, display untouched | `feat/booking-window-validation` |
+| TJ-042b | Make 07:00–19:00 the calendar's display window | BLOCKED — **needs a working `DATABASE_URL`**; the local credential is invalid | — |
 | TJ-043 | Give the schedule more horizontal room without moving the hour labels | SPLIT — design pass run and measured 2026-09-15; placement chosen; see TJ-043a, TJ-043b | — |
 | TJ-043a | Admin: date picker to a popover, summary to header chips, sidebar deleted | VISUAL REVIEW — `9bb31e9` + planner fix `e436b96`; verified and re-run, **authenticated runtime half owed** | `feat/schedule-full-width-admin` |
 | TJ-043b | Secretary: same treatment, plus the 1200px shell cap | BACKLOG — needs its own pass once TJ-043a lands; consumes the component it creates | — |
-| TJ-044 | Make the reservation cards shorter | BACKLOG — no planning pass; dimension decided 2026-09-15 (shorter, not narrower) | — |
+| TJ-044 | Make the reservation cards shorter | READY — planning pass 2026-09-15; ROW_HEIGHT 84→68, measured in a browser | `feat/shorter-reservation-cards` |
 
 ---
 
@@ -6864,20 +6866,285 @@ Replace with:
 
 ### TJ-041 — Open the booking form from a click on the schedule, at the hour clicked
 
-- **Status:** BACKLOG — no planning pass. Do not execute against this ID.
-- **Why:** Booking today means opening the Add Reservation modal and typing the time. The schedule already knows which hour the pointer is over, so clicking an empty part of the grid should open that same modal with the hour pre-selected.
-- **What is actually there now:** `Calendar`'s `onSlotClick(id: number)` takes a *reservation id* and fires only from a card (`Calendar.tsx:24, 251`). The only thing drawn in empty space is `.empty-slot` (`Calendar.tsx:219, 293–298`), a non-interactive `div` rendered **only when the entire hour is free** (`isEmpty = activeAt(hour).length === 0`). There is no click target for the background of a partly-booked hour, and no handler shape that carries an hour instead of an id.
-- **What its planning pass owes:** decide the signature — a second callback carrying the hour, or widening `onSlotClick` — without breaking the three existing call sites, one of which (`secretary/page.tsx:206`) passes `() => { }`. Decide whether a *partly booked* hour is clickable, which `.empty-slot`'s render condition currently forecloses. Decide what happens at the mobile breakpoint (`Calendar.tsx:300–314`), where absolute positioning is switched off entirely and there is no geometry to read an hour from. Settle whether the click resolves to the hour only or to the nearest minute, and confirm it does not fire when the user is dismissing an open slot menu. Name which dashboards get it — admin has a working `handleSlotClick`, secretary passes a no-op, and doctor must be considered separately since doctors do not create reservations.
+- **Status:** READY
+- **Branch:** `feat/click-schedule-to-book`
+- **Why:** Booking means opening the Add Reservation modal and typing the time, while the schedule already knows which hour the pointer is over. Clicking empty space on the grid should open that same modal with the hour pre-selected.
+
+**Planning pass:** 2026-09-15 — read `src/app/components/Calendar.tsx` in full, `src/app/components/ReservationSlot.tsx:216–250`, `src/app/admin/page.tsx` (add-modal state and `handleSlotClick`), `src/app/secretary/page.tsx`, and `src/app/api/reservations/route.ts`.
+
+Confirmed:
+- `onSlotClick(id: number)` carries a **reservation id** and fires only from a card (`Calendar.tsx:24, 251`). A new, separate prop is needed; widening the existing one would break its three call sites.
+- The add-modal already exists on both dashboards and already holds the time as a plain `"HH:MM"` string: `addForm.sessionTime`, initialised to `"09:00"` (`admin/page.tsx:64`, `secretary/page.tsx:48`) and bound to `<input type="time">` (`admin/page.tsx:362`, `secretary/page.tsx:247`). **Pre-selecting an hour is a string assignment, not new plumbing.**
+- `admin/page.tsx:171–173` already resets `addForm` with `sessionTime: "09:00"` when opening the modal, so that reset is the exact place the clicked hour must override.
+- **Doctors must not get this.** `POST /api/reservations` refuses `DOCTOR` outright (`route.ts:91`, *"Doctors cannot create reservations"*), so wiring it on the doctor dashboard would produce a form that always 403s.
+- `.empty-slot` renders **only when the whole hour is free** (`Calendar.tsx:214, 219`), so it cannot be the click target — a half-booked hour would be dead. The handler belongs on `.time-slots`, which is always present, with card clicks excluded by `closest(".card-wrap")`.
+
+**Scope — touch only these:**
+- `src/app/components/Calendar.tsx`
+- `src/app/admin/page.tsx`
+- `src/app/secretary/page.tsx`
+
+**Do not touch:** `src/app/components/ReservationSlot.tsx` — card clicks are excluded by the handler, not by changing the card. **Not** `src/app/doctor/page.tsx` — doctors cannot create reservations. **Not** `assignColumns`, `colWidthCss`, `colLeftCss` or the boundary-crossing divisor logic — TJ-039's invariants are untouched by this.
+
+**Sequencing note:** `TJ-043a` is unmerged and also edits `src/app/admin/page.tsx`, but in a different region (the sub-header and sidebar, not the modal or the `Calendar` call site). A conflict is unlikely; if one appears at merge time it is the planner's to resolve, not the executor's.
+
+**Instructions:**
+
+1. In `Calendar.tsx`, add the prop. Match exactly:
+
+```tsx
+    onSlotClick: (id: number) => void;
+    canDelete?: boolean;
+}
+```
+
+Replace with:
+
+```tsx
+    onSlotClick: (id: number) => void;
+    // Fires when empty grid space is clicked, carrying the hour clicked (0-23).
+    // Separate from onSlotClick, which carries a reservation id.
+    onEmptyClick?: (hour: number) => void;
+    canDelete?: boolean;
+}
+```
+
+2. In `Calendar.tsx`, destructure it. Match exactly:
+
+```tsx
+    onSlotClick,
+    canDelete = false,
+}: CalendarProps) {
+```
+
+Replace with:
+
+```tsx
+    onSlotClick,
+    onEmptyClick,
+    canDelete = false,
+}: CalendarProps) {
+```
+
+3. In `Calendar.tsx`, make the row background clickable. Match exactly:
+
+```tsx
+                                <div className="time-slots">
+```
+
+Replace with:
+
+```tsx
+                                <div
+                                    className="time-slots"
+                                    onClick={(e) => {
+                                        if (!onEmptyClick) return;
+                                        // Only empty space: a click that landed on or inside a
+                                        // card belongs to that card's own handler.
+                                        if ((e.target as HTMLElement).closest(".card-wrap")) return;
+                                        onEmptyClick(hour);
+                                    }}
+                                    style={onEmptyClick ? { cursor: "copy" } : undefined}
+                                >
+```
+
+4. In `admin/page.tsx`, add the handler immediately above `handleSlotClick`. Match exactly:
+
+```tsx
+    const handleSlotClick = async (id: number) => {
+```
+
+Replace with:
+
+```tsx
+    const handleEmptyClick = (hour: number) => {
+        setAddForm({
+            patientId: "",
+            doctorId: doctorFilter !== "all" ? doctorFilter : "",
+            sessionTime: `${String(hour).padStart(2, "0")}:00`,
+            paymentType: "",
+            isTwoHours: false,
+            note: "",
+            showNoteOnCalendar: false,
+            nextSessionNote: "",
+        });
+        setAddError("");
+        setPatientSearch("");
+        setShowAdd(true);
+    };
+
+    const handleSlotClick = async (id: number) => {
+```
+
+**Before applying this step, read `admin/page.tsx`'s `addForm` initial state (around line 62) and make the object above match its keys exactly.** If the key set differs from what is written here, **stop and report** rather than inventing fields — a mismatch means the file moved since this pass.
+
+5. In `admin/page.tsx`, pass it. Match exactly:
+
+```tsx
+                            onSlotClick={handleSlotClick}
+                            canDelete
+```
+
+Replace with:
+
+```tsx
+                            onSlotClick={handleSlotClick}
+                            onEmptyClick={handleEmptyClick}
+                            canDelete
+```
+
+6. In `secretary/page.tsx`, do the same two things: add a `handleEmptyClick` built from **that file's** `addForm` shape (read it, around line 46 — it has fewer fields than admin's; `nextSessionNote` is absent), and pass `onEmptyClick={handleEmptyClick}` to `Calendar` alongside the existing props. The secretary's `onSlotClick` is `() => { }` and stays that way.
+
+**Verification:**
+- `npx tsc --noEmit --incremental false` passes
+- `npm run build` passes
+- `npx eslint src/app/components/Calendar.tsx src/app/admin/page.tsx src/app/secretary/page.tsx` reports no **new** findings against `master`
+- `git diff --check` clean
+- `grep -n "onEmptyClick" src/app/doctor/page.tsx` returns **nothing**
+
+**Regression risk this covers:** the click handler sits on the same element that contains every card, so the failure mode is a card click *also* opening the booking modal — or the action-menu "⋮" button doing so. The `closest(".card-wrap")` guard is what prevents both, and it must be proven by clicking a card and its menu, not just empty space. Second risk: at the `max-width: 768px` breakpoint `.time-slots` becomes a static flex column (`Calendar.tsx:305–308`), so the clickable area changes shape — check the hour is still correct there.
+
+**Done when:**
+- [ ] Clicking empty space in an hour row opens Add Reservation with that hour pre-filled
+- [ ] It works on a **partly booked** hour, not only a completely free one
+- [ ] Clicking a card still opens the card, and the ⋮ menu still opens the menu — neither opens the booking modal
+- [ ] Works on both admin and secretary; the doctor dashboard is unchanged
+- [ ] The pre-filled hour is correct at the 768px breakpoint
+- [ ] Build, typecheck and lint all pass
+
+---
 
 ---
 
 ### TJ-042 — Constrain the schedule to 07:00–19:00
 
-- **Status:** BACKLOG — no planning pass. Do not execute against this ID.
-- **Why:** The clinic's day is 7 AM to 7 PM. The schedule should show exactly those hours, and a booking should not be accepted outside them.
-- **What is actually there now:** `Calendar.tsx:29–30` sets `DEFAULT_MIN_HOUR = 9` and `DEFAULT_MAX_HOUR = 18`, and the comment on line 30 states the current contract explicitly: *"9 AM – 6 PM reads by default, but nothing outside it is ever dropped."* `computeHourRange` (`Calendar.tsx:71–81`) **widens** the window to swallow any reservation outside it. So the window is a display default, not a limit — and today it is the wrong default in both directions, starting two hours late and ending an hour early.
-- **The decision this turns on, and why it is not a two-constant change.** Making 07:00–19:00 a hard display window means deleting the widening behaviour, and that behaviour exists so a reservation is never invisible. Any session already in the database outside those hours would vanish from the calendar while still existing — a booked patient nobody can see. The pass must establish whether such rows exist before choosing, and if they do, decide between migrating them, showing an out-of-range affordance, or keeping the widening as an explicit exception path.
-- **What its planning pass owes:** query the live database for reservations outside 07:00–19:00 before designing anything. Decide whether "only able to hold appointments" means validating the two booking pages (`admin/reservations/new`, `secretary/reservations/new`), the two dashboard add-modals, the `POST /api/reservations` handler, or all of them — server-side validation is the only half that actually holds. Note the timezone caveat already flagged at `Calendar.tsx:45–46`: hours are read in the browser's local zone while the server runs `TZ=Asia/Amman`, so a client-side-only bound is wrong for any staff member not in Amman. Sequence against TJ-043, which rewrites the same layout code.
+- **Status:** SPLIT — planning pass run 2026-09-15. The half that governs **new** bookings is **TJ-042a** (`READY`); the half that changes what the calendar **displays** is **TJ-042b** (`BLOCKED`, needs a working database credential). Do not execute against this parent ID.
+
+**Planning pass:** 2026-09-15 — read `Calendar.tsx:29–81`, `src/app/api/reservations/route.ts` (the `POST` handler in full), and the add-modal time inputs on both dashboards.
+
+Confirmed:
+- `DEFAULT_MIN_HOUR = 9` and `DEFAULT_MAX_HOUR = 18` (`Calendar.tsx:29–30`) are a **display default, not a limit** — the comment on line 30 says so outright, and `computeHourRange` (71–81) widens the window to swallow anything outside it. Today's default is wrong in both directions: two hours late, one hour early.
+- **`POST /api/reservations` performs no time validation at all.** Line 107 checks only that `patientId`, `doctorId`, `sessionDate` and `sessionTime` are *present*. Any hour whatsoever is accepted today.
+- The two dashboard modals use `<input type="time">` with no `min`/`max` attribute.
+
+**Why this splits, and the standing rule that forced it.** Making 07:00–19:00 a hard *display* window means deleting the widening behaviour, and that behaviour exists so a reservation is never invisible. Whether that is safe depends entirely on a fact about the live data — do reservations outside those hours exist? — and **that fact could not be obtained.** See TJ-042b. Per the standing rule at the top of this file, the credential-dependent half is quarantined and the rest ships.
+
+---
+
+---
+
+### TJ-042a — Refuse bookings outside 07:00–19:00
+
+- **Status:** READY
+- **Branch:** `feat/booking-window-validation`
+- **Why:** The clinic's day is 07:00 to 19:00, and `POST /api/reservations` currently accepts any hour at all — it validates only that the fields are present (`route.ts:107`). This closes that gap for **new** bookings. It deliberately does not touch what the calendar displays; that is TJ-042b, which is blocked on a fact about existing data.
+
+**Planning pass:** 2026-09-15 — carried from TJ-042's pass above. Additionally confirmed that `sessionTime` arrives as a plain `"HH:MM"` string from both modals and is combined server-side as `new Date(\`${sessionDate}T${sessionTime}\`)` (`route.ts:125`), so the validation can be a pure string/number check before any `Date` construction — which sidesteps the timezone trap noted at `Calendar.tsx:45–46`, where the browser's zone and the server's `TZ=Asia/Amman` disagree.
+
+**Scope — touch only these:**
+- `src/app/api/reservations/route.ts`
+- `src/app/admin/page.tsx`
+- `src/app/secretary/page.tsx`
+
+**Do not touch:** `Calendar.tsx` — the display window is TJ-042b and must not move here. **Not** the `PUT` handler in `api/reservations/[id]/route.ts` — rescheduling an existing session is a separate decision and is deliberately out of scope; report it, do not fix it.
+
+**Instructions:**
+
+1. In `src/app/api/reservations/route.ts`, add these constants immediately below the imports:
+
+```ts
+// Clinic opening hours. A session may start at 07:00 at the earliest and must
+// end by 19:00 — so the latest one-hour start is 18:00, and the latest
+// two-hour start is 17:00. Validated as plain numbers before any Date is
+// constructed: sessionTime arrives as "HH:MM" and the server runs
+// TZ=Asia/Amman while the browser does not, so parsing first would make this
+// check disagree with itself for any staff member outside Amman. (TJ-042a)
+const CLINIC_OPEN_HOUR = 7;
+const CLINIC_CLOSE_HOUR = 19;
+```
+
+2. In the same file, in the `POST` handler, add the check immediately after the existing required-fields guard. Match exactly:
+
+```ts
+    if (!patientId || !doctorId || !sessionDate || !sessionTime) {
+        return NextResponse.json(
+            { error: "patientId, doctorId, sessionDate, and sessionTime are required" },
+            { status: 400 }
+        );
+    }
+```
+
+Append directly after it:
+
+```ts
+
+    const timeMatch = /^(\d{1,2}):(\d{2})$/.exec(String(sessionTime));
+    if (!timeMatch) {
+        return NextResponse.json({ error: "sessionTime must be in HH:MM format" }, { status: 400 });
+    }
+    const startMinutes = Number(timeMatch[1]) * 60 + Number(timeMatch[2]);
+    const endMinutes = startMinutes + (isTwoHours ? 120 : 60);
+    if (startMinutes < CLINIC_OPEN_HOUR * 60 || endMinutes > CLINIC_CLOSE_HOUR * 60) {
+        return NextResponse.json(
+            {
+                error: `The clinic is open ${CLINIC_OPEN_HOUR}:00–${CLINIC_CLOSE_HOUR}:00. A ${isTwoHours ? "two-hour" : "one-hour"} session must start between ${CLINIC_OPEN_HOUR}:00 and ${String(CLINIC_CLOSE_HOUR - (isTwoHours ? 2 : 1)).padStart(2, "0")}:00.`,
+            },
+            { status: 400 }
+        );
+    }
+```
+
+**Before applying, confirm `isTwoHours` is already destructured from the request body above this point.** If it is not, **stop and report** — do not add the destructuring yourself, because its default matters and the pass did not pin it.
+
+3. In `src/app/admin/page.tsx`, constrain the time input as a courtesy (the server check above is the one that actually holds). Match exactly:
+
+```tsx
+                                <input type="time" value={addForm.sessionTime} onChange={(e) => setAddForm({ ...addForm, sessionTime: e.target.value })} />
+```
+
+Replace with:
+
+```tsx
+                                <input type="time" min="07:00" max="18:00" value={addForm.sessionTime} onChange={(e) => setAddForm({ ...addForm, sessionTime: e.target.value })} />
+```
+
+4. In `src/app/secretary/page.tsx`, apply the identical change to its own `<input type="time">` (around line 247). Read it first — if it differs from the admin's line in any way other than indentation, **stop and report**.
+
+**Verification:**
+- `npx tsc --noEmit --incremental false` passes
+- `npm run build` passes
+- `npx eslint "src/app/api/reservations/route.ts" src/app/admin/page.tsx src/app/secretary/page.tsx` reports no **new** findings against `master`
+- `git diff --check` clean
+- `grep -n "CLINIC_OPEN_HOUR\|CLINIC_CLOSE_HOUR" src/app/components/Calendar.tsx` returns **nothing** — the display window must not have moved
+
+**Regression risk this covers:** `max="18:00"` on the input is wrong for a two-hour session, which must start by 17:00 — the attribute cannot express a rule that depends on another field, which is exactly why the server check is the real gate and the attribute is only a nudge. **Do not try to make the attribute dynamic**; report if it bothers you. The second risk is the boundary itself: a one-hour session starting at exactly 18:00 ends at exactly 19:00 and **must be accepted**, since the comparison is `>` not `>=`.
+
+**Done when:**
+- [ ] A one-hour booking at 18:00 is **accepted** (ends exactly at close)
+- [ ] A one-hour booking at 18:30 is **refused** with the explanatory message
+- [ ] A two-hour booking at 17:00 is **accepted**; at 17:30 it is **refused**
+- [ ] A booking at 06:30 is **refused**
+- [ ] The refusal message appears in the modal's error area rather than failing silently
+- [ ] Existing reservations outside the window are **unaffected** — nothing in this task edits or hides them
+- [ ] Build, typecheck and lint all pass
+
+---
+
+---
+
+### TJ-042b — Make 07:00–19:00 the calendar's display window
+
+- **Status:** BLOCKED — **needs a working `DATABASE_URL`.** The local credential is invalid (see below), so the one fact this task turns on could not be measured. Per the standing rule at the top of this file, this stays open, is not worked around, and does not gate TJ-042a.
+- **Why:** With bookings constrained by TJ-042a, the calendar should show exactly the clinic's day — thirteen rows, 07:00 to 19:00 — instead of today's 9-to-18 default that silently widens.
+- **The blocker, precisely.** `computeHourRange` (`Calendar.tsx:71–81`) widens the window so that **no reservation is ever invisible**. Replacing it with a fixed range is only safe if no reservation falls outside 07:00–19:00; if any does, it would vanish from the calendar while still existing in the database — a booked patient nobody can see. Answering that needs one query against live data.
+
+**Attempted 2026-09-15, and why it failed — this is a real finding, not just a blocked task.** The query was attempted four ways: the generated Prisma client via `tsx`, the same client through the `PrismaPg` adapter exactly as `src/lib/prisma.ts` constructs it, raw `pg` with `node --env-file`, and raw SQL. **All four failed identically: `28P01 password authentication failed for user "postgres"` / Prisma `P1000`.** The local `.env` `DATABASE_URL` is 138 characters, unquoted, with no `#`, no query string and no trailing whitespace — so this is not an env-parsing artefact.
+
+**The running application fails the same way, which is the part that matters.** The dev server's own log carries two `P1000` errors: `GET /api/public/doctors` returned **500** from `prisma.doctorProfile.findMany()`, and a `POST /api/auth/callback/credentials` failed on the same error. **So no one can sign in locally** — not because of a forgotten password, but because the app cannot reach the database at all. That single fact explains why TJ-010a, TJ-040 and TJ-043a have all been unable to complete their authenticated runtime reviews on this machine, and it should be fixed before any of them is attempted again locally.
+
+- **What its planning pass owes, once a working credential exists:** run the count of reservations outside 07:00–19:00 first — everything else follows from it. If zero, the task is small: change the two constants and replace `computeHourRange` with a fixed range. If non-zero, decide between migrating those rows, showing an explicit out-of-range affordance, or keeping the widening as a named exception path — and note that the third option means the "only shows 07:00–19:00" requirement is not literally met, which is the user's call rather than the planner's. Also settle the timezone question flagged at `Calendar.tsx:45–46`: hours are read in the browser's zone while the server runs `TZ=Asia/Amman`, so for staff outside Amman a fixed client-side window would cut the wrong hours. Sequence with TJ-044, which changes the row height that decides whether thirteen rows fit on one screen.
+
+---
 
 ---
 
@@ -7302,14 +7569,71 @@ Replace with:
 
 ### TJ-044 — Make the reservation cards shorter
 
-- **Status:** BACKLOG — no planning pass. Do not execute against this ID. **No longer blocked** — the dimension was decided on 2026-09-15.
-- **Why:** The patient cards on the schedule are taller than they need to be, and shorter cards put more of the clinic's day on screen at once.
+- **Status:** READY
+- **Branch:** `feat/shorter-reservation-cards`
+- **Why:** A standard reservation card is 80px tall and needs only 46px of that. The wasted height is why so little of the clinic's day fits on screen at once. Reducing the hour-row height reclaims it.
 
-**Decision, 2026-09-15 — the user chose "shorter (less tall)".** The task was filed asking which dimension "thinner" meant. It means the **time axis**: reduce the hour-row height so each card occupies less vertical space. Narrowing the cards is **not** part of this task — horizontal room is TJ-043's subject, and it reclaims that room from the sidebar rather than from the cards.
+**Planning pass: 2026-09-15 — measured in a browser, not estimated.** Read `Calendar.tsx:31, 223–224, 234, 275–314` and `ReservationSlot.tsx:216–250, 276–320`. Card heights were measured by rendering `.slot`'s exact markup and CSS at a 200px column width and reading `getBoundingClientRect().height`, with `min-height` removed so the **natural** content height was visible rather than masked.
 
-- **What is actually there now.** A card's height is derived, never set: `height = (durationMinutes / 60) * ROW_HEIGHT - CARD_GAP` (`Calendar.tsx:224`), and its vertical offset is `top = (minute / 60) * ROW_HEIGHT` (line 223). Both hang off `ROW_HEIGHT = 84` (line 31). So this is one constant — but changing it rescales the continuous-time placement TJ-039 established, which is precisely why it needs a pass rather than an edit. `.time-row` also hard-codes `height: ${ROW_HEIGHT}px` in the styled-jsx block (line 277).
-- **The content floor is the real constraint.** `ReservationSlot` renders patient name, phone, doctor name, time, a status chip, and optionally a note. At `ROW_HEIGHT = 84` a one-hour card is 80px tall. The pass must establish **empirically, in a browser, at what height each of those stops being legible** — and then decide what is dropped rather than squashed. The phone number is the obvious first candidate; the status chip and the doctor's colour are what make the card scannable at a glance and should be the last to go.
-- **What its planning pass owes.** Pick the new `ROW_HEIGHT` from a measurement, not a guess — render the card at several heights and look. Check the two-hour case explicitly: those cards are `2 × ROW_HEIGHT - CARD_GAP` and carry a `zIndex: 2` (line 234), so they compress twice as much in absolute terms and are the first place a layout will break. Re-prove TJ-039's geometry at the new constant rather than assuming it scales — a 10:30 one-hour reservation must still render exactly halfway into its row, and back-to-back sessions must still reuse a column. Confirm the `max-width: 768px` block is unaffected: cards there are `height: auto` and `ROW_HEIGHT` does not apply (`Calendar.tsx:300–314`), so the mobile view should not change at all, and that is worth asserting rather than assuming. Note the interaction with TJ-042: if the window becomes a fixed 07:00–19:00, that is 13 rows, and the row height determines whether the clinic's whole day fits on one screen without scrolling — which is most of the point of both tasks.
+| Card content | Natural height | With `min-height: 48px` | Minimum viable `ROW_HEIGHT` |
+|---|---|---|---|
+| Name only | 36px | 48px | 52 |
+| Name + phone/time | **46px** | 48px | **52** |
+| Name + phone/time + **note** | **62px** | 62px | **66** |
+
+Confirmed:
+- Card height is derived, never set: `height = (durationMinutes / 60) * ROW_HEIGHT - CARD_GAP` (`Calendar.tsx:224`), and vertical offset is `top = (minute / 60) * ROW_HEIGHT` (223). Both hang off `ROW_HEIGHT = 84` (31), which is also hard-coded into `.time-row { height: ${ROW_HEIGHT}px }` (277).
+- **`.slot` carries `min-height: 48px`** (`ReservationSlot.tsx:282`). This is the hard floor and it is easy to miss: below `ROW_HEIGHT = 52` the card stops fitting its wrapper and the continuous-time geometry TJ-039 built silently stops matching the card that is drawn. Nothing would fail a build.
+- **The binding constraint is the note row, not the floor.** A card showing a note measures 62px, needing `ROW_HEIGHT ≥ 66`. Notes are already hidden on narrow cards by `@container (max-width: 220px) { .slot-note { display: none } }` (`ReservationSlot.tsx:316–318`) — but `ROW_HEIGHT` is global, so it must be sized for the worst case: a **wide** card **with** a visible note.
+- At the current 84, a standard card has **34px of slack**. That is the whole opportunity.
+
+**The value, and why not lower.** `ROW_HEIGHT` **84 → 68**. That gives a 64px card: above the 62px note case with two pixels to spare, and well clear of the 48px `min-height`. It is a **19% reduction** in the height of every hour. Against TJ-042b's thirteen-hour day that is 884px instead of 1092px — roughly two and a half more hours visible before scrolling. **66 is the true floor and is deliberately not chosen**: it leaves zero tolerance for a longer note, a larger default font, or a browser that rounds differently.
+
+**Scope — touch only this:**
+- `src/app/components/Calendar.tsx`
+
+**Do not touch:** `ReservationSlot.tsx` — **in particular do not lower `min-height: 48px` to squeeze further.** It is what stops a card collapsing to illegibility, and this task stays above it rather than removing it. **Not** `assignColumns`, `colWidthCss`, `colLeftCss` or the boundary-crossing divisor logic — this task changes one constant and nothing else.
+
+**Instructions:**
+
+1. In `src/app/components/Calendar.tsx`, match exactly:
+
+```
+const ROW_HEIGHT = 84; // px, fixed height of one hour row
+```
+
+Replace with:
+
+```
+// px, fixed height of one hour row. Card height is derived from this
+// (height = duration/60 * ROW_HEIGHT - CARD_GAP), so it cannot be lowered
+// freely. Measured floors: .slot's own min-height of 48px puts a hard floor
+// at 52, and a card showing a note measures 62px, needing at least 66. 68
+// clears the note case with a little tolerance for a longer note or a larger
+// default font. Do not reduce further without re-measuring. (TJ-044)
+const ROW_HEIGHT = 68;
+```
+
+That is the entire change. `.time-row`'s CSS already interpolates `${ROW_HEIGHT}px` (line 277) and both the `top` and `height` expressions already derive from it, so nothing else needs editing — **and if you find yourself editing anything else, stop and report.**
+
+**Verification:**
+- `npx tsc --noEmit --incremental false` passes
+- `npm run build` passes
+- `npx eslint src/app/components/Calendar.tsx` reports no **new** findings against `master`
+- `git diff --check` clean
+- `git diff --stat master..HEAD` shows **one file, one hunk** — this task should not be able to touch anything else
+- `grep -n "min-height: 48px" src/app/components/ReservationSlot.tsx` still returns a match — the floor must not have been removed
+
+**Regression risk this covers:** TJ-039's continuous-time placement is proportional to `ROW_HEIGHT`, so it should scale cleanly — but "should" is the reason to re-prove it rather than assume. The two-hour card is the first thing to break: it is `2 × ROW_HEIGHT - CARD_GAP` and carries `zIndex: 2` (`Calendar.tsx:234`), so it loses twice the absolute height. The mobile view should be **completely unaffected** — at `max-width: 768px` cards are `height: auto` and `.time-row` is `height: auto` (`Calendar.tsx:303, 309–312`), so `ROW_HEIGHT` does not apply at all; that non-change is worth asserting rather than assuming.
+
+**Done when:**
+- [ ] Every hour row is 68px tall; a one-hour card is 64px
+- [ ] A card showing a note is **not** clipped — the note is still readable
+- [ ] A two-hour card still spans exactly two rows and still draws above its neighbours
+- [ ] A 10:30 one-hour reservation still renders exactly halfway into its row (TJ-039's invariant, re-proven at the new constant)
+- [ ] Back-to-back 10:30 / 11:30 reservations still share one column
+- [ ] The 768px mobile view is pixel-identical to `master`
+- [ ] Build, typecheck and lint all pass
 
 ---
 
