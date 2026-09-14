@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
 import Calendar from "@/app/components/Calendar";
-import DatePickerCalendar from "@/app/components/DatePicker";
+import DatePickerPopover from "@/app/components/DatePickerPopover";
 
 interface Doctor {
     id: string;
@@ -258,7 +258,27 @@ export default function AdminDashboard() {
 
             {/* Date & Legend */}
             <div className="sub-header">
-                <span className="current-date">{formatSelectedDate()}</span>
+                <div className="sub-header-start">
+                    <DatePickerPopover
+                        selectedDate={selectedDate}
+                        onDateSelect={setSelectedDate}
+                        doctorId={doctorFilter}
+                        label={formatSelectedDate()}
+                    />
+                    <div className="summary-chips">
+                        <span className="chip"><span className="chip-val">{reservations.length}</span> Total</span>
+                        <span className="chip"><span className="chip-val">{reservations.filter((r) => r.status === "SCHEDULED").length}</span> Scheduled</span>
+                        <span className="chip"><span className="chip-val">{reservations.filter((r) => r.status === "WAITING").length}</span> Waiting</span>
+                        <span className="chip"><span className="chip-val">{reservations.filter((r) => r.status === "CHECKED_IN").length}</span> Checked In</span>
+                        <span className="chip"><span className="chip-val">{reservations.filter((r) => r.status === "WITH_DOCTOR").length}</span> With Doctor</span>
+                        <span className="chip"><span className="chip-val">{reservations.filter((r) => r.status === "CHECKED_OUT").length}</span> Checked Out</span>
+                        {dupCount > 0 && (
+                            <Link href="/admin/patients/duplicates" className="chip chip-warn">
+                                <span className="chip-val">{dupCount}</span> Possible duplicate{dupCount === 1 ? "" : "s"} →
+                            </Link>
+                        )}
+                    </div>
+                </div>
                 <div className="legend">
                     {doctors.map((d) => (
                         <span key={d.id} className="legend-item">
@@ -283,32 +303,6 @@ export default function AdminDashboard() {
                             onSlotClick={handleSlotClick}
                             canDelete
                         />
-                    )}
-                </div>
-                <div className="sidebar-col">
-                    <DatePickerCalendar
-                        selectedDate={selectedDate}
-                        onDateSelect={setSelectedDate}
-                        doctorId={doctorFilter}
-                    />
-                    <div className="summary-card">
-                        <h3>Today&apos;s Summary</h3>
-                        <div className="summary-row"><span>Total</span><span className="summary-val">{reservations.length}</span></div>
-                        <div className="summary-row"><span>Scheduled</span><span className="summary-val">{reservations.filter((r) => r.status === "SCHEDULED").length}</span></div>
-                        <div className="summary-row"><span>Waiting</span><span className="summary-val">{reservations.filter((r) => r.status === "WAITING").length}</span></div>
-                        <div className="summary-row"><span>Checked In</span><span className="summary-val">{reservations.filter((r) => r.status === "CHECKED_IN").length}</span></div>
-                        <div className="summary-row"><span>With Doctor</span><span className="summary-val">{reservations.filter((r) => r.status === "WITH_DOCTOR").length}</span></div>
-                        <div className="summary-row"><span>Checked Out</span><span className="summary-val">{reservations.filter((r) => r.status === "CHECKED_OUT").length}</span></div>
-                    </div>
-                    {dupCount > 0 && (
-                        <div className="dupe-card">
-                            <h3>Possible Duplicates</h3>
-                            <div className="dupe-card-count">{dupCount}</div>
-                            <p className="dupe-card-desc">
-                                {dupCount} phone number{dupCount === 1 ? "" : "s"} used by more than one patient record
-                            </p>
-                            <Link href="/admin/patients/duplicates" className="dupe-card-link">Review →</Link>
-                        </div>
                     )}
                 </div>
             </div>
@@ -490,29 +484,26 @@ export default function AdminDashboard() {
                 .legend { display: flex; gap: 1rem; flex-wrap: wrap; }
                 .legend-item { display: flex; align-items: center; gap: 0.3rem; font-size: 0.76rem; color: rgba(255,255,255,0.5); }
                 .legend-dot { width: 10px; height: 10px; border-radius: 2px; }
-                .main-layout { display: flex; gap: 1rem; align-items: flex-start; }
-                .calendar-col { flex: 1; min-width: 0; }
-                .sidebar-col { width: 260px; flex-shrink: 0; display: flex; flex-direction: column; gap: 0.75rem; }
-                .summary-card {
-                    background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.06);
-                    border-radius: var(--radius-md, 4px); padding: 0.85rem;
+                .main-layout { display: block; }
+                .calendar-col { min-width: 0; }
+                .sub-header-start { display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap; }
+                .summary-chips { display: flex; gap: 0.4rem; flex-wrap: wrap; }
+                .chip {
+                    display: inline-flex; align-items: center; gap: 0.3rem;
+                    background: rgba(255,255,255,0.04);
+                    border: 1px solid rgba(255,255,255,0.08);
+                    border-radius: var(--radius-sm, 2px);
+                    padding: 0.2rem 0.5rem;
+                    font-size: 0.74rem; color: rgba(255,255,255,0.55);
+                    white-space: nowrap;
                 }
-                .summary-card h3 { font-size: 0.82rem; font-weight: 600; margin-bottom: 0.6rem; color: rgba(255,255,255,0.6); }
-                .summary-row {
-                    display: flex; justify-content: space-between; padding: 0.25rem 0;
-                    font-size: 0.8rem; color: rgba(255,255,255,0.5);
-                    border-bottom: 1px solid rgba(255,255,255,0.03);
+                .chip-val { font-weight: 700; color: #fff; font-variant-numeric: tabular-nums; }
+                .chip-warn {
+                    background: rgba(251,191,36,0.08); border-color: rgba(251,191,36,0.2);
+                    color: #fbbf24; text-decoration: none;
                 }
-                .summary-val { font-weight: 600; color: #fff; }
-                .dupe-card {
-                    background: rgba(251,191,36,0.08); border: 1px solid rgba(251,191,36,0.2);
-                    border-radius: var(--radius-md, 4px); padding: 0.85rem;
-                }
-                .dupe-card h3 { font-size: 0.82rem; font-weight: 600; margin-bottom: 0.4rem; color: #fbbf24; }
-                .dupe-card-count { font-size: 1.6rem; font-weight: 700; color: #fbbf24; line-height: 1; margin-bottom: 0.35rem; }
-                .dupe-card-desc { font-size: 0.76rem; color: rgba(255,255,255,0.55); margin-bottom: 0.55rem; }
-                .dupe-card-link { font-size: 0.78rem; color: #fbbf24; text-decoration: none; font-weight: 600; }
-                .dupe-card-link:hover { text-decoration: underline; }
+                .chip-warn .chip-val { color: #fbbf24; }
+                .chip-warn:hover { background: rgba(251,191,36,0.14); }
                 .modal-overlay {
                     position: fixed; inset: 0; background: rgba(0,0,0,0.6);
                     display: flex; align-items: center; justify-content: center;
@@ -594,9 +585,8 @@ export default function AdminDashboard() {
                 .soap-field { font-size: 0.82rem; color: rgba(255,255,255,0.7); margin-bottom: 0.3rem; }
 
                 @media (max-width: 768px) {
-                    .main-layout { flex-direction: column; align-items: stretch; }
                     .calendar-col { width: 100%; }
-                    .sidebar-col { width: 100%; }
+                    .sub-header-start { align-items: flex-start; }
                     .controls { flex-direction: column; align-items: flex-start; }
                     .form-row { flex-direction: column; gap: 0; }
                 }
