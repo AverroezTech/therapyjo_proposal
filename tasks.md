@@ -86,7 +86,7 @@ Two things that bear repeating here, because this is the file both agents open:
 | TJ-037 | Detect implicit duplicate patients by normalized phone | DONE — task commits `c5b1234`, `52c0291`, `924d597`; merged to `master` in `910322b`; build-proven | `feat/dashboard-duplicates-and-calendar` |
 | TJ-038 | Rebuild the dashboard calendar for dense reservations | DONE — task commit `efe4165`; merged to `master` in `910322b`; build- and geometry-proven | `feat/dashboard-duplicates-and-calendar` |
 | TJ-039 | Fix calendar action-menu stacking and continuous-time placement | DONE — task commits `8ed5206`, `6526020`; merged to `master` as `108aa7c`; build- and interval-proven | `codex/fix-calendar-action-menu` |
-| TJ-040 | Let a secretary delete a reservation | READY — planning pass 2026-09-15 | `feat/secretary-delete-reservation` |
+| TJ-040 | Let a secretary delete a reservation | VISUAL REVIEW — committed `c22447d`; planner-verified and re-run, **authenticated runtime half owed** | `feat/secretary-delete-reservation` |
 | TJ-041 | Open the booking form from a click on the schedule, at the hour clicked | BACKLOG — no planning pass | — |
 | TJ-042 | Constrain the schedule to 07:00–19:00 | BACKLOG — no planning pass | — |
 | TJ-043 | Lay the schedule out horizontally | BACKLOG — no planning pass; expect a split | — |
@@ -6702,7 +6702,15 @@ A full read-only sweep of the project and the repo, run at the user's request. N
 
 ### TJ-040 — Let a secretary delete a reservation
 
-- **Status:** READY
+- **Status:** VISUAL REVIEW — task commit `c22447d` on `feat/secretary-delete-reservation`. Planner verification **passed** and re-run independently; **not merged** — the authenticated runtime half is owed and the protocol does not allow merging without it.
+
+**Planner verification, 2026-09-15 — re-run, not accepted.** Diff read in full: exactly the three Scope files, 29 insertions and 4 deletions, nothing outside Scope, `tasks.md` untouched, branch cut from `a3efc77`. Every command re-run by the planner rather than taken from the report: `npx tsc --noEmit --incremental false` exits **0**; `npm run build` exits **0** (71 routes); `git diff --check` clean; `grep -n "canDelete" src/app/doctor/page.tsx` returns **nothing**; `grep -n '!== "ADMIN"' "src/app/api/reservations/[id]/route.ts"` returns **nothing**. The lint claim was checked the hard way rather than believed — eslint on the branch reports 3 `react-hooks/set-state-in-effect` errors in `secretary/page.tsx` at 74:23, 75:23 and 78:41; eslint on `master` reports **the identical three at the identical positions**, so **zero new findings**. Those three sit in a `useEffect` at line 77, nowhere near the edits at 102–111 and 213.
+
+**Runtime, the half that could be proven without a session.** Dev server run against the live Supabase database. An unauthenticated `DELETE /api/reservations/999999` (a deliberately nonexistent id, so no real row was ever at risk) is refused, and `/secretary` and `/admin` both redirect to `/login`. The login page renders correctly in a real browser — video background, logo and form all present.
+
+**One imprecision in my own spec, recorded rather than patched.** The Done-when box below says an unauthenticated `DELETE` returns **401**. It returns **302** to `/login?callbackUrl=…`. That is correct behaviour and pre-dates this task: `/api/reservations/*` is not in `publicRoutes` (`auth.config.ts:39`) and is inside the middleware matcher (`middleware.ts:57`), so NextAuth answers before the handler runs, and the handler's `if (!session) … 401` is unreachable defence-in-depth for browser traffic. The property I actually cared about — an unauthenticated caller cannot delete — holds, and holds *earlier* than I specified. The box is reworded below; nothing in the executor's diff caused this and nothing needs changing in `src/`.
+
+**What is still owed, and why I did not merge.** Every remaining Done-when box needs an authenticated session, which I cannot create: entering credentials is not something I do. Two of them additionally need a **disposable test reservation** — proving a secretary's delete against the live clinic database permanently removes a real patient's booking, and there is no local development database (one shared Supabase Postgres). The branch stays unmerged until a person signs in and those are driven. This is the same blocker as TJ-010a.
 - **Branch:** `feat/secretary-delete-reservation`
 - **Why:** `DELETE /api/reservations/[id]` refuses anyone who is not `ADMIN` (`src/app/api/reservations/[id]/route.ts:220`), and `src/app/secretary/page.tsx` never passes `canDelete` to `Calendar`, so the Delete item is not drawn in the slot menu. Front-desk staff book and correct the day's schedule; a reservation entered against the wrong patient is theirs to remove, and today they must find an admin. After this, a secretary deletes it themselves and the audit trail names them.
 
@@ -6845,7 +6853,7 @@ Replace with:
 - [ ] A signed-in SECRETARY sees Delete in the slot menu, and using it removes the card
 - [ ] The deletion writes a `SESSION_DELETED` audit row naming the secretary as the actor
 - [ ] A signed-in DOCTOR sees **no** Delete item, and a direct `DELETE` request returns **403**
-- [ ] An unauthenticated `DELETE` request returns **401**
+- [x] An unauthenticated `DELETE` request is refused before it reaches the handler — **302 to `/login`**, verified 2026-09-15 (see the spec correction above; originally written as 401)
 - [ ] ADMIN delete still works exactly as before
 - [ ] A refused delete shows the error banner instead of silently doing nothing
 - [ ] Build, typecheck and lint all pass
