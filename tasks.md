@@ -87,14 +87,16 @@ Two things that bear repeating here, because this is the file both agents open:
 | TJ-038 | Rebuild the dashboard calendar for dense reservations | DONE — task commit `efe4165`; merged to `master` in `910322b`; build- and geometry-proven | `feat/dashboard-duplicates-and-calendar` |
 | TJ-039 | Fix calendar action-menu stacking and continuous-time placement | DONE — task commits `8ed5206`, `6526020`; merged to `master` as `108aa7c`; build- and interval-proven | `codex/fix-calendar-action-menu` |
 | TJ-040 | Let a secretary delete a reservation | VISUAL REVIEW — committed `c22447d`; planner-verified and re-run, **authenticated runtime half owed** | `feat/secretary-delete-reservation` |
-| TJ-041 | Open the booking form from a click on the schedule, at the hour clicked | READY — planning pass 2026-09-15, anchors verified | `feat/click-schedule-to-book` |
+| TJ-041 | Open the booking form from a click on the schedule, at the hour clicked | READY — **revised** 2026-09-15 after the first dispatch refused it; steps 1–3 committed `738eb4d` | `feat/click-schedule-to-book` |
 | TJ-042 | Constrain the schedule to 07:00–19:00 | SPLIT — passed 2026-09-15; see TJ-042a, TJ-042b | — |
-| TJ-042a | Refuse bookings outside 07:00–19:00 | READY — planning pass 2026-09-15; server-side gate, display untouched | `feat/booking-window-validation` |
+| TJ-042a | Refuse bookings outside 07:00–19:00 | VISUAL REVIEW — committed `76e6fec`; verified, 14 boundary cases re-proven, **runtime half owed** | `feat/booking-window-validation` |
 | TJ-042b | Make 07:00–19:00 the calendar's display window | BLOCKED — **needs a working `DATABASE_URL`**; the local credential is invalid | — |
 | TJ-043 | Give the schedule more horizontal room without moving the hour labels | SPLIT — design pass run and measured 2026-09-15; placement chosen; see TJ-043a, TJ-043b | — |
 | TJ-043a | Admin: date picker to a popover, summary to header chips, sidebar deleted | VISUAL REVIEW — `9bb31e9` + planner fix `e436b96`; verified and re-run, **authenticated runtime half owed** | `feat/schedule-full-width-admin` |
 | TJ-043b | Secretary: same treatment, plus the 1200px shell cap | BACKLOG — needs its own pass once TJ-043a lands; consumes the component it creates | — |
-| TJ-044 | Make the reservation cards shorter | READY — planning pass 2026-09-15; ROW_HEIGHT 84→68, measured in a browser | `feat/shorter-reservation-cards` |
+| TJ-044 | Make the reservation cards shorter | VISUAL REVIEW — committed `1e16297`; verified and re-run, **runtime half owed** | `feat/shorter-reservation-cards` |
+| TJ-045 | The Add Reservation modal is unreachable on both dashboards | BACKLOG — found during TJ-041's first dispatch; needs a pass | — |
+| TJ-046 | Two booking paths still accept any hour | BACKLOG — found during TJ-042a; needs a pass | — |
 
 ---
 
@@ -6866,89 +6868,36 @@ Replace with:
 
 ### TJ-041 — Open the booking form from a click on the schedule, at the hour clicked
 
-- **Status:** READY
+- **Status:** READY — **revised 2026-09-15 after the first dispatch stopped.** Steps 1–3 are already committed as `738eb4d` on the branch; an executor picking this up **continues on that branch** rather than cutting a new one.
 - **Branch:** `feat/click-schedule-to-book`
-- **Why:** Booking means opening the Add Reservation modal and typing the time, while the schedule already knows which hour the pointer is over. Clicking empty space on the grid should open that same modal with the hour pre-selected.
+- **Why:** Booking means opening the reservation form and typing the time, while the schedule already knows which hour the pointer is over. Clicking empty space on the grid should open that form with the hour pre-selected.
 
-**Planning pass:** 2026-09-15 — read `src/app/components/Calendar.tsx` in full, `src/app/components/ReservationSlot.tsx:216–250`, `src/app/admin/page.tsx` (add-modal state and `handleSlotClick`), `src/app/secretary/page.tsx`, and `src/app/api/reservations/route.ts`.
+**Planning pass:** 2026-09-15, first version. **Corrected 2026-09-15 after the executor refused it — see the correction block below, which invalidated the original steps 4–6 entirely.**
 
-Confirmed:
-- `onSlotClick(id: number)` carries a **reservation id** and fires only from a card (`Calendar.tsx:24, 251`). A new, separate prop is needed; widening the existing one would break its three call sites.
-- The add-modal already exists on both dashboards and already holds the time as a plain `"HH:MM"` string: `addForm.sessionTime`, initialised to `"09:00"` (`admin/page.tsx:64`, `secretary/page.tsx:48`) and bound to `<input type="time">` (`admin/page.tsx:362`, `secretary/page.tsx:247`). **Pre-selecting an hour is a string assignment, not new plumbing.**
-- `admin/page.tsx:171–173` already resets `addForm` with `sessionTime: "09:00"` when opening the modal, so that reset is the exact place the clicked hour must override.
-- **Doctors must not get this.** `POST /api/reservations` refuses `DOCTOR` outright (`route.ts:91`, *"Doctors cannot create reservations"*), so wiring it on the doctor dashboard would produce a form that always 403s.
-- `.empty-slot` renders **only when the whole hour is free** (`Calendar.tsx:214, 219`), so it cannot be the click target — a half-booked hour would be dead. The handler belongs on `.time-slots`, which is always present, with card clicks excluded by `closest(".card-wrap")`.
+Confirmed (still true):
+- `onSlotClick(id: number)` carries a **reservation id** and fires only from a card, so a separate prop was needed.
+- `.empty-slot` renders **only when the whole hour is free** (`Calendar.tsx:214, 219`), so the handler belongs on `.time-slots` with card clicks excluded by `closest(".card-wrap")`.
+- **Doctors must not get this.** `POST /api/reservations` refuses `DOCTOR` outright (`route.ts:91`).
+
+**Correction, 2026-09-15 — the original steps 4–6 targeted a modal that cannot be opened.** The first dispatch stopped at step 4 and was right to. Two things were wrong, and the second is the serious one:
+
+1. **The snippet would not compile.** It built an `addForm` object containing `patientId: ""`. `admin/page.tsx:62–70` has **seven** keys and no `patientId` — the patient is separate state, `selectedPatient` (line 61), read as `selectedPatient.id` in `submitAdd`. An extra property on a `useState`-inferred object literal is a TypeScript excess-property error (`TS2353`), so the mandatory `tsc` gate would have failed. The executor correctly judged that "implement the literal spec and flag it", the precedent set by TJ-043a, **did not apply here** — that precedent covers a literal that compiles but reads oddly, not one that cannot build.
+2. **The modal it targeted is unreachable dead UI, on both dashboards.** `openAddModal` is *defined* (`admin/page.tsx:166`, `secretary/page.tsx:119`) and **never called**. The only `setShowAdd(true)` in each file sits inside it. Both "+ Add Reservation" buttons instead navigate: `window.location.href = "/admin/reservations/new?date=…"` (`admin/page.tsx:255`) and the secretary equivalent (`secretary/page.tsx:190`). So even had the snippet compiled, clicking the grid would have opened a modal **nothing else in the application can open** — inconsistent with the button beside it and orphaned from the real booking flow. Filed separately as **TJ-045**; this task must not resurrect it.
+
+**The corrected design.** Clicking empty grid space does what the "+ Add Reservation" button already does — navigate to the dedicated new-reservation page — and adds the hour as a second query parameter. Both pages already read `date` from the query string (`searchParams.get("date")`, line 12 of each) and already hold `sessionTime` in form state, so they need one line each to honour a `time` parameter.
 
 **Scope — touch only these:**
-- `src/app/components/Calendar.tsx`
+- `src/app/components/Calendar.tsx` — **already done in `738eb4d`; do not touch again**
 - `src/app/admin/page.tsx`
 - `src/app/secretary/page.tsx`
+- `src/app/admin/reservations/new/page.tsx`
+- `src/app/secretary/reservations/new/page.tsx`
 
-**Do not touch:** `src/app/components/ReservationSlot.tsx` — card clicks are excluded by the handler, not by changing the card. **Not** `src/app/doctor/page.tsx` — doctors cannot create reservations. **Not** `assignColumns`, `colWidthCss`, `colLeftCss` or the boundary-crossing divisor logic — TJ-039's invariants are untouched by this.
+**Do not touch:** `ReservationSlot.tsx`, `doctor/page.tsx`, or the packing logic in `Calendar.tsx`. **Do not delete or revive the dead add-modals** — that is TJ-045 and is deliberately a separate change.
 
-**Sequencing note:** `TJ-043a` is unmerged and also edits `src/app/admin/page.tsx`, but in a different region (the sub-header and sidebar, not the modal or the `Calendar` call site). A conflict is unlikely; if one appears at merge time it is the planner's to resolve, not the executor's.
+**Instructions — steps 1–3 are already committed. Start at step 4.**
 
-**Instructions:**
-
-1. In `Calendar.tsx`, add the prop. Match exactly:
-
-```tsx
-    onSlotClick: (id: number) => void;
-    canDelete?: boolean;
-}
-```
-
-Replace with:
-
-```tsx
-    onSlotClick: (id: number) => void;
-    // Fires when empty grid space is clicked, carrying the hour clicked (0-23).
-    // Separate from onSlotClick, which carries a reservation id.
-    onEmptyClick?: (hour: number) => void;
-    canDelete?: boolean;
-}
-```
-
-2. In `Calendar.tsx`, destructure it. Match exactly:
-
-```tsx
-    onSlotClick,
-    canDelete = false,
-}: CalendarProps) {
-```
-
-Replace with:
-
-```tsx
-    onSlotClick,
-    onEmptyClick,
-    canDelete = false,
-}: CalendarProps) {
-```
-
-3. In `Calendar.tsx`, make the row background clickable. Match exactly:
-
-```tsx
-                                <div className="time-slots">
-```
-
-Replace with:
-
-```tsx
-                                <div
-                                    className="time-slots"
-                                    onClick={(e) => {
-                                        if (!onEmptyClick) return;
-                                        // Only empty space: a click that landed on or inside a
-                                        // card belongs to that card's own handler.
-                                        if ((e.target as HTMLElement).closest(".card-wrap")) return;
-                                        onEmptyClick(hour);
-                                    }}
-                                    style={onEmptyClick ? { cursor: "copy" } : undefined}
-                                >
-```
-
-4. In `admin/page.tsx`, add the handler immediately above `handleSlotClick`. Match exactly:
+4. In `src/app/admin/page.tsx`, add the handler immediately above `handleSlotClick`. Match exactly:
 
 ```tsx
     const handleSlotClick = async (id: number) => {
@@ -6957,28 +6906,18 @@ Replace with:
 Replace with:
 
 ```tsx
+    // Mirrors the "+ Add Reservation" button, which navigates rather than
+    // opening the in-file modal (that modal is unreachable — see TJ-045).
+    // Carries the clicked hour so the form opens on the right time.
     const handleEmptyClick = (hour: number) => {
-        setAddForm({
-            patientId: "",
-            doctorId: doctorFilter !== "all" ? doctorFilter : "",
-            sessionTime: `${String(hour).padStart(2, "0")}:00`,
-            paymentType: "",
-            isTwoHours: false,
-            note: "",
-            showNoteOnCalendar: false,
-            nextSessionNote: "",
-        });
-        setAddError("");
-        setPatientSearch("");
-        setShowAdd(true);
+        const time = `${String(hour).padStart(2, "0")}:00`;
+        window.location.href = `/admin/reservations/new?date=${selectedDate}&time=${time}`;
     };
 
     const handleSlotClick = async (id: number) => {
 ```
 
-**Before applying this step, read `admin/page.tsx`'s `addForm` initial state (around line 62) and make the object above match its keys exactly.** If the key set differs from what is written here, **stop and report** rather than inventing fields — a mismatch means the file moved since this pass.
-
-5. In `admin/page.tsx`, pass it. Match exactly:
+5. In `src/app/admin/page.tsx`, match exactly:
 
 ```tsx
                             onSlotClick={handleSlotClick}
@@ -6993,23 +6932,81 @@ Replace with:
                             canDelete
 ```
 
-6. In `secretary/page.tsx`, do the same two things: add a `handleEmptyClick` built from **that file's** `addForm` shape (read it, around line 46 — it has fewer fields than admin's; `nextSessionNote` is absent), and pass `onEmptyClick={handleEmptyClick}` to `Calendar` alongside the existing props. The secretary's `onSlotClick` is `() => { }` and stays that way.
+6. In `src/app/secretary/page.tsx`, match exactly:
+
+```tsx
+                            onDelete={handleDelete}
+                            onSlotClick={() => { }}
+```
+
+Replace with:
+
+```tsx
+                            onDelete={handleDelete}
+                            onSlotClick={() => { }}
+                            onEmptyClick={handleEmptyClick}
+```
+
+7. In `src/app/secretary/page.tsx`, add the matching handler. Place it immediately above `const handleDelete = async (id: number) => {`, matching that line exactly as the anchor, and use the **secretary** path:
+
+```tsx
+    // Mirrors the "+ Add Reservation" button, which navigates rather than
+    // opening the in-file modal (that modal is unreachable — see TJ-045).
+    const handleEmptyClick = (hour: number) => {
+        const time = `${String(hour).padStart(2, "0")}:00`;
+        window.location.href = `/secretary/reservations/new?date=${selectedDate}&time=${time}`;
+    };
+
+```
+
+8. In `src/app/admin/reservations/new/page.tsx`, teach the page to honour the parameter. Match exactly:
+
+```tsx
+    const dateParam = searchParams.get("date") || new Date().toISOString().split("T")[0];
+```
+
+Replace with:
+
+```tsx
+    const dateParam = searchParams.get("date") || new Date().toISOString().split("T")[0];
+    // Only accept a well-formed HH:MM; anything else falls back to the default
+    // so a hand-edited URL cannot put the form into an invalid state.
+    const timeParam = /^\d{2}:\d{2}$/.test(searchParams.get("time") || "")
+        ? (searchParams.get("time") as string)
+        : "09:00";
+```
+
+9. In the same file, match exactly:
+
+```tsx
+        sessionTime: "09:00",
+```
+
+Replace with:
+
+```tsx
+        sessionTime: timeParam,
+```
+
+10. In `src/app/secretary/reservations/new/page.tsx`, apply steps 8 and 9 identically — the two anchor lines are byte-identical to the admin page's. Verify each matches exactly once in that file before editing.
 
 **Verification:**
 - `npx tsc --noEmit --incremental false` passes
 - `npm run build` passes
-- `npx eslint src/app/components/Calendar.tsx src/app/admin/page.tsx src/app/secretary/page.tsx` reports no **new** findings against `master`
+- `npx eslint src/app/components/Calendar.tsx src/app/admin/page.tsx src/app/secretary/page.tsx src/app/admin/reservations/new/page.tsx src/app/secretary/reservations/new/page.tsx` reports no **new** findings against `master`
 - `git diff --check` clean
 - `grep -n "onEmptyClick" src/app/doctor/page.tsx` returns **nothing**
+- `grep -n "setShowAdd(true)" src/app/admin/page.tsx src/app/secretary/page.tsx` returns **exactly one match per file**, both still inside `openAddModal` — this task must not have revived the dead modal
 
-**Regression risk this covers:** the click handler sits on the same element that contains every card, so the failure mode is a card click *also* opening the booking modal — or the action-menu "⋮" button doing so. The `closest(".card-wrap")` guard is what prevents both, and it must be proven by clicking a card and its menu, not just empty space. Second risk: at the `max-width: 768px` breakpoint `.time-slots` becomes a static flex column (`Calendar.tsx:305–308`), so the clickable area changes shape — check the hour is still correct there.
+**Regression risk this covers:** the click handler sits on the element that contains every card, so the failure mode is a card click *also* navigating away — which would be worse than a no-op, because it would lose the user's place. The `closest(".card-wrap")` guard already committed in `738eb4d` is what prevents it. Second risk: `window.location.href` is a **full page navigation**, so any unsaved state on the dashboard is discarded — that matches what the "+ Add Reservation" button already does, so it is consistent, but it means a mis-fire is user-visible and annoying rather than silent.
 
 **Done when:**
-- [ ] Clicking empty space in an hour row opens Add Reservation with that hour pre-filled
+- [ ] Clicking empty space in an hour row opens the new-reservation page with **both** the date and that hour pre-filled
 - [ ] It works on a **partly booked** hour, not only a completely free one
-- [ ] Clicking a card still opens the card, and the ⋮ menu still opens the menu — neither opens the booking modal
+- [ ] Clicking a card still opens the card, and the ⋮ menu still opens the menu — neither navigates away
 - [ ] Works on both admin and secretary; the doctor dashboard is unchanged
-- [ ] The pre-filled hour is correct at the 768px breakpoint
+- [ ] A hand-edited `?time=banana` falls back to 09:00 rather than breaking the form
+- [ ] The dead add-modals are still dead — this task did not revive them
 - [ ] Build, typecheck and lint all pass
 
 ---
@@ -7035,7 +7032,11 @@ Confirmed:
 
 ### TJ-042a — Refuse bookings outside 07:00–19:00
 
-- **Status:** READY
+- **Status:** VISUAL REVIEW — task commit `76e6fec` on `feat/booking-window-validation`. Planner verification **passed** and re-run independently; **not merged** — the authenticated runtime half is owed.
+
+**Planner verification, 2026-09-15 — re-run, not accepted.** Diff read in full: exactly the three Scope files, 26 insertions and 2 deletions; `Calendar.tsx` untouched, the `PUT` reschedule handler untouched. `npx tsc --noEmit --incremental false` exits **0**; `npm run build` exits **0**; `git diff --check` clean; `grep` for the clinic constants in `Calendar.tsx` returns **nothing**. Lint compared against `master`: **7** findings on both, identical positions — zero new. **The boundary arithmetic was re-proven rather than read**: the committed expression was extracted and run against 14 cases, including every edge the task names. All 14 correct — 07:00 1h and 2h accepted, 17:00 2h accepted, 17:30 2h refused, **18:00 1h accepted** (the case that only works because the comparison is `>` and not `>=`), 18:01 / 18:30 / 19:00 refused, 06:59 refused, `"9:00"` single-digit hour accepted, malformed input rejected with 400.
+
+**Two gaps the executor found and correctly did not fix** — filed as **TJ-046**. This task validates `POST /api/reservations` only; `PUT /api/reservations/[id]` (reschedule) and `POST /api/reservations/[id]/duplicate` still accept any hour. **Until TJ-046 ships, "the clinic only books 07:00–19:00" is one third true.**
 - **Branch:** `feat/booking-window-validation`
 - **Why:** The clinic's day is 07:00 to 19:00, and `POST /api/reservations` currently accepts any hour at all — it validates only that the fields are present (`route.ts:107`). This closes that gap for **new** bookings. It deliberately does not touch what the calendar displays; that is TJ-042b, which is blocked on a fact about existing data.
 
@@ -7569,7 +7570,9 @@ Replace with:
 
 ### TJ-044 — Make the reservation cards shorter
 
-- **Status:** READY
+- **Status:** VISUAL REVIEW — task commit `1e16297` on `feat/shorter-reservation-cards`. Planner verification **passed** and re-run independently; **not merged** — the runtime half is owed.
+
+**Planner verification, 2026-09-15 — re-run, not accepted.** `git diff --stat master..HEAD` shows **one file, and one hunk** — the constraint the task set on itself held exactly. The change is `const ROW_HEIGHT = 84` → `68` plus its explanatory comment, and nothing else. `ReservationSlot.tsx` untouched and `min-height: 48px` still present, so the floor this task deliberately stays above was not quietly removed. `npx tsc --noEmit --incremental false` exits **0**; `npx eslint src/app/components/Calendar.tsx` reports **0** findings on both the branch and `master`; `npm run build` exits **0**; `git diff --check` clean.
 - **Branch:** `feat/shorter-reservation-cards`
 - **Why:** A standard reservation card is 80px tall and needs only 46px of that. The wasted height is why so little of the clinic's day fits on screen at once. Reducing the hour-row height reclaims it.
 
@@ -7637,10 +7640,33 @@ That is the entire change. `.time-row`'s CSS already interpolates `${ROW_HEIGHT}
 
 ---
 
+### TJ-045 — The Add Reservation modal is unreachable on both dashboards
+
+- **Status:** BACKLOG — no planning pass. Do not execute against this ID.
+- **Why:** `src/app/admin/page.tsx` and `src/app/secretary/page.tsx` each contain a complete Add Reservation modal — state, patient search, doctor select, time input, submit handler and roughly forty lines of JSX and CSS apiece — that **no user can open**. `openAddModal` is defined (`admin/page.tsx:166`, `secretary/page.tsx:119`) and never called; the only `setShowAdd(true)` in each file is inside it. Both "+ Add Reservation" buttons navigate to `/{role}/reservations/new` instead (`admin/page.tsx:255`, `secretary/page.tsx:190`).
+- **Found** during TJ-041's first dispatch, which was written against this modal and stopped before wiring a click to a form nobody can reach. It is the same species as TJ-016 (the patients Files tab is dead UI).
+- **What its planning pass owes:** decide delete-versus-revive, and note the answer is probably *delete* — the dedicated `/reservations/new` pages are the live flow, they are what both buttons and now TJ-041 use, and they carry fields the modal lacks. Measure what actually goes: the modal JSX, `showAdd`/`addForm`/`addError`/`selectedPatient`/`patientSearch`/`patientResults` state, `openAddModal`, `submitAdd`, the patient-search `useEffect`, and the modal CSS — but check each for a second consumer before removing it, because the patient-search state in particular may be shared. **Note this interacts with TJ-030:** four of the seven known `react-hooks/set-state-in-effect` lint findings are in these two files' patient-search effects, so deleting dead code may move that baseline. Re-measure and record the new number rather than letting it drift silently.
+
+---
+
+---
+
+### TJ-046 — Two booking paths still accept any hour
+
+- **Status:** BACKLOG — no planning pass. Do not execute against this ID.
+- **Why:** TJ-042a validates the clinic window on `POST /api/reservations` only. **Two other write paths reach the same table with no time check at all**, so the guarantee "the clinic only books 07:00–19:00" is not yet true:
+  - **`PUT /api/reservations/[id]`** — reschedule. It accepts `sessionDate` and `sessionTime` and applies them with no window validation (`api/reservations/[id]/route.ts:86–87`). A session created legally at 10:00 can be moved to 03:00.
+  - **`POST /api/reservations/[id]/duplicate`** — the duplicate flow. Its modal has its own unconstrained `<input type="time">` (`admin/page.tsx:414`, bound to `dupTime`), and the route was not examined for a window check.
+- **Found** by the TJ-042a executor, which reported both rather than widening its own scope — correctly, since the task named them out of scope.
+- **What its planning pass owes:** read `api/reservations/[id]/duplicate/route.ts`, which nothing has yet inspected for this. Decide where the rule should live — it is now stated in three places if each route repeats it, so extracting the window check into a small shared helper (alongside `CLINIC_OPEN_HOUR`/`CLINIC_CLOSE_HOUR`, which TJ-042a put in `api/reservations/route.ts`) is probably right, and the pass should say where that helper belongs. Decide the reschedule question deliberately rather than by default: refusing an out-of-window *move* is consistent, but it also means an existing out-of-window booking cannot be corrected by dragging it, only deleted and recreated — check that against how the clinic actually fixes mistakes. Add the `min`/`max` courtesy attributes to the duplicate modal's time input to match what TJ-042a did for the other two.
+
+---
+
 ## Notes for the planner
 
 Findings reported by the executor, or surfaced during a pass, that fall outside the scope of the task that turned them up. The planner triages these into tasks. **The executor does not write here** — it reports in conversation and the planner records.
 
+- **A spec can name the wrong target entirely, and neither a build nor a review of the diff would catch it — only reading the surrounding code does.** TJ-041's original steps 4–6 told the executor to open the dashboards' in-file Add Reservation modal with the clicked hour pre-filled. Two things were wrong. The shallow one: the snippet built an `addForm` object with a `patientId` key that does not exist, which is a TypeScript excess-property error and would have failed the `tsc` gate. **The deep one: that modal cannot be opened by anybody.** `openAddModal` is defined on both dashboards and never called; the only `setShowAdd(true)` in each file sits inside it; and both "+ Add Reservation" buttons navigate to `/{role}/reservations/new` instead. The task would have wired a click to a form no other part of the application can reach — and **it would have built, typechecked and linted clean**, because unreachable code is still valid code. **What caught it was the executor refusing to improvise.** It was told to read `addForm` before writing and stop on a mismatch; that instruction was aimed at the shallow defect and it surfaced the deep one on the way. Worth noting it also reasoned correctly about *when* the TJ-043a precedent applies — "implement the literal and flag it" covers a literal that compiles but reads oddly, not one that cannot build — and said so rather than silently picking a lane. **Two rules follow.** When a task's target is a UI surface, **verify the surface is reachable before specifying anything against it**: grep for the thing that opens it, not just for the thing itself. And when a pass names an anchor inside a component's state, **read that state's full shape** — the pass had read the modal's JSX and its submit path but never the `useState` initialiser three lines above, which is where both defects were visible at once. The dead modals are now **TJ-045**. (Found during TJ-041's first dispatch, 2026-09-15.)
 - **When a task states an invariant *and* the literal meant to satisfy it, check the literal against the invariant — they were written at different moments and can disagree.** TJ-043a specified `z-index: 1200` in its Instructions and, in its Regression-risk paragraph, asserted the popover sits "below the `z-index: 1000` modal overlay". Both sentences were written by the planner, minutes apart, and **they contradict each other**: 1200 is above 1000. The executor matched the literal exactly — as its rules require — and reported the discrepancy rather than quietly fixing it, which is exactly why the split exists and is the second time in this session that the executor's discipline caught a planner error. **The deeper cause is worth naming:** the task told the executor to *reuse* `ReservationSlot`'s portal pattern, and then supplied a z-index that pattern does not use. Reuse was specified for the mechanism and abandoned for the value. Had the spec said "use `.menu-panel`'s layer" instead of naming a number, there would have been nothing to get wrong. **Rule: when a task instructs reuse of an existing pattern, derive its constants from that pattern by reference rather than restating them — and where a number must be restated, verify it against every sibling value rather than against intent.** An audit of all four `z-index` values in play (3, 200, 1000, 1200) makes the error obvious in one line; the intent sentence alone never would. (Found during the TJ-043a planner review, 2026-09-15.)
 - **A section heading is not a unique string, and `indexOf` on one spliced 195 lines into the middle of a paragraph.** Filing TJ-040…TJ-044 meant inserting the bodies before `## Notes for the planner`. The insert located it with `indexOf("## Notes for the planner")` — which matched, three thousand lines earlier, a *prose mention* of the section by name inside a finding that discusses it. The five tasks were pasted mid-sentence: TJ-040's body was destroyed, TJ-039's ended up after the new tasks, and the file grew two things that looked like the section heading. **Nothing threw.** The script reported success. What caught it was the row/body audit built two commits earlier — `TJ-040 body=0 row=1` is impossible for a task just written, and that single line was the whole signal. The file was restored with `git checkout -- tasks.md` (the work was committed, so the blast radius was one uncommitted edit) and redone with `/^## Notes for the planner$/m`, plus an assertion that the anchor matches **exactly once** before splicing. **Three rules follow.** Anchor on a whole line with `^…$` and the `m` flag, never a bare substring, whenever the target is a heading or any other short phrase the prose might also use. **Assert uniqueness before writing, not after** — a splice that lands in the wrong place cannot be detected by reading the thing you just wrote, because it is all present and correct, just in the wrong file position. And note that this file has now recorded the *same class* of failure twice: the 2026-08-17 TJ-018 entry below describes a paste landing mid-line and leaving the task still looking complete. Two independent recurrences is a tooling problem, not a care problem — any future script that edits this file should verify its anchor count first and diff `--numstat` for unexpected deletions after. (Found and fixed while filing TJ-040…TJ-044, 2026-09-15.)
 - **The 2026-08-15 fix for Queue/body drift did not hold, and a deleted branch nearly took unmerged work with it.** Found 2026-09-15 while checking the repo against `origin`. Three things had gone wrong at once, all of them invisible from inside `tasks.md`. **(1)** `docs/health-check-2026-08-23` had never been merged, so the health check and **TJ-026 … TJ-032 existed on no branch anyone reads** — including TJ-027, a *critical* `next-auth` fail-open advisory naming this app's own `!!auth?.user` pattern. A task filed on an unmerged branch is a task nobody has. **(2)** Ten queue rows disagreed with their bodies: seven bodies had no row at all (TJ-005, TJ-005b2a, TJ-005b2b, TJ-011a, TJ-011b, TJ-011c, TJ-036) and three rows carried a stale status, TJ-012 reading `BACKLOG` for work merged as `fb94e81`. The 2026-08-15 note prescribed "a merge is not recorded until both are updated" and the drift recurred anyway, which says the rule needs a *check*, not more discipline. **(3)** `feat/hard-delete-secretary` had been deleted while TJ-010a still sat at `VISUAL REVIEW`; commit `c0bd451` survived only in the reflog, **28 days into the 30-day `gc.reflogExpireUnreachable` default**. An automatic `git gc --auto` would have destroyed it within about two days, and `tasks.md` would still have pointed confidently at a branch name that resolved to nothing. **Three habits follow, and they are cheap.** Before trusting the queue, run `git branch --no-merged master` — an unmerged branch is either work in flight or a filing nobody can see. **Never delete a task's branch before its row reads `DONE`**; the branch is the only thing holding an unmerged commit. And the table/body agreement is mechanically checkable — compare `^| TJ-` rows against `^### TJ-` bodies — which is a natural first gate for TJ-029 (CI), alongside the `grep -c "^- **Status:** READY"` check the 2026-08-15 note already asks for. (Found during a repo/remote sync check, 2026-09-15.)
