@@ -22,6 +22,9 @@ interface CalendarProps {
     onDuplicate: (id: number) => void;
     onDelete: (id: number) => void;
     onSlotClick: (id: number) => void;
+    // Fires when empty grid space is clicked, carrying the hour clicked (0-23).
+    // Separate from onSlotClick, which carries a reservation id.
+    onEmptyClick?: (hour: number) => void;
     canDelete?: boolean;
 }
 
@@ -133,6 +136,7 @@ export default function Calendar({
     onDuplicate,
     onDelete,
     onSlotClick,
+    onEmptyClick,
     canDelete = false,
 }: CalendarProps) {
     const { minHour, maxHour } = computeHourRange(reservations);
@@ -215,7 +219,17 @@ export default function Calendar({
                         return (
                             <div key={hour} className="time-row">
                                 <div className="time-label">{formatHour(hour)}</div>
-                                <div className="time-slots">
+                                <div
+                                    className="time-slots"
+                                    onClick={(e) => {
+                                        if (!onEmptyClick) return;
+                                        // Only empty space: a click that landed on or inside a
+                                        // card belongs to that card's own handler.
+                                        if ((e.target as HTMLElement).closest(".card-wrap")) return;
+                                        onEmptyClick(hour);
+                                    }}
+                                    style={onEmptyClick ? { cursor: "copy" } : undefined}
+                                >
                                     {isEmpty && <div className="empty-slot" />}
                                     {own.map((r) => {
                                         const idx = colOf.get(r.id) ?? 0;
