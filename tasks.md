@@ -86,6 +86,11 @@ Two things that bear repeating here, because this is the file both agents open:
 | TJ-037 | Detect implicit duplicate patients by normalized phone | DONE — task commits `c5b1234`, `52c0291`, `924d597`; merged to `master` in `910322b`; build-proven | `feat/dashboard-duplicates-and-calendar` |
 | TJ-038 | Rebuild the dashboard calendar for dense reservations | DONE — task commit `efe4165`; merged to `master` in `910322b`; build- and geometry-proven | `feat/dashboard-duplicates-and-calendar` |
 | TJ-039 | Fix calendar action-menu stacking and continuous-time placement | DONE — task commits `8ed5206`, `6526020`; merged to `master` as `108aa7c`; build- and interval-proven | `codex/fix-calendar-action-menu` |
+| TJ-040 | Let a secretary delete a reservation | READY — planning pass 2026-09-15 | `feat/secretary-delete-reservation` |
+| TJ-041 | Open the booking form from a click on the schedule, at the hour clicked | BACKLOG — no planning pass | — |
+| TJ-042 | Constrain the schedule to 07:00–19:00 | BACKLOG — no planning pass | — |
+| TJ-043 | Lay the schedule out horizontally | BACKLOG — no planning pass; expect a split | — |
+| TJ-044 | Slim the reservation cards | BACKLOG — no planning pass; sits behind TJ-043 | — |
 
 ---
 
@@ -6695,10 +6700,201 @@ A full read-only sweep of the project and the repo, run at the user's request. N
 
 ---
 
+### TJ-040 — Let a secretary delete a reservation
+
+- **Status:** READY
+- **Branch:** `feat/secretary-delete-reservation`
+- **Why:** `DELETE /api/reservations/[id]` refuses anyone who is not `ADMIN` (`src/app/api/reservations/[id]/route.ts:220`), and `src/app/secretary/page.tsx` never passes `canDelete` to `Calendar`, so the Delete item is not drawn in the slot menu. Front-desk staff book and correct the day's schedule; a reservation entered against the wrong patient is theirs to remove, and today they must find an admin. After this, a secretary deletes it themselves and the audit trail names them.
+
+**Planning pass:** 2026-09-15 — read `src/app/api/reservations/[id]/route.ts` (all 239 lines), `src/lib/permissions.ts`, `src/app/components/Calendar.tsx`, `src/app/components/ReservationSlot.tsx`, `src/app/secretary/page.tsx`, `src/app/admin/page.tsx` and `src/app/doctor/page.tsx`.
+
+Confirmed:
+- The `DELETE` handler exists and already writes a `SESSION_DELETED` audit row through `logPatientActivity` with `session.user.id` as the actor (route.ts:231–236). **No audit work is needed** — the actor is recorded correctly the moment a secretary is allowed through.
+- `ReservationSlot` already renders the Delete item behind `if (canDelete)` (ReservationSlot.tsx:181–183), and `Calendar` already forwards both `canDelete` and `onDelete` (Calendar.tsx:23, 25, 136, 250, 252).
+- **`src/app/secretary/page.tsx` already defines `handleDelete` (line 102) and already passes `onDelete={handleDelete}` (line 205).** It omits only `canDelete`.
+- The admin area is **English-only** — no `useTranslation`/`translations` import anywhere under `src/app/admin`, `src/app/secretary`, `src/app/doctor`, or in either calendar component. **No Arabic copy is owed by this task.**
+- `src/lib/permissions.ts` is the established home for a role rule ("The rule lives here rather than inline at each handler", TJ-005b1). The `DELETE` handler instead uses an inline cast, `(session.user as { role?: string })?.role !== "ADMIN"`, which is the odd one out.
+
+Corrected: the pass was opened expecting new UI plumbing. There is none to add — the capability has been wired end to end since the component was written, and is gated by one missing prop plus one server-side role check.
+
+**Scope — touch only these:**
+- `src/lib/permissions.ts`
+- `src/app/api/reservations/[id]/route.ts`
+- `src/app/secretary/page.tsx`
+
+**Do not touch:** anything else. Specifically **not** `src/app/doctor/page.tsx` — it has the same `handleDelete`/`onDelete` shape and must keep omitting `canDelete`; doctors do not delete sessions. **Not** `src/app/admin/page.tsx`, **not** `Calendar.tsx`, **not** `ReservationSlot.tsx` — all three are already correct for this change.
+
+**Instructions:**
+
+1. In `src/lib/permissions.ts`, append a third helper after `canAccessClinical`, matching the file's existing doc-comment style:
+
+```ts
+/**
+ * May this user permanently delete a reservation?
+ *
+ * ADMIN and SECRETARY may; DOCTOR may not. Front-desk staff own the booking
+ * calendar and must be able to remove a session booked in error without
+ * finding an admin. Doctors record what happened in a session and do not
+ * decide whether it exists — they cancel via PATCH status=CANCELLED.
+ *
+ * Deletion is permanent and is recorded against the patient's audit log with
+ * the acting user's id, so "who removed this" stays answerable. (TJ-040)
+ */
+export function canDeleteReservation(
+    user: Session["user"] | undefined | null
+): boolean {
+    if (!user) return false;
+    return user.role === "ADMIN" || user.role === "SECRETARY";
+}
+```
+
+2. In `src/app/api/reservations/[id]/route.ts`, extend the existing import on line 4. Match exactly:
+
+```ts
+import { canAccessClinical } from "@/lib/permissions";
+```
+
+Replace with:
+
+```ts
+import { canAccessClinical, canDeleteReservation } from "@/lib/permissions";
+```
+
+3. In the same file, update the `DELETE` comment. Match exactly:
+
+```ts
+// DELETE /api/reservations/[id] — permanent removal (admin only; use PATCH status=CANCELLED otherwise)
+```
+
+Replace with:
+
+```ts
+// DELETE /api/reservations/[id] — permanent removal (admin and secretary; use PATCH status=CANCELLED otherwise)
+```
+
+4. In the same file, replace the role gate. Match exactly:
+
+```ts
+    if ((session.user as { role?: string })?.role !== "ADMIN") {
+        return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
+    }
+```
+
+Replace with:
+
+```ts
+    if (!canDeleteReservation(session.user)) {
+        return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
+    }
+```
+
+5. In `src/app/secretary/page.tsx`, match exactly:
+
+```tsx
+                            onDelete={handleDelete}
+                            onSlotClick={() => { }}
+```
+
+Replace with:
+
+```tsx
+                            onDelete={handleDelete}
+                            onSlotClick={() => { }}
+                            canDelete
+```
+
+6. In `src/app/secretary/page.tsx`, make the delete surface its failures the way `handleStatusChange` immediately above it already does. Match exactly:
+
+```tsx
+    const handleDelete = async (id: number) => {
+        if (!confirm("Delete this reservation?")) return;
+        await fetch(`/api/reservations/${id}`, { method: "DELETE" });
+        fetchReservations();
+    };
+```
+
+Replace with:
+
+```tsx
+    const handleDelete = async (id: number) => {
+        if (!confirm("Delete this reservation?")) return;
+        setStatusError("");
+        const res = await fetch(`/api/reservations/${id}`, { method: "DELETE" });
+        if (!res.ok) {
+            const data = await res.json().catch(() => ({}));
+            setStatusError(data.error || "Could not delete the reservation.");
+            return;
+        }
+        fetchReservations();
+    };
+```
+
+`statusError` / `setStatusError` already exist in this file (declared line 56, rendered lines 170–174). Do not add new state.
+
+**Verification:**
+- `npx tsc --noEmit --incremental false` passes
+- `npm run build` passes
+- `npx eslint src/lib/permissions.ts "src/app/api/reservations/[id]/route.ts" src/app/secretary/page.tsx` reports no **new** findings against the TJ-030 baseline
+- `git diff --check` clean
+- `grep -n "canDelete" src/app/doctor/page.tsx` returns **nothing** — the doctor dashboard must not have gained the prop
+- `grep -n '!== "ADMIN"' "src/app/api/reservations/[id]/route.ts"` returns **nothing** — the inline cast is gone
+
+**Regression risk this covers:** the change widens a destructive permission, so what can break is not the happy path but the refusals either side of it. A doctor must still be refused at the server *and* never see the menu item; an unauthenticated caller must still get 401, not 403. The planner's runtime review will drive all four cases.
+
+**Done when:**
+- [ ] A signed-in SECRETARY sees Delete in the slot menu, and using it removes the card
+- [ ] The deletion writes a `SESSION_DELETED` audit row naming the secretary as the actor
+- [ ] A signed-in DOCTOR sees **no** Delete item, and a direct `DELETE` request returns **403**
+- [ ] An unauthenticated `DELETE` request returns **401**
+- [ ] ADMIN delete still works exactly as before
+- [ ] A refused delete shows the error banner instead of silently doing nothing
+- [ ] Build, typecheck and lint all pass
+
+---
+
+### TJ-041 — Open the booking form from a click on the schedule, at the hour clicked
+
+- **Status:** BACKLOG — no planning pass. Do not execute against this ID.
+- **Why:** Booking today means opening the Add Reservation modal and typing the time. The schedule already knows which hour the pointer is over, so clicking an empty part of the grid should open that same modal with the hour pre-selected.
+- **What is actually there now:** `Calendar`'s `onSlotClick(id: number)` takes a *reservation id* and fires only from a card (`Calendar.tsx:24, 251`). The only thing drawn in empty space is `.empty-slot` (`Calendar.tsx:219, 293–298`), a non-interactive `div` rendered **only when the entire hour is free** (`isEmpty = activeAt(hour).length === 0`). There is no click target for the background of a partly-booked hour, and no handler shape that carries an hour instead of an id.
+- **What its planning pass owes:** decide the signature — a second callback carrying the hour, or widening `onSlotClick` — without breaking the three existing call sites, one of which (`secretary/page.tsx:206`) passes `() => { }`. Decide whether a *partly booked* hour is clickable, which `.empty-slot`'s render condition currently forecloses. Decide what happens at the mobile breakpoint (`Calendar.tsx:300–314`), where absolute positioning is switched off entirely and there is no geometry to read an hour from. Settle whether the click resolves to the hour only or to the nearest minute, and confirm it does not fire when the user is dismissing an open slot menu. Name which dashboards get it — admin has a working `handleSlotClick`, secretary passes a no-op, and doctor must be considered separately since doctors do not create reservations.
+
+---
+
+### TJ-042 — Constrain the schedule to 07:00–19:00
+
+- **Status:** BACKLOG — no planning pass. Do not execute against this ID.
+- **Why:** The clinic's day is 7 AM to 7 PM. The schedule should show exactly those hours, and a booking should not be accepted outside them.
+- **What is actually there now:** `Calendar.tsx:29–30` sets `DEFAULT_MIN_HOUR = 9` and `DEFAULT_MAX_HOUR = 18`, and the comment on line 30 states the current contract explicitly: *"9 AM – 6 PM reads by default, but nothing outside it is ever dropped."* `computeHourRange` (`Calendar.tsx:71–81`) **widens** the window to swallow any reservation outside it. So the window is a display default, not a limit — and today it is the wrong default in both directions, starting two hours late and ending an hour early.
+- **The decision this turns on, and why it is not a two-constant change.** Making 07:00–19:00 a hard display window means deleting the widening behaviour, and that behaviour exists so a reservation is never invisible. Any session already in the database outside those hours would vanish from the calendar while still existing — a booked patient nobody can see. The pass must establish whether such rows exist before choosing, and if they do, decide between migrating them, showing an out-of-range affordance, or keeping the widening as an explicit exception path.
+- **What its planning pass owes:** query the live database for reservations outside 07:00–19:00 before designing anything. Decide whether "only able to hold appointments" means validating the two booking pages (`admin/reservations/new`, `secretary/reservations/new`), the two dashboard add-modals, the `POST /api/reservations` handler, or all of them — server-side validation is the only half that actually holds. Note the timezone caveat already flagged at `Calendar.tsx:45–46`: hours are read in the browser's local zone while the server runs `TZ=Asia/Amman`, so a client-side-only bound is wrong for any staff member not in Amman. Sequence against TJ-043, which rewrites the same layout code.
+
+---
+
+### TJ-043 — Lay the schedule out horizontally
+
+- **Status:** BACKLOG — no planning pass. Do not execute against this ID. **Largest of the five; expect this to split.**
+- **Why:** The schedule should extend along the horizontal axis rather than the vertical one.
+- **What is actually there now:** the layout is vertical in both of its axes at once, and they are independent. Hours stack **downward** as `.time-row` elements of fixed `ROW_HEIGHT = 84px` (`Calendar.tsx:31, 275–278`), each with a sticky label of `LABEL_WIDTH = 72px` at the inline start (`Calendar.tsx:36, 281–288`). *Within* an hour, overlapping reservations are packed **sideways** into columns by `assignColumns` (`Calendar.tsx:87–113`), sized by the percentage maths in `colWidthCss`/`colLeftCss` (`Calendar.tsx:119–128`) and bounded by `MIN_COL_WIDTH`/`MAX_COL_WIDTH` (lines 33–34). Flipping the time axis therefore does not rotate one thing — it swaps the two axes into each other, and the column-packing engine TJ-038 and TJ-039 built becomes a row-packing engine.
+- **What the pass must not lose:** the invariants TJ-039 proved and recorded — half-open `[start, end)` intervals, so a session ending at 11:30 may share a track with one starting at 11:30; one shared divisor across every hour linked by a boundary-crossing card (`Calendar.tsx:185–197`); and continuous-time placement, where a card's offset is proportional to its minute. These must be re-proven on the new axis, not assumed to carry over.
+- **What its planning pass owes:** decide what the horizontal axis *is* — hours running across with overlap stacked vertically, or one column per doctor with time still descending, which is the more common clinic layout and may be what is actually wanted. **Ask the user which, before designing anything**; the two produce completely different components. Then decide the fate of the `max-width: 768px` block (`Calendar.tsx:300–314`), which today flattens everything to a single vertical stack and is the only reason the calendar works on a phone — a horizontal schedule at 320px needs an answer, and TJ-021 already records that the admin area overflows there. Establish how the sticky hour label behaves once it is a column header, and whether the pane scrolls in one axis or two. Sequence before TJ-042 and TJ-044, both of which edit the same constants.
+
+---
+
+### TJ-044 — Slim the reservation cards
+
+- **Status:** BACKLOG — no planning pass. Do not execute against this ID. **Blocked in practice on TJ-043** — the axis decision there determines what "thinner" means.
+- **Why:** The patient cards on the schedule are heavier than they need to be, and slimmer cards fit more of the day on screen at once.
+- **What is actually there now:** a card's height is derived, not set — `height = (durationMinutes / 60) * ROW_HEIGHT - CARD_GAP` (`Calendar.tsx:224`) — so it is a function of `ROW_HEIGHT = 84` and cannot be changed independently of the row geometry without breaking the continuous-time placement TJ-039 established. Width comes from the column maths, bounded by `MIN_COL_WIDTH = 150` and `MAX_COL_WIDTH = 320` (`Calendar.tsx:33–34`). The practical floor on both is the card's own content: `ReservationSlot` renders patient name, phone, doctor name, time, a status chip and optionally a note.
+- **What its planning pass owes:** **ask the user which dimension "thinner" means** — shorter along the time axis, or narrower across it. The two have different costs: shorter means reducing `ROW_HEIGHT`, which compresses every card proportionally and tightens the minute resolution; narrower means lowering `MIN_COL_WIDTH`, which lets a busy hour fit without scrolling but truncates patient names sooner. Then decide what content may be dropped or hidden at the smaller size, and at what point the status chip and note stop being legible. Re-check the 768px block, where cards are `height: auto` and `width: 100%` and none of these constants apply. Do not start until TJ-043's axis is settled.
+
+---
+
 ## Notes for the planner
 
 Findings reported by the executor, or surfaced during a pass, that fall outside the scope of the task that turned them up. The planner triages these into tasks. **The executor does not write here** — it reports in conversation and the planner records.
 
+- **A section heading is not a unique string, and `indexOf` on one spliced 195 lines into the middle of a paragraph.** Filing TJ-040…TJ-044 meant inserting the bodies before `## Notes for the planner`. The insert located it with `indexOf("## Notes for the planner")` — which matched, three thousand lines earlier, a *prose mention* of the section by name inside a finding that discusses it. The five tasks were pasted mid-sentence: TJ-040's body was destroyed, TJ-039's ended up after the new tasks, and the file grew two things that looked like the section heading. **Nothing threw.** The script reported success. What caught it was the row/body audit built two commits earlier — `TJ-040 body=0 row=1` is impossible for a task just written, and that single line was the whole signal. The file was restored with `git checkout -- tasks.md` (the work was committed, so the blast radius was one uncommitted edit) and redone with `/^## Notes for the planner$/m`, plus an assertion that the anchor matches **exactly once** before splicing. **Three rules follow.** Anchor on a whole line with `^…$` and the `m` flag, never a bare substring, whenever the target is a heading or any other short phrase the prose might also use. **Assert uniqueness before writing, not after** — a splice that lands in the wrong place cannot be detected by reading the thing you just wrote, because it is all present and correct, just in the wrong file position. And note that this file has now recorded the *same class* of failure twice: the 2026-08-17 TJ-018 entry below describes a paste landing mid-line and leaving the task still looking complete. Two independent recurrences is a tooling problem, not a care problem — any future script that edits this file should verify its anchor count first and diff `--numstat` for unexpected deletions after. (Found and fixed while filing TJ-040…TJ-044, 2026-09-15.)
 - **The 2026-08-15 fix for Queue/body drift did not hold, and a deleted branch nearly took unmerged work with it.** Found 2026-09-15 while checking the repo against `origin`. Three things had gone wrong at once, all of them invisible from inside `tasks.md`. **(1)** `docs/health-check-2026-08-23` had never been merged, so the health check and **TJ-026 … TJ-032 existed on no branch anyone reads** — including TJ-027, a *critical* `next-auth` fail-open advisory naming this app's own `!!auth?.user` pattern. A task filed on an unmerged branch is a task nobody has. **(2)** Ten queue rows disagreed with their bodies: seven bodies had no row at all (TJ-005, TJ-005b2a, TJ-005b2b, TJ-011a, TJ-011b, TJ-011c, TJ-036) and three rows carried a stale status, TJ-012 reading `BACKLOG` for work merged as `fb94e81`. The 2026-08-15 note prescribed "a merge is not recorded until both are updated" and the drift recurred anyway, which says the rule needs a *check*, not more discipline. **(3)** `feat/hard-delete-secretary` had been deleted while TJ-010a still sat at `VISUAL REVIEW`; commit `c0bd451` survived only in the reflog, **28 days into the 30-day `gc.reflogExpireUnreachable` default**. An automatic `git gc --auto` would have destroyed it within about two days, and `tasks.md` would still have pointed confidently at a branch name that resolved to nothing. **Three habits follow, and they are cheap.** Before trusting the queue, run `git branch --no-merged master` — an unmerged branch is either work in flight or a filing nobody can see. **Never delete a task's branch before its row reads `DONE`**; the branch is the only thing holding an unmerged commit. And the table/body agreement is mechanically checkable — compare `^| TJ-` rows against `^### TJ-` bodies — which is a natural first gate for TJ-029 (CI), alongside the `grep -c "^- **Status:** READY"` check the 2026-08-15 note already asks for. (Found during a repo/remote sync check, 2026-09-15.)
 - **A spec that lists states without ordering them ships bugs in the gaps, and both of TJ-036's defects lived there.** The task gave a six-row verdict table — condition, exit code, meaning — and never said in what order the conditions are evaluated or what invariant each one may assume. The executor picked a reasonable order, and two false all-clears fell out of the unstated part. **(1)** `RESOLVED`'s condition was written as "SAN no longer contains `therapyjo.com`", implemented as a substring test — and `"www.therapyjo.com".includes("therapyjo.com")` is `true`, so the verdict meaning "the ~60-day fallback ritual can stop" was **unreachable for the only host it watches**, while firing for unrelated ones. **(2)** `RENEWED` compared serials against any certificate at all, so an unrelated host reported "renewal succeeded" — and the fallback runbook acts on a changed serial, so a repointed `www` would have read as stand-down. The fix in both cases was the same missing idea: **no verdict about the tracked certificate is reachable until the certificate is confirmed to be the tracked one** (the `FOREIGN` gate). **Lesson for future specs: when a task enumerates mutually-exclusive states, state the evaluation order and say what each branch may assume has already been established.** A table of conditions reads as complete and is not. Related and worth noticing: the executor's own verification *surfaced* defect (1) — it reported `wrong.host.badssl.com → RESOLVED` as anomalous — but diagnosed it as a spec ambiguity rather than a bug, which is exactly the failure mode the planner/executor split exists to catch, and did. (Found during the TJ-036 planner review, 2026-08-24.)
 - **A one-off `ERROR` from a network check is not a signal, and a tripwire that treats it as one gets ignored.** TJ-036's own verification hit a transient timeout on a live run, then passed on retry. The script is right to exit non-zero rather than imply `OK`, but the *operator* guidance has to say "retry before reacting" or the weekly check trains people to dismiss it. Recorded in `Production_Cutover.md`'s verdict table rather than left implicit. The same instinct applies to any future health check that talks to a network: distinguish *measured bad* from *could not measure*, and never let the second wear the costume of the first. (Found during TJ-036, 2026-08-24.)
