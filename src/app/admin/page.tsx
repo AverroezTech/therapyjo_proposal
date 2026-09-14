@@ -359,7 +359,7 @@ export default function AdminDashboard() {
                             </div>
                             <div className="form-group">
                                 <label>Time</label>
-                                <input type="time" value={addForm.sessionTime} onChange={(e) => setAddForm({ ...addForm, sessionTime: e.target.value })} />
+                                <input type="time" min="07:00" max="18:00" value={addForm.sessionTime} onChange={(e) => setAddForm({ ...addForm, sessionTime: e.target.value })} />
                             </div>
                         </div>
                         <div className="form-row">
