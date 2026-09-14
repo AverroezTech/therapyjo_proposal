@@ -101,7 +101,13 @@ export default function SecretaryDashboard() {
 
     const handleDelete = async (id: number) => {
         if (!confirm("Delete this reservation?")) return;
-        await fetch(`/api/reservations/${id}`, { method: "DELETE" });
+        setStatusError("");
+        const res = await fetch(`/api/reservations/${id}`, { method: "DELETE" });
+        if (!res.ok) {
+            const data = await res.json().catch(() => ({}));
+            setStatusError(data.error || "Could not delete the reservation.");
+            return;
+        }
         fetchReservations();
     };
 
@@ -204,6 +210,7 @@ export default function SecretaryDashboard() {
                             onDuplicate={handleDuplicate}
                             onDelete={handleDelete}
                             onSlotClick={() => { }}
+                            canDelete
                         />
                     )}
                 </div>

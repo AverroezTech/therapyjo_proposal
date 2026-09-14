@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
-import { canAccessClinical } from "@/lib/permissions";
+import { canAccessClinical, canDeleteReservation } from "@/lib/permissions";
 import { logPatientActivity } from "@/lib/audit";
 
 // Valid status transitions (state machine)
@@ -210,14 +210,14 @@ export async function PATCH(
     return NextResponse.json(updated);
 }
 
-// DELETE /api/reservations/[id] — permanent removal (admin only; use PATCH status=CANCELLED otherwise)
+// DELETE /api/reservations/[id] — permanent removal (admin and secretary; use PATCH status=CANCELLED otherwise)
 export async function DELETE(
     _req: NextRequest,
     { params }: { params: Promise<{ id: string }> }
 ) {
     const session = await auth();
     if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    if ((session.user as { role?: string })?.role !== "ADMIN") {
+    if (!canDeleteReservation(session.user)) {
         return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
     }
 
