@@ -93,7 +93,7 @@ Two things that bear repeating here, because this is the file both agents open:
 | TJ-042b | Make 07:00–19:00 the calendar's display window | BLOCKED — **needs a working `DATABASE_URL`**; the local credential is invalid | — |
 | TJ-043 | Give the schedule more horizontal room without moving the hour labels | SPLIT — design pass run and measured 2026-09-15; placement chosen; see TJ-043a, TJ-043b | — |
 | TJ-043a | Admin: date picker to a popover, summary to header chips, sidebar deleted | DONE — merged to `master` 2026-09-15 with `--no-ff` | `feat/schedule-full-width-admin` |
-| TJ-043b | Secretary: same treatment, plus the 1200px shell cap | BACKLOG — needs its own pass once TJ-043a lands; consumes the component it creates | — |
+| TJ-043b | Secretary: same treatment, plus the 1200px shell cap | READY — planning pass 2026-09-15, six anchors verified unique | `feat/schedule-full-width-secretary` |
 | TJ-044 | Make the reservation cards shorter | DONE — merged to `master` 2026-09-15 with `--no-ff` | `feat/shorter-reservation-cards` |
 | TJ-045 | The Add Reservation modal is unreachable on both dashboards | BACKLOG — found during TJ-041's first dispatch; needs a pass | — |
 | TJ-046 | Two booking paths still accept any hour | BACKLOG — found during TJ-042a; needs a pass | — |
@@ -7565,10 +7565,133 @@ Replace with:
 
 ### TJ-043b — Secretary: same treatment, plus the 1200px shell cap
 
-- **Status:** BACKLOG — no planning pass. Do not execute against this ID. **Sits behind TJ-043a**, which creates the component this task consumes.
-- **Why:** The secretary dashboard has the same 260px sidebar as the admin, and additionally a shell capped at `max-width: 1200px` with no `margin: 0 auto` (`secretary/layout.tsx:204`) against admin's 1400px — so its calendar freezes at 922px from 1280px upward and never widens. The primary user of the booking calendar has less room than the admin on every screen above 1280px. Measured in TJ-043's pass: 5 columns today, 7 with the sidebar gone, **8** with the cap raised as well. The user approved including the cap here on 2026-09-15.
-- **Why it is not `READY` yet:** its central dependency, `src/app/components/DatePickerPopover.tsx`, does not exist on `master`. A planning pass must verify its claims against the code as it is, and anchors cannot be pinned against a file that has not been written. **Pass this immediately after TJ-043a merges**, at which point the component's real API can be read rather than predicted.
-- **What its planning pass owes:** the secretary sub-header is not identical to the admin's — read it rather than assuming symmetry, and check whether it has a `.legend` to sit the chips beside. Establish where `.btn-nav` (the prev/next day controls, `secretary/page.tsx:267`) sits relative to the new date trigger, since two date affordances next to each other need a deliberate order. Confirm the secretary sidebar's contents: it holds `DatePickerCalendar` but the pass must check whether it also carries a summary card, because if it does not, there are no chips to move and the task is smaller than the admin's. Decide whether `margin: 0 auto` should be added alongside the cap raise — admin has it, secretary does not, and without it the content stays left-aligned on a wide screen rather than centring.
+- **Status:** READY
+- **Branch:** `feat/schedule-full-width-secretary`
+- **Why:** TJ-043a freed 276px on the admin dashboard by moving the date picker into a popover and deleting the sidebar. The secretary dashboard still has that sidebar, so the primary user of the booking calendar is the one who did not get the space. It is additionally capped at `max-width: 1200px` against admin's 1400, so its calendar freezes at 922px from 1280px upward and never widens. Measured in TJ-043's pass: **5 columns today, 7 with the sidebar gone, 8 with the cap raised as well.**
+
+**Planning pass:** 2026-09-15 — read `src/app/secretary/page.tsx` (header, layout JSX and the full styled-jsx block), `src/app/secretary/layout.tsx`, and `src/app/components/DatePickerPopover.tsx` as it actually shipped. Measurements are carried from TJ-043's design pass and not repeated.
+
+Confirmed — **and the secretary dashboard is not a mirror of the admin's, so three of TJ-043a's steps do not apply:**
+- **The sidebar holds only the date picker.** `<div className="sidebar-col"><DatePickerCalendar … /></div>` and nothing else. There is **no summary card and no duplicates card**, so **there are no chips to move**. That half of TJ-043a simply does not exist here, and inventing a summary to match the admin would be scope creep, not parity.
+- **There is no `.sub-header` and no `.legend`.** Where admin has a flex row, secretary has a bare `<p className="current-date">{formatDate()}</p>` between the controls and the layout. That paragraph is the date display, so it is the natural trigger — the same role `.current-date` played on admin.
+- **Date navigation already lives elsewhere.** `.date-nav` holds ← Yesterday / Today / Tomorrow → inside `.controls-left`, beside the `<h1>`. The popover trigger deliberately **stays where the date text is**, below the controls, rather than being folded in beside those buttons: it keeps the change to a swap of one element for another, and the user's constraint on the admin side was that the overall design stays.
+- `DatePickerPopover` shipped with exactly the props this needs — `{ selectedDate, onDateSelect, doctorId, label }` — and is a default export. It is consumed unchanged.
+- `secretary/layout.tsx:204` is `.main { padding: 1.5rem; max-width: 1200px; }` — **no `margin: 0 auto`**, against admin's `max-width: 1400px; margin: 0 auto`. The user approved raising it here on 2026-09-15.
+
+**Scope — touch only these:**
+- `src/app/secretary/page.tsx`
+- `src/app/secretary/layout.tsx`
+
+**Do not touch:** `src/app/components/DatePickerPopover.tsx` — it is consumed as-is; if it needs changing, stop and report. **Not** `DatePicker.tsx`, **not** `Calendar.tsx` (and specifically not the packing logic — TJ-039's invariants are not in question), **not** `src/app/admin/*`, **not** `src/app/doctor/*`. **Do not touch the dead Add Reservation modal** in this file — removing it is TJ-045.
+
+**Instructions:**
+
+1. In `src/app/secretary/page.tsx`, match exactly:
+
+```tsx
+import DatePickerCalendar from "@/app/components/DatePicker";
+```
+
+Replace with:
+
+```tsx
+import DatePickerPopover from "@/app/components/DatePickerPopover";
+```
+
+2. Replace the date paragraph with the popover trigger. Match exactly:
+
+```tsx
+            <p className="current-date">{formatDate()}</p>
+```
+
+Replace with:
+
+```tsx
+            <div className="date-trigger-row">
+                <DatePickerPopover
+                    selectedDate={selectedDate}
+                    onDateSelect={setSelectedDate}
+                    doctorId={doctorFilter}
+                    label={formatDate()}
+                />
+            </div>
+```
+
+3. Delete the sidebar. Match exactly and replace with nothing:
+
+```tsx
+                <div className="sidebar-col">
+                    <DatePickerCalendar selectedDate={selectedDate} onDateSelect={setSelectedDate} doctorId={doctorFilter} />
+                </div>
+```
+
+4. Replace the layout CSS. Match exactly:
+
+```
+                .current-date { color: rgba(255,255,255,0.5); font-size: 0.9rem; margin-bottom: 1rem; }
+                .main-layout { display: flex; gap: 1rem; align-items: flex-start; }
+                .calendar-col { flex: 1; min-width: 0; }
+                .sidebar-col { width: 260px; flex-shrink: 0; }
+```
+
+Replace with:
+
+```
+                .date-trigger-row { margin-bottom: 1rem; }
+                .main-layout { display: block; }
+                .calendar-col { min-width: 0; }
+```
+
+The `1rem` bottom margin is carried over deliberately — it is the spacing the paragraph provided between the date and the calendar, and dropping it would tighten the layout as a side effect of a change that is not about spacing.
+
+5. Fix the mobile block — it still sizes a column that no longer exists. Match exactly:
+
+```
+                @media (max-width: 768px) { .main-layout { flex-direction: column; } .sidebar-col { width: 100%; } .controls { flex-direction: column; align-items: flex-start; } }
+```
+
+Replace with:
+
+```
+                @media (max-width: 768px) { .controls { flex-direction: column; align-items: flex-start; } }
+```
+
+6. In `src/app/secretary/layout.tsx`, raise the shell cap to match the admin's. Match exactly:
+
+```
+                .main { padding: 1.5rem; max-width: 1200px; }
+```
+
+Replace with:
+
+```
+                .main { padding: 1.5rem; max-width: 1400px; margin: 0 auto; }
+```
+
+`margin: 0 auto` is included on purpose: without it the content stays pinned left on a wide screen instead of centring, which is what admin does and what the extra width is for.
+
+**Verification:**
+- `npx tsc --noEmit --incremental false` passes
+- `npm run build` passes
+- `npx eslint src/app/secretary/page.tsx src/app/secretary/layout.tsx` reports no **new** findings against `master` — establish the baseline by running the same command on `master` and comparing, do not assume a number
+- `git diff --check` clean
+- `grep -n "sidebar-col\|DatePickerCalendar" src/app/secretary/page.tsx` returns **nothing** — no orphaned selector, no leftover import
+- `grep -n "current-date" src/app/secretary/page.tsx` returns **nothing** — the rule and its only consumer were replaced together
+- `grep -c "setShowAdd(true)" src/app/secretary/page.tsx` returns **1**, still inside the never-called `openAddModal` — this task must not disturb the dead modal that TJ-045 will remove
+- `git diff --stat master..HEAD` shows **exactly two files**
+
+**Regression risk this covers:** the popover is `position: fixed` in a `document.body` portal at `z-index: 200`, and this page has a `.modal-overlay` at `z-index: 1000` — the layering was settled during TJ-043a's review and must not be re-litigated here, but it is worth confirming the popover still renders above the calendar and is not clipped by its horizontal scroll pane. Second risk: `.main-layout` was the flex parent the `768px` rule re-stacked, and it becomes `display: block`, so that rule is now redundant rather than wrong — check a narrow viewport rather than assuming, and note TJ-021 already records that the admin area overflows at 320px.
+
+**Done when:**
+- [ ] The sidebar is gone and the calendar spans the full content width
+- [ ] Clicking the date below the controls opens the month grid; picking a day changes the schedule and closes the popover
+- [ ] The popover closes on outside click, Escape and scroll, and is not clipped by the calendar
+- [ ] The ← Yesterday / Today / Tomorrow → buttons still work and still agree with the date shown on the trigger
+- [ ] At 1440px the calendar shows **8** columns before scrolling, against 5 on `master` — verify this, do not assume it
+- [ ] Content is centred on a wide screen rather than pinned left
+- [ ] Nothing newly broken at 768px or 320px
+- [ ] The dead add-modal is untouched
+- [ ] Build, typecheck and lint all pass
 
 ---
 
