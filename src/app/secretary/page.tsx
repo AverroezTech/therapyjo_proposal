@@ -99,6 +99,13 @@ export default function SecretaryDashboard() {
         fetchReservations();
     };
 
+    // Mirrors the "+ Add Reservation" button, which navigates rather than
+    // opening the in-file modal (that modal is unreachable — see TJ-045).
+    const handleEmptyClick = (hour: number) => {
+        const time = `${String(hour).padStart(2, "0")}:00`;
+        window.location.href = `/secretary/reservations/new?date=${selectedDate}&time=${time}`;
+    };
+
     const handleDelete = async (id: number) => {
         if (!confirm("Delete this reservation?")) return;
         await fetch(`/api/reservations/${id}`, { method: "DELETE" });
@@ -204,6 +211,7 @@ export default function SecretaryDashboard() {
                             onDuplicate={handleDuplicate}
                             onDelete={handleDelete}
                             onSlotClick={() => { }}
+                            onEmptyClick={handleEmptyClick}
                         />
                     )}
                 </div>

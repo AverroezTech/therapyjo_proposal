@@ -10,6 +10,11 @@ function NewReservationForm() {
     const router = useRouter();
     const searchParams = useSearchParams();
     const dateParam = searchParams.get("date") || new Date().toISOString().split("T")[0];
+    // Only accept a well-formed HH:MM; anything else falls back to the default
+    // so a hand-edited URL cannot put the form into an invalid state.
+    const timeParam = /^\d{2}:\d{2}$/.test(searchParams.get("time") || "")
+        ? (searchParams.get("time") as string)
+        : "09:00";
 
     const [doctors, setDoctors] = useState<Doctor[]>([]);
     const [patientSearch, setPatientSearch] = useState("");
@@ -18,7 +23,7 @@ function NewReservationForm() {
     const [form, setForm] = useState({
         doctorId: "",
         sessionDate: dateParam,
-        sessionTime: "09:00",
+        sessionTime: timeParam,
         note: "",
         showNoteOnCalendar: false,
         nextSessionNote: "",
