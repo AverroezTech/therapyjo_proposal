@@ -156,6 +156,14 @@ export default function AdminDashboard() {
         fetchReservations();
     };
 
+    // Mirrors the "+ Add Reservation" button, which navigates rather than
+    // opening the in-file modal (that modal is unreachable — see TJ-045).
+    // Carries the clicked hour so the form opens on the right time.
+    const handleEmptyClick = (hour: number) => {
+        const time = `${String(hour).padStart(2, "0")}:00`;
+        window.location.href = `/admin/reservations/new?date=${selectedDate}&time=${time}`;
+    };
+
     const handleSlotClick = async (id: number) => {
         const res = await fetch(`/api/reservations/${id}`);
         const data = await res.json();
@@ -301,6 +309,7 @@ export default function AdminDashboard() {
                             onDuplicate={handleDuplicate}
                             onDelete={handleDelete}
                             onSlotClick={handleSlotClick}
+                            onEmptyClick={handleEmptyClick}
                             canDelete
                         />
                     )}
