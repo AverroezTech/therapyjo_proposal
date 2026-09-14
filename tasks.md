@@ -51,7 +51,7 @@ Two things that bear repeating here, because this is the file both agents open:
 | TJ-009f2 | Employee documents UI | DONE — merged `cd9b015`; round trip proven live on both modals | `feat/employee-documents-ui` |
 | TJ-009g | Hard delete a doctor | DONE — merged `fe05f69`; both paths proven | `feat/hard-delete-doctor` |
 | TJ-010 | Employees / secretaries — reported issues | SPLIT — passed 2026-08-18; six of its seven items are already shipped, see TJ-010a | — |
-| TJ-010a | Hard delete a secretary | VISUAL REVIEW — committed `c0bd451`; verified and layout-reviewed, **authenticated runtime half owed** | `feat/hard-delete-secretary` |
+| TJ-010a | Hard delete a secretary | DONE — merged `2271744` on 2026-08-20; **status corrected 2026-09-15**, the branch is a superseded duplicate | `feat/hard-delete-secretary` |
 | TJ-011 | Patients — reported issues | SPLIT — passed 2026-08-21; see TJ-011a, TJ-011b, TJ-011c | — |
 | TJ-011a | Attach documents to a patient | DONE — task commit `bc6e54f`, merged to `master` as `ae40183` with `--no-ff`; runtime-proven and visually reviewed | `feat/patient-documents` |
 | TJ-011b | Stop printing the primary key as a patient number | BLOCKED — the question was answered 2026-08-21; still awaiting the user's choice | — |
@@ -86,15 +86,15 @@ Two things that bear repeating here, because this is the file both agents open:
 | TJ-037 | Detect implicit duplicate patients by normalized phone | DONE — task commits `c5b1234`, `52c0291`, `924d597`; merged to `master` in `910322b`; build-proven | `feat/dashboard-duplicates-and-calendar` |
 | TJ-038 | Rebuild the dashboard calendar for dense reservations | DONE — task commit `efe4165`; merged to `master` in `910322b`; build- and geometry-proven | `feat/dashboard-duplicates-and-calendar` |
 | TJ-039 | Fix calendar action-menu stacking and continuous-time placement | DONE — task commits `8ed5206`, `6526020`; merged to `master` as `108aa7c`; build- and interval-proven | `codex/fix-calendar-action-menu` |
-| TJ-040 | Let a secretary delete a reservation | VISUAL REVIEW — committed `c22447d`; planner-verified and re-run, **authenticated runtime half owed** | `feat/secretary-delete-reservation` |
-| TJ-041 | Open the booking form from a click on the schedule, at the hour clicked | VISUAL REVIEW — `738eb4d` + `8efd8aa`; verified and re-run, **runtime half owed** | `feat/click-schedule-to-book` |
+| TJ-040 | Let a secretary delete a reservation | DONE — merged to `master` 2026-09-15 with `--no-ff` | `feat/secretary-delete-reservation` |
+| TJ-041 | Open the booking form from a click on the schedule, at the hour clicked | DONE — merged to `master` 2026-09-15 with `--no-ff` | `feat/click-schedule-to-book` |
 | TJ-042 | Constrain the schedule to 07:00–19:00 | SPLIT — passed 2026-09-15; see TJ-042a, TJ-042b | — |
-| TJ-042a | Refuse bookings outside 07:00–19:00 | VISUAL REVIEW — committed `76e6fec`; verified, 14 boundary cases re-proven, **runtime half owed** | `feat/booking-window-validation` |
+| TJ-042a | Refuse bookings outside 07:00–19:00 | DONE — merged to `master` 2026-09-15 with `--no-ff`; **one write path of three, see TJ-046** | `feat/booking-window-validation` |
 | TJ-042b | Make 07:00–19:00 the calendar's display window | BLOCKED — **needs a working `DATABASE_URL`**; the local credential is invalid | — |
 | TJ-043 | Give the schedule more horizontal room without moving the hour labels | SPLIT — design pass run and measured 2026-09-15; placement chosen; see TJ-043a, TJ-043b | — |
-| TJ-043a | Admin: date picker to a popover, summary to header chips, sidebar deleted | VISUAL REVIEW — `9bb31e9` + planner fix `e436b96`; verified and re-run, **authenticated runtime half owed** | `feat/schedule-full-width-admin` |
+| TJ-043a | Admin: date picker to a popover, summary to header chips, sidebar deleted | DONE — merged to `master` 2026-09-15 with `--no-ff` | `feat/schedule-full-width-admin` |
 | TJ-043b | Secretary: same treatment, plus the 1200px shell cap | BACKLOG — needs its own pass once TJ-043a lands; consumes the component it creates | — |
-| TJ-044 | Make the reservation cards shorter | VISUAL REVIEW — committed `1e16297`; verified and re-run, **runtime half owed** | `feat/shorter-reservation-cards` |
+| TJ-044 | Make the reservation cards shorter | DONE — merged to `master` 2026-09-15 with `--no-ff` | `feat/shorter-reservation-cards` |
 | TJ-045 | The Add Reservation modal is unreachable on both dashboards | BACKLOG — found during TJ-041's first dispatch; needs a pass | — |
 | TJ-046 | Two booking paths still accept any hour | BACKLOG — found during TJ-042a; needs a pass | — |
 
@@ -4053,7 +4053,7 @@ export async function DELETE(
 
 ### TJ-010a — Hard delete a secretary
 
-- **Status:** VISUAL REVIEW — commit `c0bd451` on `feat/hard-delete-secretary`. Planner verification passed and the layout half of the visual review passed. **Not merged:** the authenticated runtime half is still owed and the protocol does not allow merging without it.
+- **Status:** DONE — **merged 2026-08-20 as `2271744`, task commit `287ef5b`.** **Status line corrected 2026-09-15.** It read `VISUAL REVIEW — not merged` for four weeks after the work had actually shipped, and named branch commit `c0bd451`, which is a *duplicate* of `287ef5b`: the two differ only in `Production_Cutover.md`, `src/lib/prisma.ts` and `tasks.md` — **the secretary hard-delete source files are byte-identical.** Discovered 2026-09-15 while merging, when `feat/hard-delete-secretary` conflicted five ways against a file `master` had moved on from. **Do not merge that branch**: `03920aa` has since reworked this handler to be role-agnostic about reservations and notes, so replaying the old commit would drag a stale version back. The branch is superseded, not pending. A consequence worth recording: an earlier claim in this session that `c0bd451` was days from garbage collection and carried unmerged work was **wrong on the substance** — the commit was genuinely unreferenced, but its content was never at risk, because it was already on `master` under a different SHA.
 - **Branch:** `feat/hard-delete-secretary`
 - **Why:** `DELETE /api/employees/secretaries/[id]` only ever sets `status: "RESIGNED"`. A secretary added by mistake — a typo, a duplicate, a test account — can be archived but never removed, so the archive fills with rows that will never mean anything again. The doctors surface solved exactly this in TJ-009g and the solution is proven; this brings the secretaries surface into line with it, deliberately reusing the same shape rather than inventing a second one. Split out of TJ-010, whose other six items turned out to be shipped already.
 
@@ -6708,7 +6708,7 @@ A full read-only sweep of the project and the repo, run at the user's request. N
 
 ### TJ-040 — Let a secretary delete a reservation
 
-- **Status:** VISUAL REVIEW — task commit `c22447d` on `feat/secretary-delete-reservation`. Planner verification **passed** and re-run independently; **not merged** — the authenticated runtime half is owed and the protocol does not allow merging without it.
+- **Status:** DONE — task commit `c22447d` plus planner fix, merged to `master` with `--no-ff` on 2026-09-15. Verified and re-run by the planner; **runtime review deferred to the live site by user decision.**
 
 **Planner verification, 2026-09-15 — re-run, not accepted.** Diff read in full: exactly the three Scope files, 29 insertions and 4 deletions, nothing outside Scope, `tasks.md` untouched, branch cut from `a3efc77`. Every command re-run by the planner rather than taken from the report: `npx tsc --noEmit --incremental false` exits **0**; `npm run build` exits **0** (71 routes); `git diff --check` clean; `grep -n "canDelete" src/app/doctor/page.tsx` returns **nothing**; `grep -n '!== "ADMIN"' "src/app/api/reservations/[id]/route.ts"` returns **nothing**. The lint claim was checked the hard way rather than believed — eslint on the branch reports 3 `react-hooks/set-state-in-effect` errors in `secretary/page.tsx` at 74:23, 75:23 and 78:41; eslint on `master` reports **the identical three at the identical positions**, so **zero new findings**. Those three sit in a `useEffect` at line 77, nowhere near the edits at 102–111 and 213.
 
@@ -6868,7 +6868,7 @@ Replace with:
 
 ### TJ-041 — Open the booking form from a click on the schedule, at the hour clicked
 
-- **Status:** VISUAL REVIEW — task commits `738eb4d` and `8efd8aa` on `feat/click-schedule-to-book`. Planner verification **passed** and re-run independently; **not merged** — the runtime half is owed.
+- **Status:** DONE — task commits `738eb4d` and `8efd8aa`, merged to `master` with `--no-ff` on 2026-09-15. Verified and re-run by the planner; **runtime review deferred to the live site by user decision.**
 
 **Planner verification, 2026-09-15 — re-run, not accepted.** Branch carries **two** commits and changes exactly the five Scope files, 44 insertions and 3 deletions; `tasks.md` is not among them (a planner slip that briefly put it there was cherry-picked to `master` and the branch reset). `ReservationSlot.tsx`, `doctor/page.tsx` and the packing logic are untouched. `npx tsc --noEmit --incremental false` exits **0**; `npm run build` exits **0**; `git diff --check` clean. Lint compared against `master` across all five files: **15** findings on both, identical rules and per-file counts, line numbers shifted only by the inserted lines — **zero new**. Note the baseline across these five files is **15**, not the 7 recorded for the two dashboards alone; the two new-reservation pages carry the other eight, and the executor established that by measurement rather than assuming TJ-030's figure. **Both dead-modal assertions hold**: exactly one `setShowAdd(true)` per dashboard, each still inside the never-called `openAddModal`, so this task did not revive what TJ-045 exists to remove.
 
@@ -7036,7 +7036,7 @@ Confirmed:
 
 ### TJ-042a — Refuse bookings outside 07:00–19:00
 
-- **Status:** VISUAL REVIEW — task commit `76e6fec` on `feat/booking-window-validation`. Planner verification **passed** and re-run independently; **not merged** — the authenticated runtime half is owed.
+- **Status:** DONE — task commit `76e6fec`, merged to `master` with `--no-ff` on 2026-09-15. Verified, 14 boundary cases re-proven; **runtime review deferred to the live site by user decision.** Note **TJ-046**: this closes one booking write path of three.
 
 **Planner verification, 2026-09-15 — re-run, not accepted.** Diff read in full: exactly the three Scope files, 26 insertions and 2 deletions; `Calendar.tsx` untouched, the `PUT` reschedule handler untouched. `npx tsc --noEmit --incremental false` exits **0**; `npm run build` exits **0**; `git diff --check` clean; `grep` for the clinic constants in `Calendar.tsx` returns **nothing**. Lint compared against `master`: **7** findings on both, identical positions — zero new. **The boundary arithmetic was re-proven rather than read**: the committed expression was extracted and run against 14 cases, including every edge the task names. All 14 correct — 07:00 1h and 2h accepted, 17:00 2h accepted, 17:30 2h refused, **18:00 1h accepted** (the case that only works because the comparison is `>` and not `>=`), 18:01 / 18:30 / 19:00 refused, 06:59 refused, `"9:00"` single-digit hour accepted, malformed input rejected with 400.
 
@@ -7198,7 +7198,7 @@ The gain from removing the sidebar is a flat **276px** at every width — 260px 
 
 ### TJ-043a — Admin: date picker to a popover, summary to header chips, sidebar deleted
 
-- **Status:** VISUAL REVIEW — executor commit `9bb31e9` plus planner fix `e436b96` on `feat/schedule-full-width-admin`. Planner verification **passed** and re-run independently; **not merged** — the authenticated runtime half is owed and the protocol does not allow merging without it.
+- **Status:** DONE — executor commit `9bb31e9` plus planner z-index fix `e436b96`, merged to `master` with `--no-ff` on 2026-09-15. Verified and re-run; **runtime review deferred to the live site by user decision.**
 
 **Planner verification, 2026-09-15 — re-run, not accepted.** Diff read in full: exactly the two Scope files, 190 insertions and 51 deletions, `tasks.md` untouched, branch cut from `9f563b5`. `DatePicker.tsx`, `Calendar.tsx` and both other dashboards are untouched as required. Commands re-run by the planner rather than taken from the report: `npx tsc --noEmit --incremental false` exits **0**; `npm run build` exits **0**; `git diff --check` clean; both orphan greps (`sidebar-col|summary-card|summary-row|summary-val|dupe-card` and `DatePickerCalendar`) return **nothing**. Lint checked against `master` rather than believed: branch and `master` both report the identical **4** `react-hooks/set-state-in-effect` errors at 106:23, 107:23, 108:23 and 112:41 in `admin/page.tsx` — **zero new**, and `DatePickerPopover.tsx` contributes **none**. All six anchors matched byte-for-byte on the executor's first read, at the predicted line numbers.
 
@@ -7574,7 +7574,7 @@ Replace with:
 
 ### TJ-044 — Make the reservation cards shorter
 
-- **Status:** VISUAL REVIEW — task commit `1e16297` on `feat/shorter-reservation-cards`. Planner verification **passed** and re-run independently; **not merged** — the runtime half is owed.
+- **Status:** DONE — task commit `1e16297`, merged to `master` with `--no-ff` on 2026-09-15. Verified and re-run; **runtime review deferred to the live site by user decision.**
 
 **Planner verification, 2026-09-15 — re-run, not accepted.** `git diff --stat master..HEAD` shows **one file, and one hunk** — the constraint the task set on itself held exactly. The change is `const ROW_HEIGHT = 84` → `68` plus its explanatory comment, and nothing else. `ReservationSlot.tsx` untouched and `min-height: 48px` still present, so the floor this task deliberately stays above was not quietly removed. `npx tsc --noEmit --incremental false` exits **0**; `npx eslint src/app/components/Calendar.tsx` reports **0** findings on both the branch and `master`; `npm run build` exits **0**; `git diff --check` clean.
 - **Branch:** `feat/shorter-reservation-cards`
