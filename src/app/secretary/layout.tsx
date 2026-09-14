@@ -201,7 +201,7 @@ export default function SecretaryLayout({ children }: { children: React.ReactNod
                     border-radius: 2px; font-family: inherit;
                 }
                 .menu-item:hover { background: rgba(255,255,255,0.06); }
-                .main { padding: 1.5rem; max-width: 1200px; }
+                .main { padding: 1.5rem; max-width: 1400px; margin: 0 auto; }
             `}</style>
         </div>
     );

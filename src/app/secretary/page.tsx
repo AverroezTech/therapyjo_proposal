@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import Calendar from "@/app/components/Calendar";
-import DatePickerCalendar from "@/app/components/DatePicker";
+import DatePickerPopover from "@/app/components/DatePickerPopover";
 
 interface Doctor {
     id: string;
@@ -204,7 +204,14 @@ export default function SecretaryDashboard() {
                 </div>
             </div>
 
-            <p className="current-date">{formatDate()}</p>
+            <div className="date-trigger-row">
+                <DatePickerPopover
+                    selectedDate={selectedDate}
+                    onDateSelect={setSelectedDate}
+                    doctorId={doctorFilter}
+                    label={formatDate()}
+                />
+            </div>
 
             <div className="main-layout">
                 <div className="calendar-col">
@@ -221,9 +228,6 @@ export default function SecretaryDashboard() {
                             canDelete
                         />
                     )}
-                </div>
-                <div className="sidebar-col">
-                    <DatePickerCalendar selectedDate={selectedDate} onDateSelect={setSelectedDate} doctorId={doctorFilter} />
                 </div>
             </div>
 
@@ -286,10 +290,9 @@ export default function SecretaryDashboard() {
                 .doctor-select { background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.1); color: #fff; padding: 0.4rem 0.75rem; border-radius: var(--radius-sm, 2px); font-size: 0.82rem; font-family: inherit; }
                 .doctor-select option { background: #1a2e35; }
                 .btn-add { background: var(--primary, #4CAF93); color: #fff; border: none; padding: 0.45rem 1rem; border-radius: var(--radius-sm, 2px); font-size: 0.82rem; font-weight: 600; cursor: pointer; font-family: inherit; }
-                .current-date { color: rgba(255,255,255,0.5); font-size: 0.9rem; margin-bottom: 1rem; }
-                .main-layout { display: flex; gap: 1rem; align-items: flex-start; }
-                .calendar-col { flex: 1; min-width: 0; }
-                .sidebar-col { width: 260px; flex-shrink: 0; }
+                .date-trigger-row { margin-bottom: 1rem; }
+                .main-layout { display: block; }
+                .calendar-col { min-width: 0; }
                 .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.6); display: flex; align-items: center; justify-content: center; z-index: 1000; backdrop-filter: blur(4px); }
                 .modal-card { background: var(--bg-dark-secondary, #243b44); border: 1px solid rgba(255,255,255,0.08); border-radius: var(--radius-md, 4px); padding: 2rem; width: 100%; max-width: 480px; }
                 .modal-card h2 { font-size: 1.1rem; margin-bottom: 1rem; font-weight: 600; }
@@ -318,7 +321,7 @@ export default function SecretaryDashboard() {
                 .btn-cancel { background: rgba(255,255,255,0.06); color: rgba(255,255,255,0.6); border: 1px solid rgba(255,255,255,0.1); border-radius: var(--radius-sm, 2px); padding: 0.5rem 1rem; font-size: 0.85rem; cursor: pointer; font-family: inherit; }
                 .btn-save { background: var(--primary, #4CAF93); color: #fff; border: none; border-radius: var(--radius-sm, 2px); padding: 0.5rem 1.2rem; font-size: 0.85rem; font-weight: 600; cursor: pointer; font-family: inherit; }
                 .btn-save:disabled { opacity: 0.5; cursor: not-allowed; }
-                @media (max-width: 768px) { .main-layout { flex-direction: column; } .sidebar-col { width: 100%; } .controls { flex-direction: column; align-items: flex-start; } }
+                @media (max-width: 768px) { .controls { flex-direction: column; align-items: flex-start; } }
             `}</style>
         </div>
     );
