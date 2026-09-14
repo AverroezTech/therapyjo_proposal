@@ -89,7 +89,7 @@ Two things that bear repeating here, because this is the file both agents open:
 | TJ-040 | Let a secretary delete a reservation | VISUAL REVIEW — committed `c22447d`; planner-verified and re-run, **authenticated runtime half owed** | `feat/secretary-delete-reservation` |
 | TJ-041 | Open the booking form from a click on the schedule, at the hour clicked | BACKLOG — no planning pass | — |
 | TJ-042 | Constrain the schedule to 07:00–19:00 | BACKLOG — no planning pass | — |
-| TJ-043 | Give the schedule more horizontal room without moving the hour labels | BACKLOG — needs a **design** pass; scope corrected 2026-09-15, it is **not** an axis flip | — |
+| TJ-043 | Give the schedule more horizontal room without moving the hour labels | BLOCKED — design pass run and measured 2026-09-15; **awaiting the placement choice** | — |
 | TJ-044 | Make the reservation cards shorter | BACKLOG — no planning pass; dimension decided 2026-09-15 (shorter, not narrower) | — |
 
 ---
@@ -6881,7 +6881,7 @@ Replace with:
 
 ### TJ-043 — Give the schedule more horizontal room without moving the hour labels
 
-- **Status:** BACKLOG — needs a **design** planning pass. Do not execute against this ID.
+- **Status:** BLOCKED — **design planning pass run 2026-09-15 and recorded below.** The measurement is complete and the constraints are settled; the blocker is the placement choice, which is the user's. Do not execute against this ID until it is answered.
 - **Why:** Once enough appointments stack inside one hour, the calendar runs out of width and the pane starts scrolling sideways. The schedule should be able to extend along the X axis instead, by reclaiming the horizontal space the fixed sidebar currently holds.
 
 **Scope correction, 2026-09-15 — read this before the pass.** This task was first filed as an *axis flip* — hours running across the top, overlap stacking downward. **The user rejected that reading** and stated the requirement directly:
@@ -6889,6 +6889,31 @@ Replace with:
 > "Keep the hours on the side as they are right now, just make room for the schedule to extend on the X axis instead of having to scroll after a certain amount of appointments stack. That means maybe re-assign placement for the two squares on the right of the schedule… But i need the overall design of the schedule to stay."
 
 So the hour labels stay on the inline start, hours stay as vertical rows, and **the packing engine is not being rewritten**. This is a page-layout task, not a calendar-internals task. The earlier framing is recorded here only so nobody re-derives it.
+
+**Design planning pass: 2026-09-15 — measured, not estimated.** Files read: `src/app/admin/layout.tsx` (the content box), `src/app/secretary/layout.tsx`, `src/app/admin/page.tsx` (layout CSS and the sub-header JSX), `src/app/secretary/page.tsx`, `src/app/components/DatePicker.tsx`, `src/app/components/Calendar.tsx`. Layout widths were measured in a real browser with a probe replicating the exact cascade (`.admin-content` → `.main-layout` → `.calendar-col` → `.calendar` → `.scroll-outer`), then the column count derived with the literal formula from `Calendar.tsx:200–202`. Figures below are measured `clientWidth` values, not arithmetic.
+
+| Viewport | Admin calendar now | cols | Admin, no sidebar | cols | Secretary now | cols | Secretary, no sidebar | cols | + cap raised to 1400 | cols |
+|---|---|---|---|---|---|---|---|---|---|---|
+| 1920 | 1122px | **6** | 1398px | **8** | 922px | **5** | 1198px | **7** | 1398px | **8** |
+| 1600 | 1122px | **6** | 1398px | **8** | 922px | **5** | 1198px | **7** | 1398px | **8** |
+| 1440 | 1098px | **6** | 1374px | **8** | 922px | **5** | 1198px | **7** | 1390px | **8** |
+| 1366 | 1024px | **6** | 1300px | **7** | 922px | **5** | 1198px | **7** | 1316px | **8** |
+| 1280 | 938px | **5** | 1214px | **7** | 922px | **5** | 1198px | **7** | 1230px | **7** |
+| 1024 | 682px | **3** | 958px | **5** | 698px | **4** | 974px | **5** | 974px | **5** |
+
+The gain from removing the sidebar is a flat **276px** at every width — 260px of `.sidebar-col` plus the 1rem `.main-layout` gap — and it is worth **+2 concurrent appointments** almost everywhere.
+
+**Finding 1 — the option that looks obvious gains nothing.** Moving only the `.summary-card` out of the sidebar frees **zero horizontal pixels**. `.sidebar-col` is `width: 260px` and that number is set by `DatePicker`'s own `min-width: 240px` (`DatePicker.tsx:92`) plus its padding — the summary card is merely a tenant of a width the date picker already demands. **Any placement that leaves the date picker in the sidebar is worth nothing at all**, which eliminates a whole family of half-measures. The date picker is the thing that has to move.
+
+**Finding 2 — the secretary is the worse-off user, and not because of the sidebar.** `secretary/layout.tsx:204` is `.main { padding: 1.5rem; max-width: 1200px; }` — a **1200px cap with no `margin: 0 auto`** — against admin's `max-width: 1400px; margin: 0 auto`. So the secretary's calendar is frozen at **922px from 1280px upward and never widens again**, while the admin's reaches 1122px. The secretary is the primary user of the booking calendar and has **less** room than the admin on every screen above 1280px. On a 1920px monitor that cap costs 200px — comparable to the sidebar itself. Raising it to 1400 to match admin is a one-line change that takes the secretary from 5 columns to 8 when combined with the sidebar move, and it should ride along with whatever placement is chosen rather than becoming a separate task.
+
+**Finding 3 — the header already has the pattern the summary needs.** `.sub-header` (`admin/page.tsx:260–270`) is a `space-between` flex row holding `.current-date` and `.legend`, and `.legend` is already a wrapping row of small labelled colour chips. Six status counts rendered in that same idiom would be reusing an established pattern rather than inventing one, per Hard Rule 3. `.current-date` is currently an inert `<span>` showing the selected date — the natural anchor for a date-picker popover, since picking a date is a one-shot navigation action rather than reference data anyone watches.
+
+**Finding 4 — putting the displaced controls in a strip above the calendar is the one option to avoid.** `DatePicker` is a seven-column month grid roughly 280px tall. Placed above the calendar it costs vertical space permanently, which directly fights TJ-044 — whose entire purpose is to fit more of the clinic's day on one screen. The two tasks would cancel out. Recorded so it is not revisited.
+
+**Blocker — the placement itself is the user's call.** The measurement settles *how much* is available and *what must move*; it does not settle which arrangement the clinic wants to look at every day, and the user's stated constraint is that the overall design of the schedule stays. The three live candidates are: **(A)** collapse the sidebar behind a toggle, keeping today's layout intact and taking the gain only when collapsed; **(B)** move the date picker into a popover anchored to `.current-date` and the summary into `.sub-header` as chips, deleting `.sidebar-col` and taking the full 276px permanently; **(C)** a drawer over the calendar. Nothing executes until that is chosen; on the answer this task finishes its pass to `READY` and will likely split into the admin surface and the secretary surface.
+
+**Fixed for whichever is chosen:** `assignColumns`, `colWidthCss`, `colLeftCss` and the boundary-crossing divisor logic (`Calendar.tsx:87–197`) are **not to be touched** — TJ-039's invariants are not in question here. The `max-width: 768px` block already switches `.main-layout` to `flex-direction: column` on both dashboards, so any replacement must not fight that, and TJ-021 separately records that the admin area overflows at 320px.
 
 - **What is actually there now.** `.main-layout` is a flex row (`admin/page.tsx:493`): `.calendar-col { flex: 1; min-width: 0 }` and `.sidebar-col { width: 260px; flex-shrink: 0 }`, with a `1rem` gap. The calendar therefore permanently yields **~276px** of horizontal room. The "two squares" are `DatePickerCalendar` and the `.summary-card` ("Today's Summary", six status counts), plus a conditional third, `.dupe-card`, which appears only when `dupCount > 0`. `src/app/secretary/page.tsx` has its own sidebar of the same shape and must be considered alongside, not after.
 - **Why that 276px is the whole task.** The calendar scrolls when `paneMinWidth` exceeds the width available to it (`Calendar.tsx:200–202`): `maxCols * MIN_COL_WIDTH + (maxCols - 1) * COL_GAP + LABEL_WIDTH`, with `MIN_COL_WIDTH = 150` and `COL_GAP = 6`. Reclaiming 276px is worth **roughly 1.8 extra columns** before scrolling begins — so on a 1440px viewport the point at which stacking forces a scroll moves from about 7 concurrent appointments to about 9. The pass should compute this against real measured widths rather than repeat these figures.
