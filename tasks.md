@@ -87,7 +87,7 @@ Two things that bear repeating here, because this is the file both agents open:
 | TJ-038 | Rebuild the dashboard calendar for dense reservations | DONE — task commit `efe4165`; merged to `master` in `910322b`; build- and geometry-proven | `feat/dashboard-duplicates-and-calendar` |
 | TJ-039 | Fix calendar action-menu stacking and continuous-time placement | DONE — task commits `8ed5206`, `6526020`; merged to `master` as `108aa7c`; build- and interval-proven | `codex/fix-calendar-action-menu` |
 | TJ-040 | Let a secretary delete a reservation | VISUAL REVIEW — committed `c22447d`; planner-verified and re-run, **authenticated runtime half owed** | `feat/secretary-delete-reservation` |
-| TJ-041 | Open the booking form from a click on the schedule, at the hour clicked | READY — **revised** 2026-09-15 after the first dispatch refused it; steps 1–3 committed `738eb4d` | `feat/click-schedule-to-book` |
+| TJ-041 | Open the booking form from a click on the schedule, at the hour clicked | VISUAL REVIEW — `738eb4d` + `8efd8aa`; verified and re-run, **runtime half owed** | `feat/click-schedule-to-book` |
 | TJ-042 | Constrain the schedule to 07:00–19:00 | SPLIT — passed 2026-09-15; see TJ-042a, TJ-042b | — |
 | TJ-042a | Refuse bookings outside 07:00–19:00 | VISUAL REVIEW — committed `76e6fec`; verified, 14 boundary cases re-proven, **runtime half owed** | `feat/booking-window-validation` |
 | TJ-042b | Make 07:00–19:00 the calendar's display window | BLOCKED — **needs a working `DATABASE_URL`**; the local credential is invalid | — |
@@ -6868,7 +6868,11 @@ Replace with:
 
 ### TJ-041 — Open the booking form from a click on the schedule, at the hour clicked
 
-- **Status:** READY — **revised 2026-09-15 after the first dispatch stopped.** Steps 1–3 are already committed as `738eb4d` on the branch; an executor picking this up **continues on that branch** rather than cutting a new one.
+- **Status:** VISUAL REVIEW — task commits `738eb4d` and `8efd8aa` on `feat/click-schedule-to-book`. Planner verification **passed** and re-run independently; **not merged** — the runtime half is owed.
+
+**Planner verification, 2026-09-15 — re-run, not accepted.** Branch carries **two** commits and changes exactly the five Scope files, 44 insertions and 3 deletions; `tasks.md` is not among them (a planner slip that briefly put it there was cherry-picked to `master` and the branch reset). `ReservationSlot.tsx`, `doctor/page.tsx` and the packing logic are untouched. `npx tsc --noEmit --incremental false` exits **0**; `npm run build` exits **0**; `git diff --check` clean. Lint compared against `master` across all five files: **15** findings on both, identical rules and per-file counts, line numbers shifted only by the inserted lines — **zero new**. Note the baseline across these five files is **15**, not the 7 recorded for the two dashboards alone; the two new-reservation pages carry the other eight, and the executor established that by measurement rather than assuming TJ-030's figure. **Both dead-modal assertions hold**: exactly one `setShowAdd(true)` per dashboard, each still inside the never-called `openAddModal`, so this task did not revive what TJ-045 exists to remove.
+
+**One imprecision, recorded rather than patched.** The `timeParam` guard validates *format* but not *range*: `/^d{2}:d{2}$/` rejects `banana`, an empty value and `9:00`, but accepts **`99:99`**. Traced end to end, this is harmless — an `<input type="time">` renders an out-of-range value as empty, and if submitted anyway TJ-042a's server gate refuses it (`99:99` is 5,940 minutes against a 1,140-minute close). So the defence-in-depth holds and the Done-when box, which asked only that a malformed value fall back, is met. Tightening the pattern would be a one-character change if it ever matters; it is recorded here so it is a known choice rather than an oversight.
 - **Branch:** `feat/click-schedule-to-book`
 - **Why:** Booking means opening the reservation form and typing the time, while the schedule already knows which hour the pointer is over. Clicking empty space on the grid should open that form with the hour pre-selected.
 
