@@ -141,7 +141,12 @@ export default function DatePickerPopover({
                 .dpp-panel {
                     position: fixed;
                     width: ${PANEL_WIDTH}px;
-                    z-index: 1200;
+                    /* 200 matches ReservationSlot's .menu-panel — the same kind
+                       of body-portaled floating panel. Comfortably above the
+                       calendar's sticky hour labels (z-index 3) and, crucially,
+                       BELOW .modal-overlay at 1000, so a popover can never
+                       paint over an open modal. */
+                    z-index: 200;
                 }
             `}</style>
         </>
