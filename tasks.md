@@ -89,7 +89,9 @@ Two things that bear repeating here, because this is the file both agents open:
 | TJ-040 | Let a secretary delete a reservation | VISUAL REVIEW — committed `c22447d`; planner-verified and re-run, **authenticated runtime half owed** | `feat/secretary-delete-reservation` |
 | TJ-041 | Open the booking form from a click on the schedule, at the hour clicked | BACKLOG — no planning pass | — |
 | TJ-042 | Constrain the schedule to 07:00–19:00 | BACKLOG — no planning pass | — |
-| TJ-043 | Give the schedule more horizontal room without moving the hour labels | BLOCKED — design pass run and measured 2026-09-15; **awaiting the placement choice** | — |
+| TJ-043 | Give the schedule more horizontal room without moving the hour labels | SPLIT — design pass run and measured 2026-09-15; placement chosen; see TJ-043a, TJ-043b | — |
+| TJ-043a | Admin: date picker to a popover, summary to header chips, sidebar deleted | READY — planning pass 2026-09-15, all six anchors verified unique | `feat/schedule-full-width-admin` |
+| TJ-043b | Secretary: same treatment, plus the 1200px shell cap | BACKLOG — needs its own pass once TJ-043a lands; consumes the component it creates | — |
 | TJ-044 | Make the reservation cards shorter | BACKLOG — no planning pass; dimension decided 2026-09-15 (shorter, not narrower) | — |
 
 ---
@@ -6881,7 +6883,7 @@ Replace with:
 
 ### TJ-043 — Give the schedule more horizontal room without moving the hour labels
 
-- **Status:** BLOCKED — **design planning pass run 2026-09-15 and recorded below.** The measurement is complete and the constraints are settled; the blocker is the placement choice, which is the user's. Do not execute against this ID until it is answered.
+- **Status:** SPLIT — the design pass below ran on 2026-09-15 and the user answered its blocker the same day: **popover + header chips**, sidebar deleted, and the secretary's shell cap raised in the same work. The work is now **TJ-043a** (admin, `READY`) and **TJ-043b** (secretary, `BACKLOG` behind it). Do not execute against this parent ID. The pass is kept here in full because both children depend on its measurements.
 - **Why:** Once enough appointments stack inside one hour, the calendar runs out of width and the pane starts scrolling sideways. The schedule should be able to extend along the X axis instead, by reclaiming the horizontal space the fixed sidebar currently holds.
 
 **Scope correction, 2026-09-15 — read this before the pass.** This task was first filed as an *axis flip* — hours running across the top, overlap stacking downward. **The user rejected that reading** and stated the requirement directly:
@@ -6919,6 +6921,376 @@ The gain from removing the sidebar is a flat **276px** at every width — 260px 
 - **Why that 276px is the whole task.** The calendar scrolls when `paneMinWidth` exceeds the width available to it (`Calendar.tsx:200–202`): `maxCols * MIN_COL_WIDTH + (maxCols - 1) * COL_GAP + LABEL_WIDTH`, with `MIN_COL_WIDTH = 150` and `COL_GAP = 6`. Reclaiming 276px is worth **roughly 1.8 extra columns** before scrolling begins — so on a 1440px viewport the point at which stacking forces a scroll moves from about 7 concurrent appointments to about 9. The pass should compute this against real measured widths rather than repeat these figures.
 - **What its planning pass owes.** Decide **where the date picker and the summary go**, which is the only real question here. Candidates worth evaluating rather than assuming: a horizontal strip above the calendar; a collapsible sidebar that remembers its state; an overlay or drawer opened from the toolbar; folding the six summary counts into the existing page header as inline chips. Judge each against the user's constraint that *the overall design of the schedule stays* — a change that relocates the date picker somewhere staff cannot find is a worse outcome than a scrollbar. Establish whether `MIN_COL_WIDTH` should drop alongside, or whether TJ-044's shorter rows already relieve enough pressure that it need not. Confirm the `max-width: 768px` block still behaves — `.main-layout` already switches to `flex-direction: column` there (`admin/page.tsx:597–599`), so whatever replaces the sidebar must not fight that, and TJ-021 already records that the admin area overflows at 320px. **Do not touch `assignColumns`, `colWidthCss`, `colLeftCss` or the boundary-crossing divisor logic** — TJ-039's invariants are not in question and must survive untouched.
 - **Sequencing:** coordinate with TJ-044 (shorter rows) and TJ-042 (the 07:00–19:00 window). All three change how much of the day is visible at once, and each is easier to judge once the others have landed. None of them blocks this one.
+
+---
+
+### TJ-043a — Admin: date picker to a popover, summary to header chips, sidebar deleted
+
+- **Status:** READY
+- **Branch:** `feat/schedule-full-width-admin`
+- **Why:** The admin calendar yields 276px to a fixed sidebar and starts scrolling sideways at 6 concurrent appointments. Moving the date picker into a popover on the date it already displays, and the summary counts into the sub-header beside the existing doctor legend, deletes the sidebar and takes the calendar to 8 columns — measured, see TJ-043's pass.
+
+**Planning pass:** 2026-09-15 — carried from TJ-043's design pass (measurements, eliminations and the rejected options are recorded there and not repeated). Additionally read `src/app/components/DatePicker.tsx` in full and `src/app/components/ReservationSlot.tsx:125–200, 250–268`.
+
+Confirmed:
+- `DatePickerCalendar` takes exactly `{ selectedDate, onDateSelect, doctorId }` (`DatePicker.tsx:5–9`) and carries its own styled-jsx. It needs no change — it is wrapped, not edited.
+- **The popover pattern already exists in this codebase and must be reused, not reinvented.** `ReservationSlot` opens its action menu through `createPortal` into `document.body`, positions it `fixed` from `triggerRef.current.getBoundingClientRect()`, closes on outside `mousedown` against two refs, and closes on `scroll` (capture) and `resize` (`ReservationSlot.tsx:125–138`, `140–155`, `250–256`). The date popover follows that shape exactly.
+- `.sub-header` is a `space-between` flex row holding `.current-date` and `.legend`, and `.legend` is already a wrapping row of small chips (`admin/page.tsx:260–270`, CSS at 485–492). The summary chips reuse that idiom.
+- `dupCount` renders a `.dupe-card` in the sidebar, conditionally on `dupCount > 0` (`admin/page.tsx:302–311`). It has to go somewhere; it becomes one chip.
+
+**Scope — touch only these:**
+- `src/app/components/DatePickerPopover.tsx` (new — `src/app/components/` already exists)
+- `src/app/admin/page.tsx`
+
+**Do not touch:** `src/app/components/DatePicker.tsx` — it is wrapped unchanged. **Not** `src/app/components/Calendar.tsx` — and specifically not `assignColumns`, `colWidthCss`, `colLeftCss` or the boundary-crossing divisor logic; TJ-039's invariants are not in question. **Not** `src/app/secretary/*` — that is TJ-043b. **Not** `src/app/doctor/page.tsx`.
+
+**Instructions:**
+
+1. Create `src/app/components/DatePickerPopover.tsx` with exactly this content:
+
+```tsx
+"use client";
+
+import { useState, useRef, useEffect } from "react";
+import { createPortal } from "react-dom";
+import DatePickerCalendar from "./DatePicker";
+
+interface DatePickerPopoverProps {
+    selectedDate: string; // YYYY-MM-DD
+    onDateSelect: (date: string) => void;
+    doctorId?: string;
+    label: string; // formatted date shown on the trigger
+}
+
+// Panel is 260px so DatePicker's own min-width: 240px fits with padding.
+const PANEL_WIDTH = 260;
+const PANEL_HEIGHT = 300; // approximate; used only to decide flip-up vs flip-down
+const EDGE_MARGIN = 8;
+
+export default function DatePickerPopover({
+    selectedDate,
+    onDateSelect,
+    doctorId,
+    label,
+}: DatePickerPopoverProps) {
+    const [open, setOpen] = useState(false);
+    const [pos, setPos] = useState({ top: 0, left: 0 });
+    const triggerRef = useRef<HTMLButtonElement>(null);
+    const panelRef = useRef<HTMLDivElement>(null);
+
+    // Same shape as ReservationSlot's action menu: close on an outside
+    // mousedown, measured against both the trigger and the panel.
+    useEffect(() => {
+        const handleClick = (e: MouseEvent) => {
+            const target = e.target as Node;
+            if (
+                !triggerRef.current?.contains(target) &&
+                !panelRef.current?.contains(target)
+            ) {
+                setOpen(false);
+            }
+        };
+        document.addEventListener("mousedown", handleClick);
+        return () => document.removeEventListener("mousedown", handleClick);
+    }, []);
+
+    // The panel is position: fixed and placed from the trigger's real screen
+    // coordinates, so it must close rather than drift when the page moves.
+    useEffect(() => {
+        if (!open) return;
+        const close = () => setOpen(false);
+        const onKey = (e: KeyboardEvent) => {
+            if (e.key === "Escape") setOpen(false);
+        };
+        window.addEventListener("scroll", close, true);
+        window.addEventListener("resize", close);
+        document.addEventListener("keydown", onKey);
+        return () => {
+            window.removeEventListener("scroll", close, true);
+            window.removeEventListener("resize", close);
+            document.removeEventListener("keydown", onKey);
+        };
+    }, [open]);
+
+    const toggle = () => {
+        if (open) {
+            setOpen(false);
+            return;
+        }
+        const btn = triggerRef.current;
+        if (!btn) return;
+        const rect = btn.getBoundingClientRect();
+
+        // Grow rightward from the trigger's left edge, clamped so it always
+        // stays on screen.
+        let left = rect.left;
+        left = Math.min(
+            Math.max(left, EDGE_MARGIN),
+            window.innerWidth - PANEL_WIDTH - EDGE_MARGIN
+        );
+
+        // Open downward; flip above the trigger if that would run off-screen.
+        let top = rect.bottom + 4;
+        if (top + PANEL_HEIGHT > window.innerHeight - EDGE_MARGIN) {
+            top = Math.max(EDGE_MARGIN, rect.top - PANEL_HEIGHT - 4);
+        }
+
+        setPos({ top, left });
+        setOpen(true);
+    };
+
+    return (
+        <>
+            <button
+                ref={triggerRef}
+                type="button"
+                className="dpp-trigger"
+                aria-expanded={open}
+                aria-haspopup="dialog"
+                onClick={toggle}
+            >
+                {label}
+                <span className="dpp-caret" aria-hidden="true">▾</span>
+            </button>
+
+            {open &&
+                createPortal(
+                    <div
+                        ref={panelRef}
+                        className="dpp-panel"
+                        role="dialog"
+                        aria-label="Choose a date"
+                        style={{ top: pos.top, left: pos.left }}
+                    >
+                        <DatePickerCalendar
+                            selectedDate={selectedDate}
+                            onDateSelect={(d) => {
+                                onDateSelect(d);
+                                setOpen(false);
+                            }}
+                            doctorId={doctorId}
+                        />
+                    </div>,
+                    document.body
+                )}
+
+            <style jsx>{`
+                .dpp-trigger {
+                    display: inline-flex; align-items: center; gap: 0.4rem;
+                    background: rgba(255,255,255,0.06);
+                    border: 1px solid rgba(255,255,255,0.1);
+                    color: #fff; font-family: inherit;
+                    font-size: 1rem; font-weight: 500;
+                    padding: 0.3rem 0.7rem;
+                    border-radius: var(--radius-sm, 2px);
+                    cursor: pointer;
+                }
+                .dpp-trigger:hover { background: rgba(255,255,255,0.1); }
+                .dpp-caret { font-size: 0.7rem; color: rgba(255,255,255,0.5); }
+            `}</style>
+            <style jsx global>{`
+                .dpp-panel {
+                    position: fixed;
+                    width: ${PANEL_WIDTH}px;
+                    z-index: 1200;
+                }
+            `}</style>
+        </>
+    );
+}
+```
+
+2. In `src/app/admin/page.tsx`, match exactly:
+
+```tsx
+import DatePickerCalendar from "@/app/components/DatePicker";
+```
+
+Replace with:
+
+```tsx
+import DatePickerPopover from "@/app/components/DatePickerPopover";
+```
+
+3. Replace the sub-header. Match exactly:
+
+```tsx
+            <div className="sub-header">
+                <span className="current-date">{formatSelectedDate()}</span>
+                <div className="legend">
+```
+
+Replace with:
+
+```tsx
+            <div className="sub-header">
+                <div className="sub-header-start">
+                    <DatePickerPopover
+                        selectedDate={selectedDate}
+                        onDateSelect={setSelectedDate}
+                        doctorId={doctorFilter}
+                        label={formatSelectedDate()}
+                    />
+                    <div className="summary-chips">
+                        <span className="chip"><span className="chip-val">{reservations.length}</span> Total</span>
+                        <span className="chip"><span className="chip-val">{reservations.filter((r) => r.status === "SCHEDULED").length}</span> Scheduled</span>
+                        <span className="chip"><span className="chip-val">{reservations.filter((r) => r.status === "WAITING").length}</span> Waiting</span>
+                        <span className="chip"><span className="chip-val">{reservations.filter((r) => r.status === "CHECKED_IN").length}</span> Checked In</span>
+                        <span className="chip"><span className="chip-val">{reservations.filter((r) => r.status === "WITH_DOCTOR").length}</span> With Doctor</span>
+                        <span className="chip"><span className="chip-val">{reservations.filter((r) => r.status === "CHECKED_OUT").length}</span> Checked Out</span>
+                        {dupCount > 0 && (
+                            <Link href="/admin/patients/duplicates" className="chip chip-warn">
+                                <span className="chip-val">{dupCount}</span> Possible duplicate{dupCount === 1 ? "" : "s"} →
+                            </Link>
+                        )}
+                    </div>
+                </div>
+                <div className="legend">
+```
+
+4. Delete the sidebar. Match exactly and replace with nothing (remove all of it):
+
+```tsx
+                <div className="sidebar-col">
+                    <DatePickerCalendar
+                        selectedDate={selectedDate}
+                        onDateSelect={setSelectedDate}
+                        doctorId={doctorFilter}
+                    />
+                    <div className="summary-card">
+                        <h3>Today&apos;s Summary</h3>
+                        <div className="summary-row"><span>Total</span><span className="summary-val">{reservations.length}</span></div>
+                        <div className="summary-row"><span>Scheduled</span><span className="summary-val">{reservations.filter((r) => r.status === "SCHEDULED").length}</span></div>
+                        <div className="summary-row"><span>Waiting</span><span className="summary-val">{reservations.filter((r) => r.status === "WAITING").length}</span></div>
+                        <div className="summary-row"><span>Checked In</span><span className="summary-val">{reservations.filter((r) => r.status === "CHECKED_IN").length}</span></div>
+                        <div className="summary-row"><span>With Doctor</span><span className="summary-val">{reservations.filter((r) => r.status === "WITH_DOCTOR").length}</span></div>
+                        <div className="summary-row"><span>Checked Out</span><span className="summary-val">{reservations.filter((r) => r.status === "CHECKED_OUT").length}</span></div>
+                    </div>
+                    {dupCount > 0 && (
+                        <div className="dupe-card">
+                            <h3>Possible Duplicates</h3>
+                            <div className="dupe-card-count">{dupCount}</div>
+                            <p className="dupe-card-desc">
+                                {dupCount} phone number{dupCount === 1 ? "" : "s"} used by more than one patient record
+                            </p>
+                            <Link href="/admin/patients/duplicates" className="dupe-card-link">Review →</Link>
+                        </div>
+                    )}
+                </div>
+```
+
+5. Replace the layout CSS. Match exactly:
+
+```
+                .main-layout { display: flex; gap: 1rem; align-items: flex-start; }
+                .calendar-col { flex: 1; min-width: 0; }
+                .sidebar-col { width: 260px; flex-shrink: 0; display: flex; flex-direction: column; gap: 0.75rem; }
+```
+
+Replace with:
+
+```
+                .main-layout { display: block; }
+                .calendar-col { min-width: 0; }
+                .sub-header-start { display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap; }
+                .summary-chips { display: flex; gap: 0.4rem; flex-wrap: wrap; }
+                .chip {
+                    display: inline-flex; align-items: center; gap: 0.3rem;
+                    background: rgba(255,255,255,0.04);
+                    border: 1px solid rgba(255,255,255,0.08);
+                    border-radius: var(--radius-sm, 2px);
+                    padding: 0.2rem 0.5rem;
+                    font-size: 0.74rem; color: rgba(255,255,255,0.55);
+                    white-space: nowrap;
+                }
+                .chip-val { font-weight: 700; color: #fff; font-variant-numeric: tabular-nums; }
+                .chip-warn {
+                    background: rgba(251,191,36,0.08); border-color: rgba(251,191,36,0.2);
+                    color: #fbbf24; text-decoration: none;
+                }
+                .chip-warn .chip-val { color: #fbbf24; }
+                .chip-warn:hover { background: rgba(251,191,36,0.14); }
+```
+
+6. Delete the now-orphaned card CSS. Match exactly and replace with nothing:
+
+```
+                .summary-card {
+                    background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.06);
+                    border-radius: var(--radius-md, 4px); padding: 0.85rem;
+                }
+                .summary-card h3 { font-size: 0.82rem; font-weight: 600; margin-bottom: 0.6rem; color: rgba(255,255,255,0.6); }
+                .summary-row {
+                    display: flex; justify-content: space-between; padding: 0.25rem 0;
+                    font-size: 0.8rem; color: rgba(255,255,255,0.5);
+                    border-bottom: 1px solid rgba(255,255,255,0.03);
+                }
+                .summary-val { font-weight: 600; color: #fff; }
+                .dupe-card {
+                    background: rgba(251,191,36,0.08); border: 1px solid rgba(251,191,36,0.2);
+                    border-radius: var(--radius-md, 4px); padding: 0.85rem;
+                }
+                .dupe-card h3 { font-size: 0.82rem; font-weight: 600; margin-bottom: 0.4rem; color: #fbbf24; }
+                .dupe-card-count { font-size: 1.6rem; font-weight: 700; color: #fbbf24; line-height: 1; margin-bottom: 0.35rem; }
+                .dupe-card-desc { font-size: 0.76rem; color: rgba(255,255,255,0.55); margin-bottom: 0.55rem; }
+                .dupe-card-link { font-size: 0.78rem; color: #fbbf24; text-decoration: none; font-weight: 600; }
+                .dupe-card-link:hover { text-decoration: underline; }
+```
+
+7. Fix the mobile block — it still sizes a column that no longer exists. Match exactly:
+
+```
+                @media (max-width: 768px) {
+                    .main-layout { flex-direction: column; align-items: stretch; }
+                    .calendar-col { width: 100%; }
+                    .sidebar-col { width: 100%; }
+                    .controls { flex-direction: column; align-items: flex-start; }
+                    .form-row { flex-direction: column; gap: 0; }
+                }
+```
+
+Replace with:
+
+```
+                @media (max-width: 768px) {
+                    .calendar-col { width: 100%; }
+                    .sub-header-start { align-items: flex-start; }
+                    .controls { flex-direction: column; align-items: flex-start; }
+                    .form-row { flex-direction: column; gap: 0; }
+                }
+```
+
+8. `Link` is already imported in this file (used by the old `.dupe-card-link`) — confirm the import survives step 4's deletion and is still used by the new `.chip-warn`. Do not add a second import. **If `Link` ends up unused, stop and report rather than deleting the import**, because that would mean step 3 was applied incorrectly.
+
+**Verification:**
+- `npx tsc --noEmit --incremental false` passes
+- `npm run build` passes
+- `npx eslint src/app/components/DatePickerPopover.tsx src/app/admin/page.tsx` reports no **new** findings against the TJ-030 baseline (check by running the same command on `master` for the one pre-existing file and comparing)
+- `git diff --check` clean
+- `grep -n "sidebar-col\|summary-card\|summary-row\|summary-val\|dupe-card" src/app/admin/page.tsx` returns **nothing** — no orphaned selectors left behind
+- `grep -n "DatePickerCalendar" src/app/admin/page.tsx` returns **nothing** — the direct import is gone
+- `grep -c "current-date" src/app/admin/page.tsx` — the CSS rule may remain harmlessly, but if the JSX still uses it, step 3 was applied incorrectly
+
+**Regression risk this covers:** the popover is `position: fixed` in a portal, which is exactly the class of bug TJ-039 fixed for the action menu — a panel that renders behind the calendar, gets clipped by `.scroll-outer`, or drifts when the page scrolls. `z-index: 1200` sits above the calendar's internal `z-index: 3` sticky labels and below the `z-index: 1000` modal overlay; if a modal is open the popover must not appear over it. The second risk is the mobile stack: `.main-layout` was the flex parent that `@media (max-width: 768px)` re-stacked, and it is now `display: block`, so that rule is redundant rather than wrong — but it must be checked on a narrow viewport, and TJ-021 already records that this page overflows at 320px.
+
+**Done when:**
+- [ ] The sidebar is gone and the calendar spans the full content width
+- [ ] Clicking the date in the sub-header opens the month grid; picking a day changes the schedule and closes the popover
+- [ ] The popover closes on outside click, on Escape, and on scroll — and is never clipped by the calendar's horizontal scroll pane
+- [ ] All six summary counts read the same numbers they did in the old card, and update when the date changes
+- [ ] The duplicates chip appears only when `dupCount > 0` and still links to `/admin/patients/duplicates`
+- [ ] At 1440px the calendar shows **8** columns before scrolling, against 6 on `master` (the measured claim in TJ-043's pass — verify it, do not assume it)
+- [ ] Nothing is broken at 768px or 320px that was not already broken on `master`
+- [ ] Build, typecheck and lint all pass
+
+---
+
+### TJ-043b — Secretary: same treatment, plus the 1200px shell cap
+
+- **Status:** BACKLOG — no planning pass. Do not execute against this ID. **Sits behind TJ-043a**, which creates the component this task consumes.
+- **Why:** The secretary dashboard has the same 260px sidebar as the admin, and additionally a shell capped at `max-width: 1200px` with no `margin: 0 auto` (`secretary/layout.tsx:204`) against admin's 1400px — so its calendar freezes at 922px from 1280px upward and never widens. The primary user of the booking calendar has less room than the admin on every screen above 1280px. Measured in TJ-043's pass: 5 columns today, 7 with the sidebar gone, **8** with the cap raised as well. The user approved including the cap here on 2026-09-15.
+- **Why it is not `READY` yet:** its central dependency, `src/app/components/DatePickerPopover.tsx`, does not exist on `master`. A planning pass must verify its claims against the code as it is, and anchors cannot be pinned against a file that has not been written. **Pass this immediately after TJ-043a merges**, at which point the component's real API can be read rather than predicted.
+- **What its planning pass owes:** the secretary sub-header is not identical to the admin's — read it rather than assuming symmetry, and check whether it has a `.legend` to sit the chips beside. Establish where `.btn-nav` (the prev/next day controls, `secretary/page.tsx:267`) sits relative to the new date trigger, since two date affordances next to each other need a deliberate order. Confirm the secretary sidebar's contents: it holds `DatePickerCalendar` but the pass must check whether it also carries a summary card, because if it does not, there are no chips to move and the task is smaller than the admin's. Decide whether `margin: 0 auto` should be added alongside the cap raise — admin has it, secretary does not, and without it the content stays left-aligned on a wide screen rather than centring.
 
 ---
 
