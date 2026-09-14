@@ -28,7 +28,13 @@ interface CalendarProps {
 // Layout constants for the hour-row packing engine.
 const DEFAULT_MIN_HOUR = 9;
 const DEFAULT_MAX_HOUR = 18; // 9 AM – 6 PM reads by default, but nothing outside it is ever dropped
-const ROW_HEIGHT = 84; // px, fixed height of one hour row
+// px, fixed height of one hour row. Card height is derived from this
+// (height = duration/60 * ROW_HEIGHT - CARD_GAP), so it cannot be lowered
+// freely. Measured floors: .slot's own min-height of 48px puts a hard floor
+// at 52, and a card showing a note measures 62px, needing at least 66. 68
+// clears the note case with a little tolerance for a longer note or a larger
+// default font. Do not reduce further without re-measuring. (TJ-044)
+const ROW_HEIGHT = 68;
 const CARD_GAP = 4; // keeps back-to-back reservations visually distinct without changing their time geometry
 const MIN_COL_WIDTH = 150; // never pack columns narrower than this — scroll instead of clipping
 const MAX_COL_WIDTH = 320; // never let a lone card stretch absurdly wide
