@@ -62,7 +62,7 @@ export default function DoctorLayout({ children }: { children: React.ReactNode }
                 .user-menu { position: absolute; right: 0; top: 100%; z-index: 100; background: var(--bg-dark-secondary, #243b44); border: 1px solid rgba(255,255,255,0.1); border-radius: var(--radius-sm, 2px); min-width: 140px; padding: 0.25rem; box-shadow: 0 8px 32px rgba(0,0,0,0.4); }
                 .menu-item { display: block; width: 100%; background: none; border: none; color: rgba(255,255,255,0.8); padding: 0.45rem 0.7rem; font-size: 0.82rem; cursor: pointer; text-align: left; border-radius: 2px; font-family: inherit; }
                 .menu-item:hover { background: rgba(255,255,255,0.06); }
-                .main { padding: 1.5rem; max-width: 1200px; }
+                .main { padding: 1.5rem; max-width: 1400px; margin: 0 auto; }
             `}</style>
         </div>
     );

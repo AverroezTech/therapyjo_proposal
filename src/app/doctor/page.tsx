@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback } from "react";
 import { useSession } from "next-auth/react";
 import { useRouter } from "next/navigation";
 import Calendar from "@/app/components/Calendar";
-import DatePickerCalendar from "@/app/components/DatePicker";
+import DatePickerPopover from "@/app/components/DatePickerPopover";
 
 interface Doctor {
     id: string;
@@ -134,7 +134,15 @@ export default function DoctorDashboard() {
                     ))}
                 </select>
             </div>
-            <p className="current-date">{formatDate()} — {reservations.length} session{reservations.length !== 1 ? "s" : ""}</p>
+            <div className="date-trigger-row">
+                <DatePickerPopover
+                    selectedDate={selectedDate}
+                    onDateSelect={setSelectedDate}
+                    doctorId={doctorFilter}
+                    label={formatDate()}
+                />
+                <span className="session-count">{reservations.length} session{reservations.length !== 1 ? "s" : ""}</span>
+            </div>
 
             <div className="main-layout">
                 <div className="calendar-col">
@@ -149,9 +157,6 @@ export default function DoctorDashboard() {
                             onSlotClick={handleSlotClick}
                         />
                     )}
-                </div>
-                <div className="sidebar-col">
-                    <DatePickerCalendar selectedDate={selectedDate} onDateSelect={setSelectedDate} doctorId={doctorFilter} />
                 </div>
             </div>
 
@@ -181,10 +186,10 @@ export default function DoctorDashboard() {
                 .btn-today { font-weight: 600; color: var(--primary, #4CAF93); border-color: var(--primary, #4CAF93); }
                 .doctor-select { background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.1); color: #fff; padding: 0.4rem 0.75rem; border-radius: var(--radius-sm, 2px); font-size: 0.82rem; font-family: inherit; margin-left: auto; }
                 .doctor-select option { background: #1a2e35; }
-                .current-date { color: rgba(255,255,255,0.5); font-size: 0.9rem; margin-bottom: 1rem; }
-                .main-layout { display: flex; gap: 1rem; align-items: flex-start; }
-                .calendar-col { flex: 1; min-width: 0; }
-                .sidebar-col { width: 260px; flex-shrink: 0; }
+                .date-trigger-row { display: flex; align-items: center; gap: 0.75rem; margin-bottom: 1rem; }
+                .session-count { color: rgba(255,255,255,0.5); font-size: 0.9rem; }
+                .main-layout { display: block; }
+                .calendar-col { min-width: 0; }
                 .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.6); display: flex; align-items: center; justify-content: center; z-index: 1000; backdrop-filter: blur(4px); }
                 .modal-card { background: var(--bg-dark-secondary, #243b44); border: 1px solid rgba(255,255,255,0.08); border-radius: var(--radius-md, 4px); padding: 2rem; width: 100%; max-width: 400px; }
                 .modal-card h2 { font-size: 1.1rem; margin-bottom: 1rem; font-weight: 600; }
@@ -198,7 +203,6 @@ export default function DoctorDashboard() {
                 .btn-cancel { background: rgba(255,255,255,0.06); color: rgba(255,255,255,0.6); border: 1px solid rgba(255,255,255,0.1); border-radius: var(--radius-sm, 2px); padding: 0.5rem 1rem; font-size: 0.85rem; cursor: pointer; font-family: inherit; }
                 .btn-save { background: var(--primary, #4CAF93); color: #fff; border: none; border-radius: var(--radius-sm, 2px); padding: 0.5rem 1.2rem; font-size: 0.85rem; font-weight: 600; cursor: pointer; font-family: inherit; }
                 .btn-save:disabled { opacity: 0.5; cursor: not-allowed; }
-                @media (max-width: 768px) { .main-layout { flex-direction: column; } .sidebar-col { width: 100%; } }
             `}</style>
         </div>
     );
