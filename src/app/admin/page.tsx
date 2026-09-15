@@ -166,6 +166,10 @@ export default function AdminDashboard() {
         window.location.href = `/admin/reservations/new?date=${selectedDate}&time=${time}`;
     };
 
+    const handleEdit = (id: number) => {
+        window.location.href = `/admin/reservations/${id}/edit`;
+    };
+
     // The card body goes to the person, not the appointment — the file is where
     // the phone numbers, history and documents are. The appointment's own detail
     // view moved into the card menu as "Session Details". (TJ-048)
@@ -320,6 +324,7 @@ export default function AdminDashboard() {
                             onDuplicate={handleDuplicate}
                             onDelete={handleDelete}
                             onSlotClick={handleSlotClick}
+                            onEdit={handleEdit}
                             onViewDetails={handleViewDetails}
                             onEmptyClick={handleEmptyClick}
                             canDelete

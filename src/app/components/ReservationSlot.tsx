@@ -28,6 +28,9 @@ interface ReservationSlotProps {
     // Optional: the card body now opens the patient's file, so a dashboard that
     // also has a session-detail view exposes it here instead.
     onViewDetails?: (id: number) => void;
+    // Optional: only the dashboards that have an edit screen pass this, so the
+    // doctor dashboard grows no Edit item.
+    onEdit?: (id: number) => void;
     canDelete?: boolean;
 }
 
@@ -118,6 +121,7 @@ export default function ReservationSlot({
     onDelete,
     onClick,
     onViewDetails,
+    onEdit,
     canDelete = false,
 }: ReservationSlotProps) {
     const [menuOpen, setMenuOpen] = useState(false);
@@ -179,6 +183,9 @@ export default function ReservationSlot({
     }
     if (status === "CHECKED_OUT") {
         actions.push({ label: "Undo Checkout", icon: "↩️", onClick: () => onStatusChange(id, "WITH_DOCTOR") });
+    }
+    if (onEdit) {
+        actions.push({ label: "Edit", icon: "✏️", onClick: () => onEdit(id) });
     }
     actions.push({ label: "Duplicate", icon: "📋", onClick: () => onDuplicate(id) });
     const cancellable = ["SCHEDULED", "WAITING", "CHECKED_IN"].includes(status);

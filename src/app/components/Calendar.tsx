@@ -27,6 +27,8 @@ interface CalendarProps {
     onEmptyClick?: (hour: number) => void;
     // Optional: dashboards that keep a session-detail view pass it here (TJ-048).
     onViewDetails?: (id: number) => void;
+    // Optional: passed only by dashboards that have an edit screen (TJ-047b/c).
+    onEdit?: (id: number) => void;
     canDelete?: boolean;
 }
 
@@ -146,6 +148,7 @@ export default function Calendar({
     onSlotClick,
     onEmptyClick,
     onViewDetails,
+    onEdit,
     canDelete = false,
 }: CalendarProps) {
     const { minHour, maxHour } = computeHourRange(reservations);
@@ -273,6 +276,7 @@ export default function Calendar({
                                                     onDelete={onDelete}
                                                     onClick={onSlotClick}
                                                     onViewDetails={onViewDetails}
+                                                    onEdit={onEdit}
                                                     canDelete={canDelete}
                                                 />
                                             </div>
