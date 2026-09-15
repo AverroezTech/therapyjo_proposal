@@ -2,15 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
 import { logPatientActivity } from "@/lib/audit";
-
-// Clinic opening hours. A session may start at 07:00 at the earliest and must
-// end by 19:00 — so the latest one-hour start is 18:00, and the latest
-// two-hour start is 17:00. Validated as plain numbers before any Date is
-// constructed: sessionTime arrives as "HH:MM" and the server runs
-// TZ=Asia/Amman while the browser does not, so parsing first would make this
-// check disagree with itself for any staff member outside Amman. (TJ-042a)
-const CLINIC_OPEN_HOUR = 7;
-const CLINIC_CLOSE_HOUR = 19;
+import { checkClinicWindow } from "@/lib/clinicHours";
 
 // GET /api/reservations?date=YYYY-MM-DD&doctorId=xxx
 export async function GET(req: NextRequest) {
@@ -120,19 +112,12 @@ export async function POST(req: NextRequest) {
         );
     }
 
-    const timeMatch = /^(\d{1,2}):(\d{2})$/.exec(String(sessionTime));
-    if (!timeMatch) {
-        return NextResponse.json({ error: "sessionTime must be in HH:MM format" }, { status: 400 });
-    }
-    const startMinutes = Number(timeMatch[1]) * 60 + Number(timeMatch[2]);
-    const endMinutes = startMinutes + (isTwoHours ? 120 : 60);
-    if (startMinutes < CLINIC_OPEN_HOUR * 60 || endMinutes > CLINIC_CLOSE_HOUR * 60) {
-        return NextResponse.json(
-            {
-                error: `The clinic is open ${CLINIC_OPEN_HOUR}:00–${CLINIC_CLOSE_HOUR}:00. A ${isTwoHours ? "two-hour" : "one-hour"} session must start between ${CLINIC_OPEN_HOUR}:00 and ${String(CLINIC_CLOSE_HOUR - (isTwoHours ? 2 : 1)).padStart(2, "0")}:00.`,
-            },
-            { status: 400 }
-        );
+    const windowCheck = checkClinicWindow(sessionTime, Boolean(isTwoHours));
+    // `=== false` and not `!ok`: this project compiles with "strict": false,
+    // where TypeScript does not narrow a discriminated union through
+    // truthiness on the discriminant. Verified both ways. (TJ-047a)
+    if (windowCheck.ok === false) {
+        return NextResponse.json({ error: windowCheck.error }, { status: 400 });
     }
 
     // Verify patient exists
