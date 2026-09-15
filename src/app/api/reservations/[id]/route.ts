@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
 import { canAccessClinical, canDeleteReservation } from "@/lib/permissions";
 import { logPatientActivity } from "@/lib/audit";
+import { checkClinicWindow } from "@/lib/clinicHours";
 
 // Valid status transitions (state machine)
 const VALID_TRANSITIONS: Record<string, string[]> = {
@@ -81,10 +82,56 @@ export async function PUT(
         );
     }
 
+    // The schedule lives in two columns and either half can arrive alone, so
+    // refuse a half-move rather than guessing the other half: the old code
+    // defaulted a missing date to "2000-01-01", and a missing time left
+    // sessionTime carrying the previous date. Both wrote a row whose two
+    // columns disagreed.
+    const changesSchedule = body.sessionDate !== undefined || body.sessionTime !== undefined;
+    if (changesSchedule && (body.sessionDate === undefined || body.sessionTime === undefined)) {
+        return NextResponse.json(
+            { error: "sessionDate and sessionTime must be sent together" },
+            { status: 400 }
+        );
+    }
+
+    // Any change to when the session starts, or to how long it runs, is
+    // re-checked against the clinic window — against the values the row will
+    // HAVE, not the ones it had. Flipping an 18:00 session to two hours pushes
+    // its end to 20:00 and must be refused even though its start did not move.
+    if (changesSchedule || body.isTwoHours !== undefined) {
+        const existing = await prisma.reservation.findUnique({
+            where: { id: parseInt(id, 10) },
+            select: { sessionTime: true, isTwoHours: true },
+        });
+        if (!existing) {
+            return NextResponse.json({ error: "Reservation not found" }, { status: 404 });
+        }
+        const effectiveIsTwoHours =
+            body.isTwoHours !== undefined ? Boolean(body.isTwoHours) : existing.isTwoHours;
+        // Reading the stored start back with getHours/getMinutes is the exact
+        // inverse of how POST wrote it (server-local, TZ=Asia/Amman per
+        // next.config.mjs), so it round-trips whatever was stored without
+        // reopening the browser/server timezone question.
+        const storedStart = `${String(existing.sessionTime.getHours()).padStart(2, "0")}:${String(existing.sessionTime.getMinutes()).padStart(2, "0")}`;
+        const windowCheck = checkClinicWindow(
+            changesSchedule ? body.sessionTime : storedStart,
+            effectiveIsTwoHours
+        );
+        // `=== false` and not `!ok`: this project compiles with "strict": false,
+        // where TypeScript does not narrow a discriminated union through
+        // truthiness on the discriminant. Verified both ways. (TJ-047a)
+        if (windowCheck.ok === false) {
+            return NextResponse.json({ error: windowCheck.error }, { status: 400 });
+        }
+    }
+
     const data: Record<string, unknown> = {};
     if (body.doctorId !== undefined) data.doctorId = body.doctorId;
-    if (body.sessionDate !== undefined) data.sessionDate = new Date(body.sessionDate);
-    if (body.sessionTime !== undefined) data.sessionTime = new Date(`${body.sessionDate || "2000-01-01"}T${body.sessionTime}`);
+    if (changesSchedule) {
+        data.sessionDate = new Date(body.sessionDate);
+        data.sessionTime = new Date(`${body.sessionDate}T${body.sessionTime}`);
+    }
     if (body.note !== undefined) data.note = body.note;
     if (body.showNoteOnCalendar !== undefined) data.showNoteOnCalendar = Boolean(body.showNoteOnCalendar);
     if (body.nextSessionNote !== undefined) data.nextSessionNote = body.nextSessionNote;
