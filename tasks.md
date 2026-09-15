@@ -103,9 +103,9 @@ Two things that bear repeating here, because this is the file both agents open:
 | TJ-047b | Admin: edit an already-booked reservation | DONE — merged to `master` as `b4ad040` with `--no-ff`; **runtime waived, owed on the live site** | `feat/admin-edit-reservation` |
 | TJ-047c | Secretary: edit an already-booked reservation | DONE — merged to `master` as `00df38a` with `--no-ff`; **runtime waived, owed on the live site** | `feat/secretary-edit-reservation` |
 | TJ-048 | Open the patient's file from a click on their reservation card | DONE — merged to `master` as `04f4325` with `--no-ff`; **runtime review waived by the user, owed on the live site** | `feat/card-opens-patient-file` |
-| TJ-049 | Fit more of a busy day on screen before the schedule scrolls | SPLIT — passed and measured 2026-09-15; see TJ-049a, TJ-049b | — |
+| TJ-049 | Fit more of a busy day on screen before the schedule scrolls | SPLIT — **complete**: both halves merged 2026-09-15; measured 8 → 10 → 15 columns | — |
 | TJ-049a | Let a schedule column go narrower, and keep the card readable when it does | DONE — merged to `master` as `f762343` with `--no-ff`; **spec had two CSS bugs, both fixed and browser-proven** | `feat/narrower-schedule-columns` |
-| TJ-049b | Scale the whole schedule down to fit before it scrolls | READY — after TJ-049a | `feat/schedule-scale-to-fit` |
+| TJ-049b | Scale the whole schedule down to fit before it scrolls | DONE — merged to `master` as `3d2e6c1` with `--no-ff`; 8 → 15 columns before a scrollbar, arithmetically proven | `feat/schedule-scale-to-fit` |
 | TJ-050 | Nested agent worktrees corrupt every whole-project measurement | BACKLOG — no planning pass; **blocks trustworthy lint/tsc/build gates** | — |
 
 ---
@@ -9017,7 +9017,27 @@ and replace with:
 
 ### TJ-049b — Scale the whole schedule down to fit before it scrolls
 
-- **Status:** READY
+- **Status:** DONE — task commit `00dde47` (amended from `764678e`), merged to `master` as `3d2e6c1` with `--no-ff` on 2026-09-15. **With this TJ-049 is complete.** Runtime density counts remain waived and owed against the live site.
+
+**Planner verification, 2026-09-15.** `git diff master..feat/schedule-scale-to-fit`: **one file**, 58 insertions and 14 deletions. Gates re-run on the *merged* `master`, not the branch: `tsc` **0**, `npm run build` **0**. `grep -cE "zoom:|transform:|scale\("` on `Calendar.tsx` returns **0** — the design's central constraint held; the only match for "transform" anywhere in the file is the word *transformed* inside the comment explaining why none is used. `ReservationSlot.tsx` untouched, which is the point: TJ-049a's tiers query the *rendered* column width, so a scaled column narrows for real and the right tier fires by itself.
+
+**The three `ROW_HEIGHT` sites were checked individually**, because that is the way this task could have failed silently: the JSX `top` and `height` both read the scaled `rowHeight`, and `.time-row`'s CSS reads `var(--row-height)` which is set from it. The bare constant survives only in its own declaration, in the one line that scales it, and as the CSS fallback for the frame before the observer's first measurement — where `scale` is already pinned to 1 anyway.
+
+**The outcome was proven arithmetically rather than asserted.** The shipped formula was extracted and run across column counts against a 1336px pane (a 1400px shell less `2rem` of padding, i.e. a ~1440px window):
+
+| Columns | Needs | Scale | Renders | |
+|---|---|---|---|---|
+| 10 | 1226px | 1.000 | 1226px | fits |
+| 11 | 1342px | 0.996 | 1336px | fits |
+| 13 | 1574px | 0.849 | 1336px | fits |
+| 15 | 1806px | 0.740 | 1336px | fits |
+| 16 | 1922px | 0.720 | 1384px | **scrolls** |
+
+So the ladder TJ-049 set out to build is real and complete: **8 columns before either half, 10 after TJ-049a's floor, 15 after TJ-049b's scaling** — then, and only then, a scrollbar. A pane of 360px returns scale exactly **1**, so the stacked mobile layout is untouched.
+
+**One defect found at review and fixed before merge — a naming one, not a behaviour one.** The task named the guard `SCALE_MIN_VIEWPORT` and then compared it against the **measured pane width**, and its comment claimed "below this viewport the calendar stacks". The behaviour is safe — the pane is always narrower than the window, so a stacked calendar is always pinned to 1 — and the only real cost is that a desktop-layout window of roughly 769–833px scrolls instead of scaling. But the comment was false about a pane measurement and would have invited someone to "fix" the comparison to `window.innerWidth` and break the mobile pin. **The executor flagged it rather than silently renaming it or staying quiet**, and it shipped as `MIN_SCALABLE_PANE_WIDTH` with the reasoning and the warning written into the code. The Instructions above still quote the old name; the shipped constant is the new one.
+
+**Runtime review: not performed — user decision, 2026-09-15.** On the live site, open the busiest day available and confirm it fits more columns than it used to before scrolling sideways; then check the two things scaling is most likely to break — that a **two-hour** session still spans exactly two rows and a **half-hour** start still sits halfway down its row, and that the `⋮` menu still opens **against its own card** rather than offset, which is what the no-transform decision was made to protect.
 - **Branch:** `feat/schedule-scale-to-fit`
 - **Depends on:** TJ-049a merged — it sets the floor this task scales.
 - **Why:** TJ-049a lowers the column floor as far as legibility allows, which on a 1336px pane buys two columns. Past that, the only way to fit more is to make the whole grid smaller — the "zoom out" the request asks for. This measures the pane and shrinks the layout constants by a single factor until the day fits, down to a floor of 0.72, and only then scrolls.
