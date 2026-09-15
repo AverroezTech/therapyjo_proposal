@@ -8189,6 +8189,7 @@ Leave every other line of the `data` assembly exactly as it is.
 - **Status:** READY
 - **Branch:** `feat/admin-edit-reservation`
 - **Depends on:** TJ-047a merged (the `PUT` this screen calls). **Must not run at the same time as TJ-048** — they edit the same three files.
+- **Re-anchored 2026-09-15, after TJ-048 merged.** Steps 1, 2, 4, 5 and 6 originally quoted `onClick` / `onEmptyClick` sitting directly above `canDelete`. TJ-048 inserted its own optional `onViewDetails` prop into exactly those five gaps, so all five anchors stopped matching. They now quote `onViewDetails` as the line above `canDelete` — which is also a stabler anchor, since `onEdit` lands beside it. **Steps 3, 7 and 8 were re-checked against the current files and are unchanged.** If you are reading this before TJ-048 has merged, the old anchors are the right ones; check `git log --oneline --grep="TJ-048"` first.
 - **Why:** The admin dashboard can change a session's *status*, duplicate it, cancel it and delete it, but cannot change **what it is**: its time, its date, its doctor, its payment type, its length or its notes. TJ-047's pass confirmed `PUT /api/reservations/[id]` accepts all of those and that nothing calls it. This adds the screen and the way in.
 
 **Planning pass:** 2026-09-15 — read `src/app/admin/reservations/new/page.tsx` in full (437 lines; it is the model this page copies), `src/app/admin/patients/[id]/page.tsx:1–60` for the `use(params)` pattern, `src/app/components/Calendar.tsx` and `src/app/components/ReservationSlot.tsx` in full, `src/app/admin/page.tsx`, `src/app/doctor/page.tsx:80–150`, and `GET /api/reservations/[id]`. Confirmed and corrected:
@@ -8215,14 +8216,14 @@ Leave every other line of the `data` assembly exactly as it is.
 1. In `src/app/components/ReservationSlot.tsx`, in `interface ReservationSlotProps`, find:
 
 ```ts
-    onClick: (id: number) => void;
+    onViewDetails?: (id: number) => void;
     canDelete?: boolean;
 ```
 
 and replace with:
 
 ```ts
-    onClick: (id: number) => void;
+    onViewDetails?: (id: number) => void;
     // Optional: only the dashboards that have an edit screen pass this, so the
     // doctor dashboard grows no Edit item.
     onEdit?: (id: number) => void;
@@ -8232,7 +8233,7 @@ and replace with:
 2. In the same file, in the destructured parameter list, find:
 
 ```ts
-    onClick,
+    onViewDetails,
     canDelete = false,
 }: ReservationSlotProps) {
 ```
@@ -8240,7 +8241,7 @@ and replace with:
 and replace with:
 
 ```ts
-    onClick,
+    onViewDetails,
     onEdit,
     canDelete = false,
 }: ReservationSlotProps) {
@@ -8263,14 +8264,14 @@ and insert **directly above it**:
 4. In `src/app/components/Calendar.tsx`, in `interface CalendarProps`, find:
 
 ```ts
-    onEmptyClick?: (hour: number) => void;
+    onViewDetails?: (id: number) => void;
     canDelete?: boolean;
 ```
 
 and replace with:
 
 ```ts
-    onEmptyClick?: (hour: number) => void;
+    onViewDetails?: (id: number) => void;
     // Optional: passed only by dashboards that have an edit screen (TJ-047b/c).
     onEdit?: (id: number) => void;
     canDelete?: boolean;
@@ -8279,7 +8280,7 @@ and replace with:
 5. In the same file, in the `Calendar` parameter list, find:
 
 ```ts
-    onEmptyClick,
+    onViewDetails,
     canDelete = false,
 }: CalendarProps) {
 ```
@@ -8287,7 +8288,7 @@ and replace with:
 and replace with:
 
 ```ts
-    onEmptyClick,
+    onViewDetails,
     onEdit,
     canDelete = false,
 }: CalendarProps) {
@@ -8296,14 +8297,14 @@ and replace with:
 6. In the same file, in the `<ReservationSlot ... />` call, find:
 
 ```tsx
-                                                    onClick={onSlotClick}
+                                                    onViewDetails={onViewDetails}
                                                     canDelete={canDelete}
 ```
 
 and replace with:
 
 ```tsx
-                                                    onClick={onSlotClick}
+                                                    onViewDetails={onViewDetails}
                                                     onEdit={onEdit}
                                                     canDelete={canDelete}
 ```
@@ -9221,6 +9222,8 @@ with:
 ## Notes for the planner
 
 Findings reported by the executor, or surfaced during a pass, that fall outside the scope of the task that turned them up. The planner triages these into tasks. **The executor does not write here** — it reports in conversation and the planner records.
+
+- **Sequencing two tasks that touch the same lines is not enough — the later one's anchors have to be rebased onto the earlier one's result.** TJ-047b and TJ-048 were both written against `master` at `5bfeb99`, and the queue correctly marked them as not-concurrent. They were not run concurrently. **TJ-047b's anchors broke anyway**, because TJ-048 merged first and inserted its optional `onViewDetails` prop into *exactly* the five two-line gaps TJ-047b quoted — the interface, the destructured parameter list and the JSX call site, in both `ReservationSlot.tsx` and `Calendar.tsx`. **Five of eight steps stopped matching.** The executor read every file in Scope before writing, found all five, created no branch, edited nothing and asked — the fourth planner error this split has caught, and the cheapest, since the cost was one read pass instead of a bad diff. **The lesson is mechanical: a "do not run these concurrently" note protects the working tree, not the anchor text.** When two queued tasks touch the same region, the later one's anchors describe a file that will no longer exist by the time it runs. Either re-anchor at dispatch time — done here, with all seven of TJ-047b's anchors then machine-checked for uniqueness against the real files — or anchor on a line the earlier task does not move. The re-anchored steps deliberately quote `onViewDetails` as the line above `canDelete`, because `onEdit` lands beside it and nothing else queued separates them. **The habit that falls out is cheap: before dispatching any task whose anchors were written more than one merge ago, run every anchor through a uniqueness check against the current files.** TJ-047c, TJ-049a and TJ-049b were audited the same way at the same time — all fourteen of their anchors still resolve to exactly one match, so only TJ-047b had drifted. (Found during TJ-047b's first dispatch, 2026-09-15.)
 
 - **A planning pass can specify a TypeScript idiom this repo's own `tsconfig` does not support, and nothing catches it until the build runs.** TJ-047a's Instructions quoted `if (!windowCheck.ok)` against a `{ ok: true } | { ok: false; error: string }` union. **It does not compile here.** `tsconfig.json` sets `"strict": false`, and without `strictNullChecks` TypeScript does not narrow a discriminated union through truthiness on its discriminant, so `windowCheck.error` is an error on the `{ ok: true }` member; `if (windowCheck.ok === false)` narrows correctly. Both forms were re-run by the planner with this repo's own TypeScript 5.9.3 before the fix was issued: the `!ok` form exits 0 under `"strict": true` and fails under `"strict": false`. The idiom is simply borrowed from strict-mode habit. **What makes this worth recording is the executor's handling:** it implemented the instruction verbatim, hit the failure, built a minimal repro *outside the repo* to prove the cause was a language rule rather than a local misconfiguration, and stopped to ask instead of substituting `=== false` on its own initiative. That is the third planner error this split has caught, and the first where the executor supplied the counter-example itself. **Rule: when a pass supplies a TypeScript construct that depends on narrowing, check it against this repo's actual `tsconfig` rather than against habit — `"strict": false` is not the configuration most idioms are written for.** The two fixed call sites carry a comment saying so, to stop a future reader "tidying" it back. (Found during TJ-047a's execution, 2026-09-15.)
 - **Nested agent worktrees inside the repo corrupt every whole-project measurement — now TJ-050.** `npm run lint` measured **63** on a clean `master`, then **171** and **237** on identical code once two agent worktrees existed under `.claude/worktrees/`. `tsconfig.json`'s `**/*.ts(x)` glob excludes only `node_modules`, so both ESLint and `tsc` walk the copies. **Two working habits follow immediately, before TJ-050 ships:** run a task's gates **in a clean worktree**, not in a main checkout that has agent worktrees nested inside it — that is how TJ-048's verification was re-run — and **never fail a task on a lint count measured while one exists.** The 63-problem baseline written into every task filed today is valid only in a clean checkout. (Found while reviewing two executor reports, 2026-09-15.)
