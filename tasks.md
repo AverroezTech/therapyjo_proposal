@@ -94,6 +94,7 @@ Two things that bear repeating here, because this is the file both agents open:
 | TJ-043 | Give the schedule more horizontal room without moving the hour labels | SPLIT — design pass run and measured 2026-09-15; placement chosen; see TJ-043a, TJ-043b | — |
 | TJ-043a | Admin: date picker to a popover, summary to header chips, sidebar deleted | DONE — merged to `master` 2026-09-15 with `--no-ff` | `feat/schedule-full-width-admin` |
 | TJ-043b | Secretary: same treatment, plus the 1200px shell cap | DONE — merged to `master` 2026-09-15 with `--no-ff` | `feat/schedule-full-width-secretary` |
+| TJ-043c | Doctor: same treatment, plus the 1200px shell cap | READY | `feat/schedule-full-width-doctor` |
 | TJ-044 | Make the reservation cards shorter | DONE — merged to `master` 2026-09-15 with `--no-ff` | `feat/shorter-reservation-cards` |
 | TJ-045 | The Add Reservation modal is unreachable on both dashboards | BACKLOG — found during TJ-041's first dispatch; needs a pass | — |
 | TJ-046 | The duplicate path still accepts any hour | BACKLOG — **narrowed 2026-09-15**: its `PUT` half is TJ-047a; only the duplicate route is left | — |
@@ -7702,6 +7703,145 @@ Replace with:
 - [ ] Nothing newly broken at 768px or 320px
 - [ ] The dead add-modal is untouched
 - [ ] Build, typecheck and lint all pass
+
+---
+
+### TJ-043c — Doctor: same treatment, plus the 1200px shell cap
+
+- **Status:** READY
+- **Branch:** `feat/schedule-full-width-doctor`
+- **Why:** TJ-043a and TJ-043b took the admin and secretary schedules to full width. The doctor dashboard was explicitly out of scope on both — TJ-043a's Do-not-touch line ends "**Not** `src/app/doctor/page.tsx`" — so it is the one surface still shaped the old way: a 260px date-picker sidebar and a `max-width: 1200px` shell with no `margin: 0 auto`. A doctor looking at a busy day sees **5** concurrent appointments before the schedule scrolls sideways, against **8** for the two roles already fixed. User-reported, 2026-09-15: *"doctor's interface is bad, fix it like we fixed secretaries interface."*
+
+**Planning pass:** 2026-09-15 — read `src/app/doctor/page.tsx` in full (205 lines), `src/app/doctor/layout.tsx` in full, `src/app/secretary/layout.tsx` for the comparison below, `src/app/components/DatePickerPopover.tsx` as it shipped, and TJ-043b's diff (`5bda12d`) as the precedent being copied. Measurements are carried from TJ-043's design pass; the third bullet is the evidence that they carry.
+
+Confirmed — **this page is the secretary's pre-TJ-043b shape, not the admin's:**
+- **The sidebar holds only the date picker.** `<div className="sidebar-col"><DatePickerCalendar … /></div>` at `doctor/page.tsx:153–155` and nothing else — no summary card, no duplicates card, no legend, no `.sub-header`. TJ-043a's "summary to header chips" half therefore does not apply here either, exactly as it did not on the secretary. Inventing a six-status summary to match the admin would be scope creep, not parity.
+- **The shell cap is the same defect the secretary had.** `doctor/layout.tsx:65` is `.main { padding: 1.5rem; max-width: 1200px; }` — character-for-character the rule TJ-043b found at `secretary/layout.tsx:204`, including the absent `margin: 0 auto`. The user approved raising it on the secretary on 2026-09-15 and has now reported this surface on the same grounds.
+- **The measured numbers carry over, and this is why rather than an assumption.** Both shells are a full-width 56px top nav above a `<main className="main">`, with no side rail and no other width-bearing ancestor, so `.main` resolves identically in both. `.main-layout`, `.calendar-col` and `.sidebar-col` are identical rules in both page files — a 260px sidebar plus a `1rem` gap, the same flat **276px**. TJ-043's secretary row therefore applies verbatim: **5 columns today, 7 with the sidebar gone, 8 with the cap raised as well.** The executor verifies the 8 at 1440px rather than trusting this paragraph.
+- **One thing the secretary did not have: the date line also carries a count.** `doctor/page.tsx:137` is a single paragraph holding the date *and* `{reservations.length} session…`. The paragraph is the natural popover trigger — the role `.current-date` played on both earlier surfaces — but the count is reference data, not a navigation control, and folding it into a button label would make the trigger's width jump as each fetch resolves. **Decision: the trigger takes the date; the count moves beside it as its own span**, keeping today's colour and size so it reads unchanged. This is the smallest honest form of TJ-043a's "counts into the header", and the em dash that joined them goes with the split.
+- **`DatePickerPopover` is consumed unchanged**, with the same four props the other two dashboards pass. `doctorFilter` is the correct `doctorId` argument: it is the signed-in doctor's own id by default and can be `"all"`, the same shape the secretary passes.
+- **The `768px` block dies completely here, unlike on the secretary.** Doctor's rule targets only `.main-layout` and `.sidebar-col` — both of which this change removes — where the secretary's kept a `.controls` rule and so survived in reduced form. Deleting the whole line is correct. `.controls` on this page has **no** narrow-screen stacking rule today and **must not gain one in this task**; that would be new behaviour, not parity. TJ-021 already records the 320px overflow separately.
+- **The Duplicate modal on this page is live, not dead.** `handleDuplicate` is passed to `Calendar` as `onDuplicate` (`doctor/page.tsx:147`) and sets `dupeId`, so this is **not** the never-called modal TJ-045 will remove from the other two dashboards. Leave it untouched. It carries the `.modal-overlay` at `z-index: 1000` that the popover's `200` deliberately sits below — the layering settled in TJ-043a's review, not to be re-litigated here.
+
+**Concurrency:** file-disjoint from everything dispatched or queued. TJ-047a owns `src/app/api/**` and `src/lib/clinicHours.ts`; TJ-048 and TJ-047b own `Calendar.tsx`, `ReservationSlot.tsx`, `admin/page.tsx` and `secretary/page.tsx`. **Both of those assert that `src/app/doctor/page.tsx` is unedited, as their proof that a newly added prop is optional** — those assertions are scoped to their own branch diffs, and this task adds no prop and touches no `Calendar` call site, so they still hold after this merges. Cut this branch in its own worktree; do not check it out in the shared main worktree while another task is live there.
+
+**Scope — touch only these:**
+- `src/app/doctor/page.tsx`
+- `src/app/doctor/layout.tsx`
+
+**Do not touch:** `src/app/components/DatePickerPopover.tsx` — consumed as-is; if it needs changing, stop and report. **Not** `DatePicker.tsx`, **not** `Calendar.tsx` (and specifically not `assignColumns`, `colWidthCss`, `colLeftCss` or the boundary-crossing divisor logic — TJ-039's invariants are not in question), **not** `ReservationSlot.tsx`, **not** `src/app/admin/*`, **not** `src/app/secretary/*`, **not** `src/app/api/**`. **Do not touch the Duplicate modal, `handleDuplicate`, `confirmDuplicate` or any `dupe*` state** — it is live code and out of scope.
+
+**Instructions:**
+
+1. In `src/app/doctor/page.tsx`, match exactly:
+
+```tsx
+import DatePickerCalendar from "@/app/components/DatePicker";
+```
+
+Replace with:
+
+```tsx
+import DatePickerPopover from "@/app/components/DatePickerPopover";
+```
+
+2. Replace the date paragraph with the popover trigger and the count beside it. Match exactly:
+
+```tsx
+            <p className="current-date">{formatDate()} — {reservations.length} session{reservations.length !== 1 ? "s" : ""}</p>
+```
+
+Replace with:
+
+```tsx
+            <div className="date-trigger-row">
+                <DatePickerPopover
+                    selectedDate={selectedDate}
+                    onDateSelect={setSelectedDate}
+                    doctorId={doctorFilter}
+                    label={formatDate()}
+                />
+                <span className="session-count">{reservations.length} session{reservations.length !== 1 ? "s" : ""}</span>
+            </div>
+```
+
+The count expression is carried over unchanged, singular/plural included. Keep it on one line — splitting it across lines changes the JSX whitespace around the expressions.
+
+3. Delete the sidebar. Match exactly and replace with nothing:
+
+```tsx
+                <div className="sidebar-col">
+                    <DatePickerCalendar selectedDate={selectedDate} onDateSelect={setSelectedDate} doctorId={doctorFilter} />
+                </div>
+```
+
+4. Replace the layout CSS. Match exactly:
+
+```
+                .current-date { color: rgba(255,255,255,0.5); font-size: 0.9rem; margin-bottom: 1rem; }
+                .main-layout { display: flex; gap: 1rem; align-items: flex-start; }
+                .calendar-col { flex: 1; min-width: 0; }
+                .sidebar-col { width: 260px; flex-shrink: 0; }
+```
+
+Replace with:
+
+```
+                .date-trigger-row { display: flex; align-items: center; gap: 0.75rem; margin-bottom: 1rem; }
+                .session-count { color: rgba(255,255,255,0.5); font-size: 0.9rem; }
+                .main-layout { display: block; }
+                .calendar-col { min-width: 0; }
+```
+
+`.session-count` carries the exact colour and size the paragraph used, so the count looks the same as it does today. The `1rem` bottom margin moves to the row deliberately — it is the spacing that separated the date from the calendar, and dropping it would tighten the layout as a side effect of a change that is not about spacing.
+
+5. Delete the mobile block entirely — both of its rules target things that no longer exist. Match exactly and replace with nothing:
+
+```
+                @media (max-width: 768px) { .main-layout { flex-direction: column; } .sidebar-col { width: 100%; } }
+```
+
+Do **not** substitute a `.controls` rule in its place. `.main-layout` becomes `display: block`, which stacks on a narrow screen without help.
+
+6. In `src/app/doctor/layout.tsx`, raise the shell cap to match admin and secretary. Match exactly:
+
+```
+                .main { padding: 1.5rem; max-width: 1200px; }
+```
+
+Replace with:
+
+```
+                .main { padding: 1.5rem; max-width: 1400px; margin: 0 auto; }
+```
+
+`margin: 0 auto` is included on purpose: without it the content stays pinned left on a wide screen instead of centring, which is what the other two do and what the extra width is for.
+
+**Verification:**
+- `npx tsc --noEmit --incremental false` passes
+- `npm run build` passes
+- `npx eslint src/app/doctor/page.tsx src/app/doctor/layout.tsx` reports no **new** findings against `master` — establish the baseline by running the same command on `master` and comparing; do not assume a number, and note the repo-wide lint baseline fails independently of this change
+- `git diff --check` clean
+- `grep -n "sidebar-col\|DatePickerCalendar" src/app/doctor/page.tsx` returns **nothing** — no orphaned selector, no leftover import
+- `grep -n "current-date" src/app/doctor/page.tsx` returns **nothing** — the rule and its only consumer were replaced together
+- `grep -n "768px" src/app/doctor/page.tsx` returns **nothing**
+- `git diff master..HEAD -- src/app/doctor/page.tsx | grep -i "dupe"` returns **nothing** — the live Duplicate modal was not disturbed
+- `git diff --stat master..HEAD` shows **exactly two files**, and `tasks.md` is not among them
+
+**Regression risk this covers:** the popover is `position: fixed` in a `document.body` portal at `z-index: 200`, and this page has a **live** `.modal-overlay` at `z-index: 1000` — on this surface the modal is reachable in normal use, unlike the other two dashboards where it is dead code, so the popover-over-modal case is genuinely testable here for the first time: open the Duplicate modal from a card menu and confirm nothing paints over it. Second risk: `.main-layout` was the flex parent the `768px` rule re-stacked, and it becomes `display: block` with that rule deleted — check a narrow viewport rather than assuming.
+
+**Done when:**
+- [ ] The sidebar is gone and the schedule spans the full content width
+- [ ] Clicking the date below the controls opens the month grid; picking a day changes the schedule and closes the popover
+- [ ] The session count still reads correctly beside the date, singular and plural, and follows the selected date
+- [ ] The popover closes on outside click, Escape and scroll, and is not clipped by the calendar's horizontal scroll pane
+- [ ] The ← Yesterday / Today / Tomorrow → buttons still work and still agree with the date on the trigger
+- [ ] The My Schedule / All Doctors select still filters, and the popover's day dots follow the selection
+- [ ] Opening the Duplicate modal still works and nothing paints over it
+- [ ] At 1440px the schedule shows **8** columns before scrolling, against 5 on `master` — verify this, do not assume it
+- [ ] Content is centred on a wide screen rather than pinned left
+- [ ] Nothing newly broken at 768px or 320px
+- [ ] Build and typecheck pass; lint shows no new findings
 
 ---
 
