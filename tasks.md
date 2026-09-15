@@ -96,7 +96,15 @@ Two things that bear repeating here, because this is the file both agents open:
 | TJ-043b | Secretary: same treatment, plus the 1200px shell cap | DONE — merged to `master` 2026-09-15 with `--no-ff` | `feat/schedule-full-width-secretary` |
 | TJ-044 | Make the reservation cards shorter | DONE — merged to `master` 2026-09-15 with `--no-ff` | `feat/shorter-reservation-cards` |
 | TJ-045 | The Add Reservation modal is unreachable on both dashboards | BACKLOG — found during TJ-041's first dispatch; needs a pass | — |
-| TJ-046 | Two booking paths still accept any hour | BACKLOG — found during TJ-042a; needs a pass | — |
+| TJ-046 | The duplicate path still accepts any hour | BACKLOG — **narrowed 2026-09-15**: its `PUT` half is TJ-047a; only the duplicate route is left | — |
+| TJ-047 | Edit an already-booked reservation | SPLIT — passed 2026-09-15; see TJ-047a, TJ-047b, TJ-047c | — |
+| TJ-047a | Validate the clinic window on the reschedule path, behind a shared helper | READY | `feat/clinic-window-helper` |
+| TJ-047b | Admin: edit an already-booked reservation | READY — after TJ-047a; **not** concurrent with TJ-048 | `feat/admin-edit-reservation` |
+| TJ-047c | Secretary: edit an already-booked reservation | READY — after TJ-047b | `feat/secretary-edit-reservation` |
+| TJ-048 | Open the patient's file from a click on their reservation card | READY — **not** concurrent with TJ-047b | `feat/card-opens-patient-file` |
+| TJ-049 | Fit more of a busy day on screen before the schedule scrolls | SPLIT — passed and measured 2026-09-15; see TJ-049a, TJ-049b | — |
+| TJ-049a | Let a schedule column go narrower, and keep the card readable when it does | READY — after TJ-048 and TJ-047b merge | `feat/narrower-schedule-columns` |
+| TJ-049b | Scale the whole schedule down to fit before it scrolls | READY — after TJ-049a | `feat/schedule-scale-to-fit` |
 
 ---
 
@@ -7780,20 +7788,1273 @@ That is the entire change. `.time-row`'s CSS already interpolates `${ROW_HEIGHT}
 
 ---
 
-### TJ-046 — Two booking paths still accept any hour
+### TJ-046 — The duplicate path still accepts any hour
 
 - **Status:** BACKLOG — no planning pass. Do not execute against this ID.
+- **Narrowed 2026-09-15.** This task was filed against **two** unguarded write paths. **TJ-047a takes the `PUT` reschedule path**, because TJ-047's edit screens are about to call it, and TJ-047a also answers the "where does the helper belong" question this task's pass was owed: `src/lib/clinicHours.ts`. TJ-047a's pass additionally read `duplicate/route.ts` — the reading this task owed and never had — and confirms **the duplicate route has no window check of any kind** (`duplicate/route.ts:30–45`). What is left here is the duplicate path alone: the route, and the `min`/`max` courtesy attributes on the duplicate modal's time input. Once TJ-047a merges, use `checkClinicWindow` from `@/lib/clinicHours` rather than restating the rule.
 - **Why:** TJ-042a validates the clinic window on `POST /api/reservations` only. **Two other write paths reach the same table with no time check at all**, so the guarantee "the clinic only books 07:00–19:00" is not yet true:
   - **`PUT /api/reservations/[id]`** — reschedule. It accepts `sessionDate` and `sessionTime` and applies them with no window validation (`api/reservations/[id]/route.ts:86–87`). A session created legally at 10:00 can be moved to 03:00.
   - **`POST /api/reservations/[id]/duplicate`** — the duplicate flow. Its modal has its own unconstrained `<input type="time">` (`admin/page.tsx:414`, bound to `dupTime`), and the route was not examined for a window check.
 - **Found** by the TJ-042a executor, which reported both rather than widening its own scope — correctly, since the task named them out of scope.
-- **What its planning pass owes:** read `api/reservations/[id]/duplicate/route.ts`, which nothing has yet inspected for this. Decide where the rule should live — it is now stated in three places if each route repeats it, so extracting the window check into a small shared helper (alongside `CLINIC_OPEN_HOUR`/`CLINIC_CLOSE_HOUR`, which TJ-042a put in `api/reservations/route.ts`) is probably right, and the pass should say where that helper belongs. Decide the reschedule question deliberately rather than by default: refusing an out-of-window *move* is consistent, but it also means an existing out-of-window booking cannot be corrected by dragging it, only deleted and recreated — check that against how the clinic actually fixes mistakes. Add the `min`/`max` courtesy attributes to the duplicate modal's time input to match what TJ-042a did for the other two.
+- **What its planning pass owes** *(written 2026-09-15 before the narrowing above; the first two sentences are now answered by TJ-047a and are kept only as the record of what was asked)*: read `api/reservations/[id]/duplicate/route.ts`, which nothing has yet inspected for this. Decide where the rule should live — it is now stated in three places if each route repeats it, so extracting the window check into a small shared helper (alongside `CLINIC_OPEN_HOUR`/`CLINIC_CLOSE_HOUR`, which TJ-042a put in `api/reservations/route.ts`) is probably right, and the pass should say where that helper belongs. Decide the reschedule question deliberately rather than by default: refusing an out-of-window *move* is consistent, but it also means an existing out-of-window booking cannot be corrected by dragging it, only deleted and recreated — check that against how the clinic actually fixes mistakes. Add the `min`/`max` courtesy attributes to the duplicate modal's time input to match what TJ-042a did for the other two.
+
+---
+
+### TJ-047 — Edit an already-booked reservation
+
+- **Status:** SPLIT — passed 2026-09-15; see TJ-047a, TJ-047b, TJ-047c. Nothing executes against this ID.
+- **Why:** Once a reservation exists there is **no way to change it**. The calendar's `⋮` menu offers status transitions, Duplicate, Cancel and Delete; nothing edits the booking itself. A session booked at the wrong hour, or with the wrong doctor, has to be deleted and re-created — which loses its audit trail, its notes and its id. `PUT /api/reservations/[id]` already exists and already accepts every field that matters; **nothing in the application calls it.** This is a missing UI, not a missing capability.
+- **User request, 2026-09-15:** "we need ability to edit already set reservations for secretaries and admin."
+
+**Planning pass:** 2026-09-15 — read `src/app/api/reservations/[id]/route.ts` in full, `src/app/api/reservations/route.ts` (`POST`), `src/app/admin/reservations/new/page.tsx` in full, `src/app/secretary/reservations/new/page.tsx`, `src/app/admin/page.tsx`, `src/app/secretary/page.tsx`, `src/app/doctor/page.tsx`, `src/app/components/Calendar.tsx`, `src/app/components/ReservationSlot.tsx`, `src/lib/permissions.ts`, `src/lib/workingHours.ts`, and the `Reservation` model in `prisma/schema.prisma`. Findings that shaped the split:
+
+1. **The API is already reachable and already role-correct.** `PUT` refuses a `DOCTOR` that tries to move `sessionDate`, `sessionTime` or `doctorId` (`route.ts:74–82`) and otherwise accepts any signed-in user, so admin and secretary can already edit. **No permission work is needed** and `src/lib/permissions.ts` is not in any of the three scopes.
+2. **`patientId` is not updatable** — `PUT` builds `data` from a fixed list that does not include it (`route.ts:84–94`). So an edit screen cannot move a session to a different patient, and must show the patient read-only. That is the right boundary anyway: moving a session between patients is a different, auditable act.
+3. **`PUT` has two real defects that an edit screen would hit on its first use**, so they are split out ahead of the UI as TJ-047a: no clinic-window validation (already known as TJ-046's first bullet), and `data.sessionTime = new Date(...)` built from `body.sessionDate || "2000-01-01"` (`route.ts:87`) — a time sent without a date lands in the year 2000, and a date sent without a time leaves `sessionTime` carrying the **old** date. The two columns can silently disagree.
+4. **The split is by surface, not by role-pair**, because the admin half has to plumb a new `onEdit` prop through `Calendar` and `ReservationSlot` — shared by all three dashboards — while the secretary half then only has to pass it. Doing admin first keeps the shared-component change in one task.
+5. **Ordering matters and is not optional.** TJ-047b edits `Calendar.tsx`, `ReservationSlot.tsx` and `admin/page.tsx`, which **TJ-048 also edits**. They must not run concurrently. Dispatch order: TJ-047a and TJ-048 together (disjoint file sets), then TJ-047b, then TJ-047c.
+
+**Do not touch:** `src/lib/permissions.ts` — no new capability is needed and adding one would imply the current boundary is wrong.
+
+---
+
+### TJ-047a — Validate the clinic window on the reschedule path, behind a shared helper
+
+- **Status:** READY
+- **Branch:** `feat/clinic-window-helper`
+- **Why:** `PUT /api/reservations/[id]` writes `sessionDate` and `sessionTime` with **no window check at all**, so a session booked legally at 10:00 can be moved to 03:00 — TJ-046's first bullet. It also mis-couples the two columns: `route.ts:87` falls back to `"2000-01-01"` when no `sessionDate` arrives, so a body carrying `sessionTime` alone stores a time in the year 2000, and a body carrying `sessionDate` alone leaves `sessionTime` on its old date. Nothing calls `PUT` today, which is why neither has ever bitten — **TJ-047b and TJ-047c will call it**, so both are fixed first. The window rule is stated once here and re-used, rather than pasted a third time.
+- **Closes TJ-046's `PUT` bullet.** TJ-046 stays open for the duplicate path only; its row and body are amended to say so.
+
+**Planning pass:** 2026-09-15 — read `src/app/api/reservations/route.ts` and `src/app/api/reservations/[id]/route.ts` in full, `src/app/api/reservations/[id]/duplicate/route.ts` in full (TJ-046's pass owed this and it is done here: **the duplicate route has no window check either**, `duplicate/route.ts:30–45`, and is left to TJ-046 deliberately), `src/lib/workingHours.ts`, and `next.config.mjs`. Confirmed and corrected:
+
+- `CLINIC_OPEN_HOUR` / `CLINIC_CLOSE_HOUR` occur **4 times in total**, all inside `src/app/api/reservations/route.ts` (`grep -rn "CLINIC_" src/` returns nothing else). Extracting them breaks no other consumer.
+- **Where the helper belongs:** a new `src/lib/clinicHours.ts`. It is deliberately **not** folded into `src/lib/workingHours.ts`, which parses `User.workingHours` — a *doctor's personal* hours stored as free text on a user row. That is a different fact about a different subject; merging them would make "hours" ambiguous at every call site.
+- **The TZ question is settled and the helper must not reopen it.** `next.config.mjs:14` sets `process.env.TZ = "Asia/Amman"`, and `POST` builds the stored value server-local from `` `${sessionDate}T${sessionTime}` ``. So reading the stored `sessionTime` back with `getHours()`/`getMinutes()` is the exact inverse of how it was written and round-trips regardless of what the zone happens to be. That is why step 5 below is safe. The helper itself takes an `"HH:MM"` **string** and never constructs a `Date`, exactly as TJ-042a's comment requires.
+- **The window check must run against the length the session will *have*, not the length it *had*.** Changing only `isTwoHours` to `true` on an 18:00 session pushes its end to 20:00. Step 5 therefore merges `isTwoHours` before checking.
+- `prisma.reservation.update` on a missing id throws and surfaces as a 500. Since step 5 already loads the row, returning a 404 costs one line and is included.
+
+**Scope — touch only these:**
+- `src/lib/clinicHours.ts` — **new file**
+- `src/app/api/reservations/route.ts`
+- `src/app/api/reservations/[id]/route.ts`
+
+**Do not touch:** `src/app/api/reservations/[id]/duplicate/route.ts` — that is TJ-046 and is deliberately left failing. No UI file. No `min`/`max` attributes on any `<input type="time">` in this task.
+
+**Instructions:**
+
+1. Create `src/lib/clinicHours.ts` with exactly this content:
+
+```ts
+// The clinic's opening window. A session may start at 07:00 at the earliest
+// and must end by 19:00 — so the latest one-hour start is 18:00 and the latest
+// two-hour start is 17:00.
+//
+// Checked as plain numbers before any Date is constructed: sessionTime arrives
+// as "HH:MM" and the server runs TZ=Asia/Amman while the browser does not, so
+// parsing first would make this check disagree with itself for any staff
+// member outside Amman. (TJ-042a; extracted here by TJ-047a so that every
+// booking write path refuses in the same words.)
+//
+// Not to be confused with src/lib/workingHours.ts, which parses a *doctor's*
+// personal hours from User.workingHours. This is the building's window and
+// applies to every reservation, whoever it belongs to.
+export const CLINIC_OPEN_HOUR = 7;
+export const CLINIC_CLOSE_HOUR = 19;
+
+export type ClinicWindowResult = { ok: true } | { ok: false; error: string };
+
+/**
+ * Checks an "HH:MM" start against the clinic window for a session of the given
+ * length. Both failure messages are the ones POST /api/reservations already
+ * returned before this helper existed, so no caller's wording changes.
+ */
+export function checkClinicWindow(
+    sessionTime: unknown,
+    isTwoHours: boolean
+): ClinicWindowResult {
+    const timeMatch = /^(\d{1,2}):(\d{2})$/.exec(String(sessionTime));
+    if (!timeMatch) {
+        return { ok: false, error: "sessionTime must be in HH:MM format" };
+    }
+    const startMinutes = Number(timeMatch[1]) * 60 + Number(timeMatch[2]);
+    const endMinutes = startMinutes + (isTwoHours ? 120 : 60);
+    if (startMinutes < CLINIC_OPEN_HOUR * 60 || endMinutes > CLINIC_CLOSE_HOUR * 60) {
+        return {
+            ok: false,
+            error: `The clinic is open ${CLINIC_OPEN_HOUR}:00–${CLINIC_CLOSE_HOUR}:00. A ${isTwoHours ? "two-hour" : "one-hour"} session must start between ${CLINIC_OPEN_HOUR}:00 and ${String(CLINIC_CLOSE_HOUR - (isTwoHours ? 2 : 1)).padStart(2, "0")}:00.`,
+        };
+    }
+    return { ok: true };
+}
+```
+
+2. In `src/app/api/reservations/route.ts`, **delete** this whole block, comment included (it is the only occurrence):
+
+```ts
+// Clinic opening hours. A session may start at 07:00 at the earliest and must
+// end by 19:00 — so the latest one-hour start is 18:00, and the latest
+// two-hour start is 17:00. Validated as plain numbers before any Date is
+// constructed: sessionTime arrives as "HH:MM" and the server runs
+// TZ=Asia/Amman while the browser does not, so parsing first would make this
+// check disagree with itself for any staff member outside Amman. (TJ-042a)
+const CLINIC_OPEN_HOUR = 7;
+const CLINIC_CLOSE_HOUR = 19;
+```
+
+and add to the imports at the top of the same file, after `import { logPatientActivity } from "@/lib/audit";`:
+
+```ts
+import { checkClinicWindow } from "@/lib/clinicHours";
+```
+
+3. In the same file's `POST` handler, replace this block **in full**:
+
+```ts
+    const timeMatch = /^(\d{1,2}):(\d{2})$/.exec(String(sessionTime));
+    if (!timeMatch) {
+        return NextResponse.json({ error: "sessionTime must be in HH:MM format" }, { status: 400 });
+    }
+    const startMinutes = Number(timeMatch[1]) * 60 + Number(timeMatch[2]);
+    const endMinutes = startMinutes + (isTwoHours ? 120 : 60);
+    if (startMinutes < CLINIC_OPEN_HOUR * 60 || endMinutes > CLINIC_CLOSE_HOUR * 60) {
+        return NextResponse.json(
+            {
+                error: `The clinic is open ${CLINIC_OPEN_HOUR}:00–${CLINIC_CLOSE_HOUR}:00. A ${isTwoHours ? "two-hour" : "one-hour"} session must start between ${CLINIC_OPEN_HOUR}:00 and ${String(CLINIC_CLOSE_HOUR - (isTwoHours ? 2 : 1)).padStart(2, "0")}:00.`,
+            },
+            { status: 400 }
+        );
+    }
+```
+
+with:
+
+```ts
+    const windowCheck = checkClinicWindow(sessionTime, Boolean(isTwoHours));
+    if (!windowCheck.ok) {
+        return NextResponse.json({ error: windowCheck.error }, { status: 400 });
+    }
+```
+
+4. In `src/app/api/reservations/[id]/route.ts`, add to the imports, after `import { logPatientActivity } from "@/lib/audit";`:
+
+```ts
+import { checkClinicWindow } from "@/lib/clinicHours";
+```
+
+5. In the same file's `PUT` handler, find this line (the first line of the `data` assembly):
+
+```ts
+    const data: Record<string, unknown> = {};
+```
+
+and insert **directly above it**:
+
+```ts
+    // The schedule lives in two columns and either half can arrive alone, so
+    // refuse a half-move rather than guessing the other half: the old code
+    // defaulted a missing date to "2000-01-01", and a missing time left
+    // sessionTime carrying the previous date. Both wrote a row whose two
+    // columns disagreed.
+    const changesSchedule = body.sessionDate !== undefined || body.sessionTime !== undefined;
+    if (changesSchedule && (body.sessionDate === undefined || body.sessionTime === undefined)) {
+        return NextResponse.json(
+            { error: "sessionDate and sessionTime must be sent together" },
+            { status: 400 }
+        );
+    }
+
+    // Any change to when the session starts, or to how long it runs, is
+    // re-checked against the clinic window — against the values the row will
+    // HAVE, not the ones it had. Flipping an 18:00 session to two hours pushes
+    // its end to 20:00 and must be refused even though its start did not move.
+    if (changesSchedule || body.isTwoHours !== undefined) {
+        const existing = await prisma.reservation.findUnique({
+            where: { id: parseInt(id, 10) },
+            select: { sessionTime: true, isTwoHours: true },
+        });
+        if (!existing) {
+            return NextResponse.json({ error: "Reservation not found" }, { status: 404 });
+        }
+        const effectiveIsTwoHours =
+            body.isTwoHours !== undefined ? Boolean(body.isTwoHours) : existing.isTwoHours;
+        // Reading the stored start back with getHours/getMinutes is the exact
+        // inverse of how POST wrote it (server-local, TZ=Asia/Amman per
+        // next.config.mjs), so it round-trips whatever was stored without
+        // reopening the browser/server timezone question.
+        const storedStart = `${String(existing.sessionTime.getHours()).padStart(2, "0")}:${String(existing.sessionTime.getMinutes()).padStart(2, "0")}`;
+        const windowCheck = checkClinicWindow(
+            changesSchedule ? body.sessionTime : storedStart,
+            effectiveIsTwoHours
+        );
+        if (!windowCheck.ok) {
+            return NextResponse.json({ error: windowCheck.error }, { status: 400 });
+        }
+    }
+```
+
+6. In the same handler, replace these two lines:
+
+```ts
+    if (body.sessionDate !== undefined) data.sessionDate = new Date(body.sessionDate);
+    if (body.sessionTime !== undefined) data.sessionTime = new Date(`${body.sessionDate || "2000-01-01"}T${body.sessionTime}`);
+```
+
+with:
+
+```ts
+    if (changesSchedule) {
+        data.sessionDate = new Date(body.sessionDate);
+        data.sessionTime = new Date(`${body.sessionDate}T${body.sessionTime}`);
+    }
+```
+
+Leave every other line of the `data` assembly exactly as it is.
+
+**Verification:**
+- `npx tsc --noEmit --incremental false` exits **0** (it does on `master`; measured 2026-09-15)
+- `npm run build` exits **0**
+- `npm run lint` reports **63 problems (48 errors, 15 warnings)** — the measured `master` baseline as of 2026-09-15. The count must not rise. It is already failing repo-wide (TJ-030); this bullet is a drift check, not a gate.
+- `grep -rn "CLINIC_" src/` shows the constants defined **only** in `src/lib/clinicHours.ts`. Paste the real output.
+- Extract `checkClinicWindow` and run it against these 8 cases, pasting the output. Expected: `("07:00", false)` ok, `("07:00", true)` ok, `("17:00", true)` ok, `("17:30", true)` refused, `("18:00", false)` ok, `("18:01", false)` refused, `("06:59", false)` refused, `("9:00", false)` ok. These are TJ-042a's own proven boundaries — the helper must not have moved any of them.
+- Against a running dev server, signed in as admin, the three `PUT` regressions this task exists to prevent: (a) `{ sessionTime: "10:00" }` with no `sessionDate` → **400** `"sessionDate and sessionTime must be sent together"`; (b) `{ sessionDate: "<today>", sessionTime: "03:00" }` → **400** with the clinic-window message; (c) `{ sessionDate: "<today>", sessionTime: "18:00", isTwoHours: true }` → **400**. Then one that must still succeed: (d) `{ sessionDate: "<today>", sessionTime: "11:00", isTwoHours: false }` → **200**, and the stored row's `sessionDate` and `sessionTime` agree on the date.
+- `POST /api/reservations` still refuses 03:00 and still accepts 18:00 — the extraction must not have changed the create path's behaviour.
+
+**Done when:**
+- [ ] `src/lib/clinicHours.ts` is the only place the window rule is stated
+- [ ] `POST` behaviour is unchanged, boundaries re-proven
+- [ ] `PUT` refuses a half-move with 400
+- [ ] `PUT` refuses an out-of-window move, including a length change that pushes the end past 19:00
+- [ ] `PUT` returns 404 rather than 500 for a missing id
+- [ ] No file outside Scope changed
+
+---
+
+### TJ-047b — Admin: edit an already-booked reservation
+
+- **Status:** READY
+- **Branch:** `feat/admin-edit-reservation`
+- **Depends on:** TJ-047a merged (the `PUT` this screen calls). **Must not run at the same time as TJ-048** — they edit the same three files.
+- **Why:** The admin dashboard can change a session's *status*, duplicate it, cancel it and delete it, but cannot change **what it is**: its time, its date, its doctor, its payment type, its length or its notes. TJ-047's pass confirmed `PUT /api/reservations/[id]` accepts all of those and that nothing calls it. This adds the screen and the way in.
+
+**Planning pass:** 2026-09-15 — read `src/app/admin/reservations/new/page.tsx` in full (437 lines; it is the model this page copies), `src/app/admin/patients/[id]/page.tsx:1–60` for the `use(params)` pattern, `src/app/components/Calendar.tsx` and `src/app/components/ReservationSlot.tsx` in full, `src/app/admin/page.tsx`, `src/app/doctor/page.tsx:80–150`, and `GET /api/reservations/[id]`. Confirmed and corrected:
+
+- **The new-reservation page is the right model and must be copied, not imported.** It is a self-contained client component with its own `<style jsx>` block; the styles it needs (`.card`, `.field`, `.field-row`, `.btn-save`, `.error-banner`, …) are **local to that block**, so a page that reuses the markup must carry the CSS with it. This is the exact hazard recorded in the 2026-08-18 note about copying a dialog across a styled-jsx boundary.
+- **Two things the copy must drop:** the patient search and the inline new-patient modal. `PUT` cannot change `patientId` (TJ-047's pass, finding 2), so the patient is displayed read-only. That removes roughly 90 lines of the source page — the `patientSearch` / `patientResults` / `selectedPatient` / `showNewPatient` / `newPatient` / `duplicateMatch` state, the search `useEffect`, `selectPatient`, `openNewPatient`, `handleCreatePatient`, and the modal JSX. **Dropping the search `useEffect` also avoids adding to the `react-hooks/set-state-in-effect` count** that TJ-030 tracks.
+- **`Suspense` is not needed.** The new-reservation page wraps itself because it calls `useSearchParams`; this page reads a route param instead, so it uses `use(params)` like `admin/patients/[id]/page.tsx:42` and needs no boundary.
+- **The date/time round-trip is the one thing that can silently corrupt a booking, and each half needs a different rule.** `GET` returns `sessionDate` as an ISO string built from a UTC-midnight `Date` (`POST` writes `new Date(sessionDate)` from `"YYYY-MM-DD"`), so the date field must be filled from `String(r.sessionDate).split("T")[0]` — **never** via `toLocaleDateString`, which shifts it a day for anyone west of UTC. `sessionTime`, by contrast, was written server-local, and `Calendar.tsx:56–62` reads it back with the browser's own `getHours()`/`getMinutes()` — so the time field must be filled the same way, or the form would disagree with the card the user just clicked. The pre-existing browser/server mismatch noted at `Calendar.tsx:54–55` is **out of scope**; matching the calendar is the requirement.
+- **`onEdit` is plumbed as optional** through `Calendar` and `ReservationSlot` so the doctor dashboard, which passes neither it nor `canDelete`, is unchanged and grows no new menu item. TJ-047c passes it from the secretary dashboard.
+- **Regression risk this task's verification must cover:** `ReservationSlot` is shared by all three dashboards, so the doctor dashboard must be loaded and its menu counted, not assumed.
+
+**Scope — touch only these:**
+- `src/app/admin/reservations/[id]/edit/page.tsx` — **new file**, and the two new directories it needs
+- `src/app/components/ReservationSlot.tsx`
+- `src/app/components/Calendar.tsx`
+- `src/app/admin/page.tsx`
+
+**Do not touch:** `src/app/secretary/page.tsx` and anything under `src/app/secretary/` — that is TJ-047c. `src/app/doctor/page.tsx` — it must keep working **without being edited**; that is the proof the new prop is properly optional. `src/app/api/**` — TJ-047a owns the API. The existing `admin/reservations/new/page.tsx` — copy from it, do not refactor it, and do not extract a shared component.
+
+**Note on Hard Rule 2** (`Claude_Instructions.md` → "Patch-only development"): creating `src/app/admin/reservations/[id]/edit/` adds two directories that do not exist. A new App Router page cannot exist without them, and the repo already nests this way (`src/app/admin/blog/[id]/`). Create exactly these two and no others.
+
+**Instructions:**
+
+1. In `src/app/components/ReservationSlot.tsx`, in `interface ReservationSlotProps`, find:
+
+```ts
+    onClick: (id: number) => void;
+    canDelete?: boolean;
+```
+
+and replace with:
+
+```ts
+    onClick: (id: number) => void;
+    // Optional: only the dashboards that have an edit screen pass this, so the
+    // doctor dashboard grows no Edit item.
+    onEdit?: (id: number) => void;
+    canDelete?: boolean;
+```
+
+2. In the same file, in the destructured parameter list, find:
+
+```ts
+    onClick,
+    canDelete = false,
+}: ReservationSlotProps) {
+```
+
+and replace with:
+
+```ts
+    onClick,
+    onEdit,
+    canDelete = false,
+}: ReservationSlotProps) {
+```
+
+3. In the same file, find (it is the only occurrence):
+
+```ts
+    actions.push({ label: "Duplicate", icon: "📋", onClick: () => onDuplicate(id) });
+```
+
+and insert **directly above it**:
+
+```ts
+    if (onEdit) {
+        actions.push({ label: "Edit", icon: "✏️", onClick: () => onEdit(id) });
+    }
+```
+
+4. In `src/app/components/Calendar.tsx`, in `interface CalendarProps`, find:
+
+```ts
+    onEmptyClick?: (hour: number) => void;
+    canDelete?: boolean;
+```
+
+and replace with:
+
+```ts
+    onEmptyClick?: (hour: number) => void;
+    // Optional: passed only by dashboards that have an edit screen (TJ-047b/c).
+    onEdit?: (id: number) => void;
+    canDelete?: boolean;
+```
+
+5. In the same file, in the `Calendar` parameter list, find:
+
+```ts
+    onEmptyClick,
+    canDelete = false,
+}: CalendarProps) {
+```
+
+and replace with:
+
+```ts
+    onEmptyClick,
+    onEdit,
+    canDelete = false,
+}: CalendarProps) {
+```
+
+6. In the same file, in the `<ReservationSlot ... />` call, find:
+
+```tsx
+                                                    onClick={onSlotClick}
+                                                    canDelete={canDelete}
+```
+
+and replace with:
+
+```tsx
+                                                    onClick={onSlotClick}
+                                                    onEdit={onEdit}
+                                                    canDelete={canDelete}
+```
+
+7. Create `src/app/admin/reservations/[id]/edit/page.tsx`. Build it by copying `src/app/admin/reservations/new/page.tsx` and applying these changes — copy its **entire `<style jsx>` block verbatim** first, then delete only the rules whose classes no longer appear in the markup (`.search-dropdown`, `.search-item`, `.sr-phone`, `.selected-patient`, `.clear-btn`, `.new-patient-btn`, `.modal-overlay`, `.modal-card`, `.modal-error`, `.use-existing`, `.modal-stack`, `.modal-actions`); run a `grep` per class against your own file before deleting it.
+
+   - Component signature and params — replace the `useSearchParams` preamble with:
+
+     ```tsx
+     "use client";
+
+     import { useState, useEffect, useCallback, use } from "react";
+     import { useRouter } from "next/navigation";
+
+     interface Doctor { id: string; name: string; color: string | null; }
+
+     export default function EditReservationPage({ params }: { params: Promise<{ id: string }> }) {
+         const { id } = use(params);
+         const router = useRouter();
+     ```
+
+     There is **no** `Suspense` wrapper and **no** second exported component.
+
+   - State: keep `doctors`, `error`, `saving`. Drop every patient-search and new-patient state variable. Add:
+
+     ```tsx
+     const [loading, setLoading] = useState(true);
+     const [patientName, setPatientName] = useState("");
+     const [patientPhone, setPatientPhone] = useState("");
+     const [patientId, setPatientId] = useState<number | null>(null);
+     ```
+
+     Keep the `form` shape exactly as the new page has it: `{ doctorId, sessionDate, sessionTime, note, showNoteOnCalendar, nextSessionNote, paymentType, isTwoHours }`, initialised to empty strings / `false` and filled by the loader below.
+
+   - Keep `fetchDoctors` verbatim, but **remove** its `if (active.length > 0 && !form.doctorId)` line — the doctor comes from the reservation, not from a default.
+
+   - Add the loader, and call it from a `useEffect`:
+
+     ```tsx
+     const fetchReservation = useCallback(async () => {
+         const res = await fetch(`/api/reservations/${id}`);
+         if (!res.ok) {
+             setError("Could not load this reservation.");
+             setLoading(false);
+             return;
+         }
+         const r = await res.json();
+         setPatientName(r.patient?.name ?? "");
+         setPatientPhone(r.patient?.phone1 ?? "");
+         setPatientId(r.patient?.id ?? null);
+         // sessionDate was stored from a "YYYY-MM-DD" string and comes back as
+         // UTC midnight, so slice the ISO string rather than formatting it —
+         // toLocaleDateString would shift the day for anyone west of UTC.
+         const datePart = String(r.sessionDate).split("T")[0];
+         // sessionTime was stored server-local and Calendar.tsx reads it back
+         // with the browser's own getHours/getMinutes, so read it the same way
+         // here or this form disagrees with the card the user just clicked.
+         const t = new Date(r.sessionTime);
+         const timePart = `${String(t.getHours()).padStart(2, "0")}:${String(t.getMinutes()).padStart(2, "0")}`;
+         setForm({
+             doctorId: r.doctor?.id ?? "",
+             sessionDate: datePart,
+             sessionTime: timePart,
+             note: r.note ?? "",
+             showNoteOnCalendar: Boolean(r.showNoteOnCalendar),
+             nextSessionNote: r.nextSessionNote ?? "",
+             paymentType: r.paymentType ?? "",
+             isTwoHours: Boolean(r.isTwoHours),
+         });
+         setLoading(false);
+     }, [id]);
+
+     useEffect(() => { fetchReservation(); }, [fetchReservation]);
+     ```
+
+   - Replace `handleSubmit` with:
+
+     ```tsx
+     const handleSubmit = async () => {
+         setError("");
+         if (!form.doctorId) { setError("Please select a doctor"); return; }
+         setSaving(true);
+         const res = await fetch(`/api/reservations/${id}`, {
+             method: "PUT",
+             headers: { "Content-Type": "application/json" },
+             body: JSON.stringify({
+                 doctorId: form.doctorId,
+                 // Always both — PUT refuses a half-move (TJ-047a).
+                 sessionDate: form.sessionDate,
+                 sessionTime: form.sessionTime,
+                 note: form.note,
+                 showNoteOnCalendar: form.showNoteOnCalendar,
+                 nextSessionNote: form.nextSessionNote,
+                 paymentType: form.paymentType || null,
+                 isTwoHours: form.isTwoHours,
+             }),
+         });
+         const data = await res.json();
+         if (!res.ok) {
+             setError(data.error || "Failed to save changes");
+             setSaving(false);
+             return;
+         }
+         router.push("/admin");
+     };
+     ```
+
+   - Markup: keep the new page's two-column `.form-layout` and its Schedule and Notes cards **unchanged**, including the `— None —` / `CASH` / `INSURANCE` payment select and the `2-hour session` checkbox. Replace the whole Patient card's body with a read-only block:
+
+     ```tsx
+     <div className="card">
+         <h2>Patient</h2>
+         <div className="patient-readonly">
+             <span className="pr-name">{patientName || "—"}</span>
+             <span className="pr-phone">{patientPhone}</span>
+         </div>
+         {patientId !== null && (
+             <button className="pr-link" onClick={() => router.push(`/admin/patients/${patientId}`)}>
+                 Open patient file →
+             </button>
+         )}
+     </div>
+     ```
+
+     and add these rules to the style block, beside `.card`:
+
+     ```css
+     .patient-readonly { display: flex; align-items: baseline; gap: 0.6rem; }
+     .pr-name { font-size: 0.95rem; font-weight: 600; color: #fff; }
+     .pr-phone { font-size: 0.85rem; color: rgba(255,255,255,0.45); }
+     .pr-link {
+         margin-top: 0.75rem; background: none; border: none; padding: 0;
+         color: var(--primary, #4CAF93); font-size: 0.82rem; cursor: pointer;
+         font-family: inherit;
+     }
+     .pr-link:hover { text-decoration: underline; }
+     ```
+
+   - Add `min="07:00"` and `max="18:00"` to the time input, so the copy reads:
+
+     ```tsx
+     <input type="time" min="07:00" max="18:00" value={form.sessionTime} onChange={(e) => setForm({ ...form, sessionTime: e.target.value })} />
+     ```
+
+   - Copy: the `<h1>` reads `Edit Reservation`; the back button and Cancel both `router.push("/admin")`; the save button reads `{saving ? "Saving…" : "Save Changes"}`.
+
+   - Render `<div className="page"><p className="subtitle">Loading…</p></div>` while `loading` is `true`.
+
+8. In `src/app/admin/page.tsx`, add the edit navigation. Find (the only occurrence):
+
+```tsx
+                            onSlotClick={handleSlotClick}
+```
+
+and replace with:
+
+```tsx
+                            onSlotClick={handleSlotClick}
+                            onEdit={handleEdit}
+```
+
+Then define `handleEdit` immediately above the existing `handleSlotClick` declaration:
+
+```tsx
+    const handleEdit = (id: number) => {
+        window.location.href = `/admin/reservations/${id}/edit`;
+    };
+```
+
+This matches how the same file already leaves the dashboard (`handleEmptyClick` and the `+ Add Reservation` button both assign `window.location.href`); do not introduce `useRouter` here.
+
+**Verification:**
+- `npx tsc --noEmit --incremental false` exits **0**
+- `npm run build` exits **0**
+- `npm run lint` stays at or below **63 problems (48 errors, 15 warnings)** — the `master` baseline measured 2026-09-15. Paste the count.
+- `git diff --stat` lists exactly the four Scope paths and nothing else
+- Runtime, admin, on a day with at least one reservation: `⋮` → **Edit** opens `/admin/reservations/<id>/edit`; every field arrives filled — **check the date and the time against the card you clicked**, not against the database; change the time to another in-window hour, Save, and confirm the dashboard redraws the card at the new hour and the **date did not move**
+- Runtime, the refusal path: set the time to `03:00` (type it — the `min` attribute is a courtesy, not a gate) and Save. The red `.error-banner` must show TJ-047a's clinic-window message, and the page must stay put.
+- Runtime, **doctor dashboard** (`/doctor`, signed in as a doctor): the card menu shows **no Edit item**, and the file was not edited. This is the regression this task most plausibly breaks.
+- Runtime, secretary dashboard: still no Edit item (TJ-047c adds it), and nothing else about the card menu changed.
+- 320px and 2560px: the edit page's `.form-layout` stacks below 640px exactly as the new-reservation page does
+
+**Done when:**
+- [ ] An admin can change a booked session's date, time, doctor, payment, length and both notes, and the change persists
+- [ ] The patient is shown, not editable, and links to their file
+- [ ] An out-of-window save is refused with the server's message shown on the page
+- [ ] The doctor dashboard's menu is unchanged, with `doctor/page.tsx` untouched
+- [ ] Only the four Scope files changed
+
+---
+
+### TJ-047c — Secretary: edit an already-booked reservation
+
+- **Status:** READY
+- **Branch:** `feat/secretary-edit-reservation`
+- **Depends on:** TJ-047b merged — it creates the `onEdit` prop this task passes, and the page this task mirrors.
+- **Why:** The user's request names both roles. The secretary owns the booking calendar day to day and is the one most likely to need a correction; TJ-047's pass confirmed `PUT /api/reservations/[id]` already accepts a secretary's edit, so this is UI only.
+
+**Planning pass:** 2026-09-15 — read `src/app/secretary/reservations/new/page.tsx` in full (362 lines), `src/app/secretary/page.tsx` in full, `src/lib/permissions.ts`, and the `PUT` handler. Confirmed:
+
+- The secretary's new-reservation page is the admin one **minus `nextSessionNote`** — its form state has no such key (`secretary/reservations/new/page.tsx:23–31`) and its submit body omits it (`:113–131`). The edit page must omit it too: a secretary must not be handed a clinical follow-up note field that their own booking form does not have.
+- `canAccessClinical` (`src/lib/permissions.ts:30–35`) excludes `SECRETARY`, and `GET /api/reservations/[id]` therefore returns **no `soapNote`** to a secretary (`route.ts:34`). The page must not read or render it. It does not need to — the admin page TJ-047b builds does not render SOAP either.
+- `secretary/page.tsx` leaves the dashboard the same way admin does, with `window.location.href` (`:103`, `:190`), so the same navigation idiom applies.
+- The secretary page's style block is a **different** block from the admin one; the `.patient-readonly` / `.pr-name` / `.pr-phone` / `.pr-link` rules TJ-047b adds do not exist here and must be added again. Same hazard as the 2026-08-18 styled-jsx note.
+
+**Scope — touch only these:**
+- `src/app/secretary/reservations/[id]/edit/page.tsx` — **new file**, and the two new directories it needs
+- `src/app/secretary/page.tsx`
+
+**Do not touch:** `src/app/components/Calendar.tsx` and `src/app/components/ReservationSlot.tsx` — TJ-047b already added the `onEdit` prop; if it is not there, **stop and ask** rather than adding it. Nothing under `src/app/admin/`. Nothing under `src/app/api/`.
+
+**Instructions:**
+
+1. Create `src/app/secretary/reservations/[id]/edit/page.tsx` as an exact mirror of `src/app/admin/reservations/[id]/edit/page.tsx` (which TJ-047b created — read it, do not reconstruct it from this task), with these differences and no others:
+   - The component is named `SecretaryEditReservationPage`.
+   - Every `/admin` path becomes `/secretary`: the back button, Cancel, the post-save `router.push("/secretary")`, and the patient-file link `/secretary/patients/${patientId}`.
+   - **Remove** the `nextSessionNote` key from the `form` state, from the loader's `setForm`, from the `PUT` body, and remove its `<textarea>` and label from the Notes card. Nothing else in the Notes card changes.
+   - Take the style block from **the secretary's own** `reservations/new/page.tsx`, then add the `.patient-readonly` / `.pr-*` rules quoted in TJ-047b step 7. Before deleting any rule, `grep` its class against your own file.
+
+2. In `src/app/secretary/page.tsx`, find (the only occurrence):
+
+```tsx
+                            onSlotClick={handleSlotClick}
+```
+
+and replace with:
+
+```tsx
+                            onSlotClick={handleSlotClick}
+                            onEdit={handleEdit}
+```
+
+**Stop and ask if `handleSlotClick` is not already defined in this file** — TJ-048 defines it. If TJ-048 has not merged yet, the line will still read `onSlotClick={() => { }}`; in that case leave it exactly as it is, add only `onEdit={handleEdit}` beside it, and say so in your report.
+
+3. In the same file, define `handleEdit` immediately above `handleDelete`:
+
+```tsx
+    const handleEdit = (id: number) => {
+        window.location.href = `/secretary/reservations/${id}/edit`;
+    };
+```
+
+**Verification:**
+- `npx tsc --noEmit --incremental false` exits **0**
+- `npm run build` exits **0**
+- `npm run lint` stays at or below the **63**-problem `master` baseline; paste the count
+- `git diff --stat` lists exactly the two Scope paths
+- `grep -rn "nextSessionNote" "src/app/secretary/reservations/[id]/edit/page.tsx"` returns **nothing**
+- `grep -rn "soapNote\|subjective\|assessment" "src/app/secretary/reservations/[id]/edit/page.tsx"` returns **nothing**
+- Runtime, secretary: `⋮` → **Edit** opens the page with every field filled; the date and time match the clicked card; a save moves the card; a `03:00` save is refused with the clinic-window message on the page
+- Runtime, admin: the admin edit page still works and still shows its Next Session Note field — the two pages are separate files and neither may have regressed the other
+- Runtime, doctor: still no Edit item in the card menu
+
+**Done when:**
+- [ ] A secretary can edit a booked session from the calendar
+- [ ] No clinical field — SOAP or next-session note — appears on the secretary's edit page
+- [ ] The admin edit page is unaffected
+- [ ] Only the two Scope files changed
+
+---
+
+### TJ-048 — Open the patient's file from a click on their reservation card
+
+- **Status:** READY
+- **Branch:** `feat/card-opens-patient-file`
+- **Must not run at the same time as TJ-047b** — they edit the same three files. Dispatch this one alongside TJ-047a instead; their scopes are disjoint.
+- **Why:** Clicking a reservation card on the schedule is the natural way to ask "who is this?", and today it answers badly. On the **secretary** dashboard it does nothing at all — `onSlotClick={() => { }}` (`secretary/page.tsx:226`) — while the card carries `cursor: pointer` and a tooltip, so it looks clickable and is not. On the **admin** dashboard it opens a read-only detail modal. Neither reaches the patient's file, which is where the phone numbers, the history and the documents are.
+- **User request, 2026-09-15:** "i need it so that when a patient reservation card on the schedule is clicked it redirects to the patient's file."
+
+**Planning pass:** 2026-09-15 — read `src/app/components/Calendar.tsx` and `src/app/components/ReservationSlot.tsx` in full, `src/app/admin/page.tsx` in full, `src/app/secretary/page.tsx` in full, `src/app/doctor/page.tsx:80–155`, and both patient-file pages. Confirmed and corrected:
+
+- **The patient-file routes exist for both roles** and are already linked this way from the patient lists: `/admin/patients/${p.id}` (`admin/patients/page.tsx:150`) and `/secretary/patients/${p.id}` (`secretary/patients/page.tsx:108`). Both pages take the id from the route via `use(params)`.
+- **`onSlotClick` carries the reservation id, not the patient id** — so the naive change navigates to the wrong record. Corrected: the prop signature does **not** change. Each dashboard already holds the full reservation list in state, with `patient: { id, ... }` on every row (`admin/page.tsx:21`, `secretary/page.tsx:20`), so it resolves the patient id locally. This keeps `Calendar`'s contract untouched and the doctor dashboard unaffected.
+- **The doctor dashboard must keep its own behaviour.** `doctor/page.tsx:80–82` already navigates on slot click, to `/doctor/session/${id}` — the session record, which is the right destination for a doctor. It is out of scope and must not be edited. Its existence is also the precedent that `onSlotClick` is a navigation hook, not a modal hook.
+- **Admin's detail modal would become unreachable, so it moves rather than dies.** `detailId` / `detail` state, its fetch, and roughly 35 lines of JSX (`admin/page.tsx:427–460`) have no other entry point. It is the only place SOAP notes and the previous-session note are visible from the calendar. It moves to a new `Session Details` item at the top of the `⋮` menu, behind an optional `onViewDetails` prop that only admin passes. **Deleting it would be a silent capability loss and is not authorised by the request.**
+- **The one non-obvious regression risk is React portal bubbling, and it is already handled — the task must not break it.** `ReservationSlot`'s menu is `createPortal`ed to `document.body`, but a React portal bubbles through the **React** tree, not the DOM tree: a click on a menu item propagates to `.slot`'s `onClick` **and** to `.time-slots`'s `onClick` in `Calendar.tsx:230`. Both already call `e.stopPropagation()` (`ReservationSlot.tsx:248` on the trigger, `:265` on each item). Without them, choosing "Duplicate" would also navigate to the patient file *and* fire `onEmptyClick`. Leave both `stopPropagation` calls exactly where they are, and verify by clicking a menu item.
+- `Calendar.tsx:234`'s `closest(".card-wrap")` empty-space guard reads `e.target`, which for a portalled menu item is outside `.card-wrap` — which is precisely why the `stopPropagation` on line 265 is load-bearing.
+- **Navigation idiom:** `router.push` from `next/navigation`, matching `doctor/page.tsx:81` — the existing precedent for *this* interaction. Both dashboards are `"use client"` and neither imports it yet.
+
+**Scope — touch only these:**
+- `src/app/components/ReservationSlot.tsx`
+- `src/app/components/Calendar.tsx`
+- `src/app/admin/page.tsx`
+- `src/app/secretary/page.tsx`
+
+**Do not touch:** `src/app/doctor/page.tsx` — its slot click is correct as it stands, and leaving it unedited is the proof the new prop is optional. The two `stopPropagation()` calls in `ReservationSlot.tsx` (lines 248 and 265) — load-bearing, see the pass. `src/app/api/**`. The patient-file pages themselves.
+
+**Instructions:**
+
+1. In `src/app/components/ReservationSlot.tsx`, in `interface ReservationSlotProps`, find:
+
+```ts
+    onClick: (id: number) => void;
+    canDelete?: boolean;
+```
+
+and replace with:
+
+```ts
+    onClick: (id: number) => void;
+    // Optional: the card body now opens the patient's file, so a dashboard that
+    // also has a session-detail view exposes it here instead.
+    onViewDetails?: (id: number) => void;
+    canDelete?: boolean;
+```
+
+2. In the same file, in the destructured parameter list, find:
+
+```ts
+    onClick,
+    canDelete = false,
+}: ReservationSlotProps) {
+```
+
+and replace with:
+
+```ts
+    onClick,
+    onViewDetails,
+    canDelete = false,
+}: ReservationSlotProps) {
+```
+
+3. In the same file, find the first line of the `actions` assembly:
+
+```ts
+    const actions: SlotAction[] = [];
+```
+
+and insert **directly below it**:
+
+```ts
+    if (onViewDetails) {
+        actions.push({ label: "Session Details", icon: "📄", onClick: () => onViewDetails(id) });
+    }
+```
+
+4. In `src/app/components/Calendar.tsx`, in `interface CalendarProps`, find:
+
+```ts
+    onEmptyClick?: (hour: number) => void;
+    canDelete?: boolean;
+```
+
+and replace with:
+
+```ts
+    onEmptyClick?: (hour: number) => void;
+    // Optional: dashboards that keep a session-detail view pass it here (TJ-048).
+    onViewDetails?: (id: number) => void;
+    canDelete?: boolean;
+```
+
+5. In the same file, in the `Calendar` parameter list, find:
+
+```ts
+    onEmptyClick,
+    canDelete = false,
+}: CalendarProps) {
+```
+
+and replace with:
+
+```ts
+    onEmptyClick,
+    onViewDetails,
+    canDelete = false,
+}: CalendarProps) {
+```
+
+6. In the same file, in the `<ReservationSlot ... />` call, find:
+
+```tsx
+                                                    onClick={onSlotClick}
+                                                    canDelete={canDelete}
+```
+
+and replace with:
+
+```tsx
+                                                    onClick={onSlotClick}
+                                                    onViewDetails={onViewDetails}
+                                                    canDelete={canDelete}
+```
+
+7. In `src/app/admin/page.tsx`, add to the imports, directly below `import Link from "next/link";`:
+
+```ts
+import { useRouter } from "next/navigation";
+```
+
+8. In the same file, directly below the line `export default function AdminDashboard() {`, add:
+
+```ts
+    const router = useRouter();
+```
+
+9. In the same file, replace this whole block (the only occurrence):
+
+```ts
+    const handleSlotClick = async (id: number) => {
+        const res = await fetch(`/api/reservations/${id}`);
+        const data = await res.json();
+        setDetail(data);
+        setDetailId(id);
+    };
+```
+
+with:
+
+```ts
+    // The card body goes to the person, not the appointment — the file is where
+    // the phone numbers, history and documents are. The appointment's own detail
+    // view moved into the card menu as "Session Details". (TJ-048)
+    const handleSlotClick = (id: number) => {
+        const r = reservations.find((x) => x.id === id);
+        if (!r) return;
+        router.push(`/admin/patients/${r.patient.id}`);
+    };
+
+    const handleViewDetails = async (id: number) => {
+        const res = await fetch(`/api/reservations/${id}`);
+        const data = await res.json();
+        setDetail(data);
+        setDetailId(id);
+    };
+```
+
+10. In the same file, find:
+
+```tsx
+                            onSlotClick={handleSlotClick}
+```
+
+and replace with:
+
+```tsx
+                            onSlotClick={handleSlotClick}
+                            onViewDetails={handleViewDetails}
+```
+
+11. In `src/app/secretary/page.tsx`, add to the imports, directly below `import { useState, useEffect, useCallback } from "react";`:
+
+```ts
+import { useRouter } from "next/navigation";
+```
+
+12. In the same file, directly below the line `export default function SecretaryDashboard() {`, add:
+
+```ts
+    const router = useRouter();
+```
+
+13. In the same file, define `handleSlotClick` immediately above the existing `handleEmptyClick` declaration:
+
+```ts
+    // Matches the admin dashboard: the card body opens the patient's file.
+    // The secretary has no session-detail view, so no onViewDetails is passed
+    // and no "Session Details" item appears in the menu. (TJ-048)
+    const handleSlotClick = (id: number) => {
+        const r = reservations.find((x) => x.id === id);
+        if (!r) return;
+        router.push(`/secretary/patients/${r.patient.id}`);
+    };
+```
+
+14. In the same file, find (the only occurrence):
+
+```tsx
+                            onSlotClick={() => { }}
+```
+
+and replace with:
+
+```tsx
+                            onSlotClick={handleSlotClick}
+```
+
+**Verification:**
+- `npx tsc --noEmit --incremental false` exits **0**
+- `npm run build` exits **0**
+- `npm run lint` stays at or below **63 problems (48 errors, 15 warnings)** — `master` baseline measured 2026-09-15. Paste the count.
+- `git diff --stat` lists exactly the four Scope paths; `src/app/doctor/page.tsx` is **not** among them
+- `grep -c "stopPropagation" src/app/components/ReservationSlot.tsx` returns **2** — both are still there
+- Runtime, admin: clicking a card's body lands on `/admin/patients/<the patient's id>` and the page shows that patient's name. Do this for a card whose patient is **not** the first in the day, so an off-by-one lookup would be visible.
+- Runtime, admin: `⋮` → **Session Details** still opens the old modal, with its SOAP section intact for a session that has one
+- Runtime, admin, **the portal-bubbling regression**: open `⋮` and choose **Duplicate**. The duplicate dialog must open and the browser must **not** navigate to the patient file and must **not** open the new-reservation form. Repeat with **Check In** — the status must change with no navigation.
+- Runtime, admin: clicking **empty grid space** still opens `/admin/reservations/new?date=…&time=…` at the clicked hour
+- Runtime, secretary: the same four checks, minus Session Details, which must **not** appear in the secretary's menu
+- Runtime, **doctor**: clicking a card still opens `/doctor/session/<id>`, and the menu shows no Session Details item
+- 320px: the stacked mobile card is still clickable and still reaches the patient file
+
+**Done when:**
+- [ ] A card click opens the patient's file on both the admin and secretary dashboards
+- [ ] The admin's session-detail view survives, in the card menu
+- [ ] Choosing any menu item never navigates
+- [ ] The doctor dashboard is unchanged and unedited
+- [ ] Only the four Scope files changed
+
+---
+
+### TJ-049 — Fit more of a busy day on screen before the schedule scrolls
+
+- **Status:** SPLIT — passed and measured 2026-09-15; see TJ-049a, TJ-049b. Nothing executes against this ID.
+- **Why:** When enough reservations overlap, the schedule stops shrinking and starts scrolling sideways, and the day can no longer be read at a glance. The cliff is hard-coded: `Calendar.tsx:42` refuses to pack a column narrower than **150px**, and `:210–212` turns that into the pane's minimum width, so the grid scrolls the moment `maxCols × 150 + gaps + 72` exceeds the container.
+- **User request, 2026-09-15:** "more scalability for the schedule. so that when the reservations stack it zooms out to a certain extent before you need to scroll to the left."
+
+**Planning pass / measurement:** 2026-09-15 — read `src/app/components/Calendar.tsx` and `src/app/components/ReservationSlot.tsx` in full, plus both shells (`admin/layout.tsx:474–478`, `secretary/layout.tsx:204`).
+
+**Where the cliff actually is.** Both shells cap content at `max-width: 1400px`; the admin shell adds `2rem` of padding, so on a 1440px display the calendar gets about **1336px**, of which `LABEL_WIDTH` takes 72. With `MIN_COL_WIDTH = 150` and `COL_GAP = 6`, the largest column count that fits is `⌊(1336 − 72 + 6) ÷ 156⌋` = **8**. A ninth overlapping reservation starts the sideways scroll. That is the number to beat, and every runtime bullet below is written to be measured rather than assumed.
+
+**Two independent levers, hence two tasks.** *(a)* The 150px floor is a **legibility** limit, not a layout one — a narrower card is allowed as long as its contents stop competing for the space. That is CSS, costs nothing at render time, and is TJ-049a. *(b)* Once the floor is as low as it can go, the only way to fit more is to make the whole grid smaller — a real zoom-out, which needs the container's width measured, and is TJ-049b. Done in this order each stage is strictly better than the last, and (a) ships value on its own if (b) turns out fiddly.
+
+**What a true CSS `zoom` / `transform: scale()` would cost, and why neither is used.** Both were considered for (b) and rejected. `ReservationSlot`'s action menu is `position: fixed`, portalled to `document.body`, and placed from `getBoundingClientRect()` (`ReservationSlot.tsx:186–207`); the hour labels are `position: sticky; left: 0` inside the scroll pane (`Calendar.tsx:306`). Both read coordinates that a `zoom` or a `transform` on an ancestor redefines, and neither failure shows up in a build. TJ-049b scales the **layout constants** instead — smaller numbers, no transformed coordinate space — so every rectangle stays honest and the container queries TJ-049a adds keep measuring real rendered pixels.
+
+**Expected outcome, on the same 1336px pane:** 8 columns today → **10** after TJ-049a (floor 110) → about **15** after TJ-049b (floor 110 at scale 0.72) before anything scrolls. These are predictions from the arithmetic above; both tasks require the real number to be observed and reported.
+
+---
+
+### TJ-049a — Let a schedule column go narrower, and keep the card readable when it does
+
+- **Status:** READY
+- **Branch:** `feat/narrower-schedule-columns`
+- **Must not run at the same time as TJ-048 or TJ-047b** — all three edit `Calendar.tsx` and `ReservationSlot.tsx`. Run it after both have merged.
+- **Why:** `MIN_COL_WIDTH = 150` (`Calendar.tsx:42`) is the schedule's scroll cliff, and 150px is not a layout requirement — it is roughly the width at which a card showing a name, a phone number and a time stops fitting all three. Lowering it alone would just clip text. Lowering it **and** letting the card shed what it cannot afford — the note, then the phone number, then some type size and padding — buys two more columns with no loss of the information that identifies the session.
+
+**Planning pass:** 2026-09-15 — read both files in full. Confirmed and corrected:
+
+- **The container is on the wrong element for this job.** `container-type: inline-size` currently sits on `.slot-main` (`ReservationSlot.tsx:300`), which is the text column *inside* the card. A query on it can shrink the text but cannot touch `.slot`'s own padding or the `⋮` trigger — and those are a large share of a 110px card. Moving the container to `.slot` fixes that and, usefully, makes every threshold equal to the **column width**, because `.card-wrap` sets the column width and `.slot` is `width: 100%` of it.
+- **Moving it means recalibrating the one existing threshold.** `@container (max-width: 220px)` (`:316–318`) is measured against `.slot-main`, which is narrower than `.slot` by its padding (`0.4rem 0.65rem`), the 3px left border, `.slot-right`'s `0.3rem` margin and the trigger — on the order of 45px. `220` on `.slot-main` is therefore about `265` on `.slot`, and the rule below uses 265. This makes the note's hide-point only *approximately* what it is today; the note is decoration and its exact breakpoint is not a correctness matter.
+- **Containment is safe here.** `container-type: inline-size` applies layout and inline-size containment. `.slot` is already `position: relative` (so it is already the containing block for its `::before` hatch and its status dot) and it is already sized by its parent rather than by its contents (`width: 100%; height: 100%`). The action menu is portalled to `document.body` and so is outside the containment entirely — which is the reason the portal exists.
+- **The phone cannot be hidden as the markup stands.** `ReservationSlot.tsx:236` renders the phone as a bare text node followed by one `.slot-time` span, so CSS can hide the time but not the phone, and hiding the phone would strand the `·`. Step 3 splits it into three spans and moves the separator into its own element so both disappear together. It also moves `text-overflow: ellipsis` onto the phone, which is the part that should truncate; today the *time* is what gets cut off first, which is the wrong half.
+- **Mobile is unaffected and must stay that way.** Below 768px `Calendar.tsx:320–334` stacks the cards full-width and drops the horizontal scroll, so `.slot`'s container is the full row and none of the new tiers apply.
+- The floor also feeds `paneMinWidth` (`Calendar.tsx:210–212`), so lowering it is what actually delays the scroll; the tiers only make the result readable.
+
+**Scope — touch only these:**
+- `src/app/components/Calendar.tsx`
+- `src/app/components/ReservationSlot.tsx`
+
+**Do not touch:** `MAX_COL_WIDTH`, `COL_GAP`, `LABEL_WIDTH` or `ROW_HEIGHT` in `Calendar.tsx` — `ROW_HEIGHT` in particular carries TJ-044's measured floor and its comment explains why it cannot move. The `@media (max-width: 768px)` blocks in either file. The packing engine (`assignColumns`, `nFinal`, `activeAt`, `crossesBoundaryAfter`) — this task changes one constant and some CSS, and nothing about how columns are assigned.
+
+**Instructions:**
+
+1. In `src/app/components/Calendar.tsx`, replace this line:
+
+```ts
+const MIN_COL_WIDTH = 150; // never pack columns narrower than this — scroll instead of clipping
+```
+
+with:
+
+```ts
+// Floor for a packed column. Lowered from 150 by TJ-049a: 150 was the width at
+// which a card can still show name, phone and time at full size, not a layout
+// requirement. ReservationSlot now sheds the note, then the phone, then some
+// type size as its own container narrows, so 110 still identifies the session.
+// Below 110 the patient's name itself starts to ellipsize — scroll instead.
+const MIN_COL_WIDTH = 110;
+```
+
+2. In `src/app/components/ReservationSlot.tsx`, move the container declaration up one level. In the `.slot` rule, find:
+
+```css
+                    width: 100%; height: 100%; min-height: 48px; box-sizing: border-box;
+                    position: relative; overflow: hidden;
+```
+
+and replace with:
+
+```css
+                    width: 100%; height: 100%; min-height: 48px; box-sizing: border-box;
+                    position: relative; overflow: hidden;
+                    /* The card queries its OWN width so it can shed padding and
+                       shrink the trigger, not just its text. Thresholds below
+                       are therefore column widths. (TJ-049a) */
+                    container-type: inline-size;
+```
+
+Then in the `.slot-main` rule, delete these two lines:
+
+```css
+                    /* lets .slot-note react to the card's own rendered width via @container below */
+                    container-type: inline-size;
+```
+
+3. In the same file, replace the `.slot-sub` markup. Find:
+
+```tsx
+                <span className="slot-sub">
+                    {patientPhone} <span className="slot-time">· {time}</span>
+                </span>
+```
+
+and replace with:
+
+```tsx
+                <span className="slot-sub">
+                    <span className="slot-phone">{patientPhone}</span>
+                    <span className="slot-sep" aria-hidden="true">·</span>
+                    <span className="slot-time">{time}</span>
+                </span>
+```
+
+4. In the same file, replace the `.slot-sub` and `.slot-time` CSS rules. Find:
+
+```css
+                .slot-sub {
+                    font-size: 0.7rem; opacity: 0.8; white-space: nowrap;
+                    overflow: hidden; text-overflow: ellipsis;
+                }
+                .slot-time { opacity: 0.85; }
+```
+
+and replace with:
+
+```css
+                .slot-sub {
+                    display: flex; align-items: baseline; gap: 0.3rem;
+                    font-size: 0.7rem; opacity: 0.8; white-space: nowrap;
+                    overflow: hidden; min-width: 0;
+                }
+                /* The phone is the half that may truncate; the time never is. */
+                .slot-phone { overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+                .slot-sep { flex-shrink: 0; opacity: 0.6; }
+                .slot-time { flex-shrink: 0; opacity: 0.85; }
+```
+
+5. In the same file, replace the whole existing container-query block. Find:
+
+```css
+                @container (max-width: 220px) {
+                    .slot-note { display: none; }
+                }
+```
+
+and replace with:
+
+```css
+                /* Thresholds are column widths — see the container note on .slot.
+                   Each tier gives back the space the tier above could not afford,
+                   in order of what the front desk needs least. */
+                @container (max-width: 265px) {
+                    .slot-note { display: none; }
+                }
+                @container (max-width: 200px) {
+                    .slot { padding: 0.35rem 0.45rem; }
+                    .slot-name { font-size: 0.75rem; }
+                    .slot-sub { font-size: 0.66rem; }
+                }
+                @container (max-width: 150px) {
+                    .slot { padding: 0.3rem 0.35rem; }
+                    .slot-name { font-size: 0.72rem; }
+                    .slot-phone, .slot-sep { display: none; }
+                    .slot-right { margin-left: 0.15rem; }
+                    .menu-trigger { font-size: 1rem; padding: 0.1rem 0.15rem; }
+                }
+```
+
+**Verification:**
+- `npx tsc --noEmit --incremental false` exits **0**
+- `npm run build` exits **0**
+- `npm run lint` stays at or below **63 problems (48 errors, 15 warnings)** — `master` baseline measured 2026-09-15. Paste the count.
+- `git diff --stat` lists exactly the two Scope paths
+- Runtime, the measurement this task exists for. On a roughly 1440px window, admin dashboard, book a day with **9 overlapping reservations at the same hour** and confirm the schedule shows all nine with **no horizontal scrollbar** — 9 is the count that scrolls on `master`. Then add a **tenth**; still no scrollbar. Then an **eleventh**; the scrollbar appears. Report the numbers you actually observed rather than these.
+- Runtime, legibility at the floor: in that 10-column day, every card still shows the **patient's name** un-truncated or ellipsized-but-recognisable, and the **time**. The phone and the note are expected to be gone. The full string is still in the card's `title` — hover one and confirm.
+- Runtime, the quiet day: a day with **one** reservation still draws a card at `MAX_COL_WIDTH` (320px) showing name, phone, time **and** a calendar note — the tiers must not fire when there is room. This is the regression a too-high threshold would cause.
+- Runtime, doctor and secretary dashboards: same two checks — the component is shared by all three.
+- 320px: the mobile stacked layout is **unchanged** — full-width cards, phone and note both visible. Any tier firing on mobile is a bug.
+- 2560px: no change from `master`.
+
+**Done when:**
+- [ ] A ten-column day fits without horizontal scrolling on a 1440px window
+- [ ] Every card at the floor still shows the patient's name and the time
+- [ ] A one-reservation day looks exactly as it does on `master`
+- [ ] Mobile is untouched
+- [ ] Only the two Scope files changed
+
+---
+
+### TJ-049b — Scale the whole schedule down to fit before it scrolls
+
+- **Status:** READY
+- **Branch:** `feat/schedule-scale-to-fit`
+- **Depends on:** TJ-049a merged — it sets the floor this task scales.
+- **Why:** TJ-049a lowers the column floor as far as legibility allows, which on a 1336px pane buys two columns. Past that, the only way to fit more is to make the whole grid smaller — the "zoom out" the request asks for. This measures the pane and shrinks the layout constants by a single factor until the day fits, down to a floor of 0.72, and only then scrolls.
+
+**Planning pass:** 2026-09-15 — read `Calendar.tsx` in full; see TJ-049's pass for the geometry and for why `zoom` and `transform: scale()` were both rejected. Confirmed:
+
+- **The scale factor is already computable from values in the file.** `paneMinWidth` (`:210–212`) is exactly "the width this day needs at the floor". So the factor is `measuredWidth / paneMinWidth`, clamped to `[MIN_SCALE, 1]` — below 1 only when even the floor does not fit, which is precisely when the pane scrolls today. The three stages then run in order and never overlap: percentage widths shrink from `MAX_COL_WIDTH` down to the floor, the whole grid scales 1 → 0.72, then it scrolls.
+- **What must scale and what must not.** `ROW_HEIGHT`, `LABEL_WIDTH`, `COL_GAP`, `MIN_COL_WIDTH` and `MAX_COL_WIDTH` are all one coordinate system and scale together. Type size does **not** need scaling here: TJ-049a's tiers query the card's *rendered* width, and since nothing is transformed, a scaled column really is narrower and the right tier fires by itself. **This is why the task stays out of `ReservationSlot.tsx` entirely.**
+- **`ROW_HEIGHT` is used twice in JS** — `top` and `height` on `.card-wrap` (`:243–244`) — and once in the style block (`:297`). All three must read the scaled value or the cards will not line up with their rows. This is the most likely way to get this task wrong.
+- **First paint has no measurement.** The factor starts at 1 and the observer corrects it on the next frame. The calendar only renders after `loading` flips false on the client (`admin/page.tsx:302`), so there is no server-rendered markup to mismatch — but there is one visible reflow on a dense day, and that is accepted rather than hidden.
+- **Mobile must be pinned to 1.** Below 768px the rows are `height: auto` and the cards are full-width `!important` (`:320–334`), so a scaled `--row-height` is mostly ignored — but `--label-width` is **not** overridden there and would shrink the hour column. Step 4 forces the factor to 1 below 769px rather than adding a media listener.
+- No new dependency: `ResizeObserver` is a browser global, and `useRef` / `useState` / `useEffect` come from React, which the file does not yet import (it is `"use client"` and imports only a type and `ReservationSlot`).
+
+**Scope — touch only this:**
+- `src/app/components/Calendar.tsx`
+
+**Do not touch:** `src/app/components/ReservationSlot.tsx` — see the pass; the type tiers respond on their own. The `@media (max-width: 768px)` block. The packing engine. No `zoom`, no `transform`, no `scale()` anywhere in the diff.
+
+**Instructions:**
+
+1. Replace the import line:
+
+```tsx
+import type { CSSProperties } from "react";
+```
+
+with:
+
+```tsx
+import { useEffect, useRef, useState } from "react";
+import type { CSSProperties } from "react";
+```
+
+2. Add below the existing layout constants, directly after the `LABEL_WIDTH` line:
+
+```ts
+// Smallest the whole grid may be scaled to before the pane scrolls instead.
+// Below about 0.72 the hour labels and the card type stop being readable at a
+// glance, which defeats the purpose of fitting the day on one screen. (TJ-049b)
+const MIN_SCALE = 0.72;
+// Below this viewport the calendar stacks (see the @media block) and scaling
+// would only shrink the hour column, so it is pinned to 1.
+const SCALE_MIN_VIEWPORT = 769;
+```
+
+3. Inside the `Calendar` component, directly above `const { minHour, maxHour } = computeHourRange(reservations);`, add:
+
+```tsx
+    // Measure the pane so a day that will not fit at MIN_COL_WIDTH can be drawn
+    // smaller rather than pushed off the right edge. Layout constants are
+    // scaled; nothing is transformed, so getBoundingClientRect and the sticky
+    // hour labels keep telling the truth. (TJ-049b)
+    const outerRef = useRef<HTMLDivElement>(null);
+    const [paneWidth, setPaneWidth] = useState(0);
+    useEffect(() => {
+        const el = outerRef.current;
+        if (!el) return;
+        const ro = new ResizeObserver((entries) => {
+            for (const entry of entries) setPaneWidth(entry.contentRect.width);
+        });
+        ro.observe(el);
+        return () => ro.disconnect();
+    }, []);
+```
+
+4. Directly **below** the existing `paneMinWidth` declaration, add:
+
+```ts
+    const scale =
+        paneWidth >= SCALE_MIN_VIEWPORT && paneMinWidth > paneWidth
+            ? Math.max(MIN_SCALE, paneWidth / paneMinWidth)
+            : 1;
+    const rowHeight = Math.round(ROW_HEIGHT * scale);
+    const labelWidth = Math.round(LABEL_WIDTH * scale);
+    const scaledColGap = Math.round(COL_GAP * scale);
+    const scaledMaxColWidth = Math.round(MAX_COL_WIDTH * scale);
+    const scaledPaneMinWidth = Math.round(paneMinWidth * scale);
+```
+
+5. Attach the ref and feed the scaled values through. Replace:
+
+```tsx
+            <div className="scroll-outer">
+                <div
+                    className="scroll-inner"
+                    style={{ "--pane-min-width": `${paneMinWidth}px` } as CSSProperties}
+                >
+```
+
+with:
+
+```tsx
+            <div className="scroll-outer" ref={outerRef}>
+                <div
+                    className="scroll-inner"
+                    style={{
+                        "--pane-min-width": `${scaledPaneMinWidth}px`,
+                        "--row-height": `${rowHeight}px`,
+                        "--label-width": `${labelWidth}px`,
+                    } as CSSProperties}
+                >
+```
+
+6. Make the two card-geometry calculations read the scaled row height. Replace:
+
+```tsx
+                                        const top = (minute / 60) * ROW_HEIGHT;
+                                        const height = (getDurationMinutes(r) / 60) * ROW_HEIGHT - CARD_GAP;
+```
+
+with:
+
+```tsx
+                                        const top = (minute / 60) * rowHeight;
+                                        const height = (getDurationMinutes(r) / 60) * rowHeight - CARD_GAP;
+```
+
+7. Make the two column helpers scale-aware. They are module-level functions today, so give them the two values as parameters. Replace:
+
+```ts
+function colWidthCss(n: number): string {
+    if (n <= 1) return `min(100%, ${MAX_COL_WIDTH}px)`;
+    const gapsPx = (n - 1) * COL_GAP;
+    return `min(calc((100% - ${gapsPx}px) / ${n}), ${MAX_COL_WIDTH}px)`;
+}
+
+function colLeftCss(n: number, i: number): string {
+    if (i === 0) return "0px";
+    return `calc(${i} * (${colWidthCss(n)} + ${COL_GAP}px))`;
+}
+```
+
+with:
+
+```ts
+function colWidthCss(n: number, maxColWidth: number, colGap: number): string {
+    if (n <= 1) return `min(100%, ${maxColWidth}px)`;
+    const gapsPx = (n - 1) * colGap;
+    return `min(calc((100% - ${gapsPx}px) / ${n}), ${maxColWidth}px)`;
+}
+
+function colLeftCss(n: number, i: number, maxColWidth: number, colGap: number): string {
+    if (i === 0) return "0px";
+    return `calc(${i} * (${colWidthCss(n, maxColWidth, colGap)} + ${colGap}px))`;
+}
+```
+
+and update the two call sites, replacing:
+
+```tsx
+                                                    left: colLeftCss(n, idx),
+                                                    width: colWidthCss(n),
+```
+
+with:
+
+```tsx
+                                                    left: colLeftCss(n, idx, scaledMaxColWidth, scaledColGap),
+                                                    width: colWidthCss(n, scaledMaxColWidth, scaledColGap),
+```
+
+8. In the style block, replace:
+
+```css
+                .time-row {
+                    display: flex; border-bottom: 1px solid rgba(255,255,255,0.14);
+                    height: ${ROW_HEIGHT}px;
+                }
+```
+
+with:
+
+```css
+                .time-row {
+                    display: flex; border-bottom: 1px solid rgba(255,255,255,0.14);
+                    height: var(--row-height, ${ROW_HEIGHT}px);
+                }
+```
+
+9. In the style block, replace:
+
+```css
+                .time-label {
+                    width: ${LABEL_WIDTH}px; flex-shrink: 0; padding: 0.5rem 0.6rem;
+```
+
+with:
+
+```css
+                .time-label {
+                    width: var(--label-width, ${LABEL_WIDTH}px); flex-shrink: 0; padding: 0.5rem 0.6rem;
+```
+
+10. Leave the `paneMinWidth` formula itself (`:210–212`) **unscaled** — it is the unscaled requirement, and step 4 scales it exactly once. Do not scale it twice.
+
+**Verification:**
+- `npx tsc --noEmit --incremental false` exits **0**
+- `npm run build` exits **0**
+- `npm run lint` stays at or below **63 problems (48 errors, 15 warnings)**; paste the count
+- `git diff --stat` lists **only** `src/app/components/Calendar.tsx`
+- `grep -nE "zoom|transform:|scale\(" src/app/components/Calendar.tsx` returns **nothing** — the scale is arithmetic, not a transform
+- Runtime, the measurement. On a roughly 1440px window, admin dashboard, build a day with **11 overlapping reservations at the same hour** — the count that scrolls after TJ-049a — and confirm it now fits with no horizontal scrollbar, drawn smaller. Keep adding until the scrollbar appears and **report that number**; the arithmetic predicts about 15.
+- Runtime, alignment is the thing most likely to break: in that scaled day, every card's top edge must sit on its hour line, and a **two-hour** session must still span exactly two rows. Book one at a half-hour (e.g. 10:30) and confirm it starts halfway down the 10:00 row and ends halfway down the 12:00 row.
+- Runtime, the hour labels: still sticky at the left edge while scrolling sideways, and their text still legible at the smallest scale
+- Runtime, the action menu: open `⋮` on a card in a scaled day; the menu must appear **against that card**, not offset. This is the check that proves the no-transform decision held.
+- Runtime, the quiet day: one reservation, the factor must be exactly **1** — same row height and hour-label width as `master`. Read `getComputedStyle(document.querySelector('.time-row')).height` and confirm `68px`.
+- 320px and 768px: the factor is pinned to 1; the hour column must be its full width and the stacked layout unchanged
+- 2560px: factor 1, no visual change from `master`
+
+**Done when:**
+- [ ] A day too dense for TJ-049a's floor is drawn smaller instead of scrolling, down to 0.72
+- [ ] Cards stay aligned to their hour rows at every scale, including two-hour and half-hour sessions
+- [ ] The sticky hour labels and the portalled action menu both still position correctly
+- [ ] The factor is exactly 1 whenever the day fits, and on mobile
+- [ ] Only `Calendar.tsx` changed
 
 ---
 
 ## Notes for the planner
 
 Findings reported by the executor, or surfaced during a pass, that fall outside the scope of the task that turned them up. The planner triages these into tasks. **The executor does not write here** — it reports in conversation and the planner records.
+
+- **TJ-042a added the `min`/`max` time attributes to the two forms nobody can open, and not to the two that ship.** Found 2026-09-15 while passing TJ-047. `grep -rn 'type="time"' src/app` shows `min="07:00" max="18:00"` on `admin/page.tsx:365` and `secretary/page.tsx:266` — both inside the **dead** Add Reservation modals that TJ-045 exists to delete — while the live booking forms at `admin/reservations/new/page.tsx:202` and `secretary/reservations/new/page.tsx:189` carry no such attributes. The server refuses an out-of-window booking either way, so this is a courtesy gap and not a hole; but it is a clean example of a task hitting the surface that *looked* like the target. TJ-047b and TJ-047c both put the attributes on the edit forms they create. **The two live `new` pages are still missing them** — file it, or fold it into TJ-045 when that pass decides delete-versus-revive, since deleting the modals would delete the only two places the attributes currently exist. (Found during the TJ-047 pass, 2026-09-15.)
+- **Lint has drifted again, 61 → 63, and nothing recorded the move.** Measured on `master` 2026-09-15: `npm run lint` reports **63 problems (48 errors, 15 warnings)**; TJ-030 was filed at 61 and TJ-015 shipped at 55. Every task filed today carries 63 as a written drift check with the instruction to paste the count, which is the only reason the next move will be visible. **The general point is the one TJ-029 keeps earning: a number that is only ever read by a human at review time is a number that drifts.** Until CI exists, every task that can plausibly add a hook or an effect should name the current count. (Measured during the TJ-047/048/049 passes, 2026-09-15.)
 
 - **A spec can name the wrong target entirely, and neither a build nor a review of the diff would catch it — only reading the surrounding code does.** TJ-041's original steps 4–6 told the executor to open the dashboards' in-file Add Reservation modal with the clicked hour pre-filled. Two things were wrong. The shallow one: the snippet built an `addForm` object with a `patientId` key that does not exist, which is a TypeScript excess-property error and would have failed the `tsc` gate. **The deep one: that modal cannot be opened by anybody.** `openAddModal` is defined on both dashboards and never called; the only `setShowAdd(true)` in each file sits inside it; and both "+ Add Reservation" buttons navigate to `/{role}/reservations/new` instead. The task would have wired a click to a form no other part of the application can reach — and **it would have built, typechecked and linted clean**, because unreachable code is still valid code. **What caught it was the executor refusing to improvise.** It was told to read `addForm` before writing and stop on a mismatch; that instruction was aimed at the shallow defect and it surfaced the deep one on the way. Worth noting it also reasoned correctly about *when* the TJ-043a precedent applies — "implement the literal and flag it" covers a literal that compiles but reads oddly, not one that cannot build — and said so rather than silently picking a lane. **Two rules follow.** When a task's target is a UI surface, **verify the surface is reachable before specifying anything against it**: grep for the thing that opens it, not just for the thing itself. And when a pass names an anchor inside a component's state, **read that state's full shape** — the pass had read the modal's JSX and its submit path but never the `useState` initialiser three lines above, which is where both defects were visible at once. The dead modals are now **TJ-045**. (Found during TJ-041's first dispatch, 2026-09-15.)
 - **When a task states an invariant *and* the literal meant to satisfy it, check the literal against the invariant — they were written at different moments and can disagree.** TJ-043a specified `z-index: 1200` in its Instructions and, in its Regression-risk paragraph, asserted the popover sits "below the `z-index: 1000` modal overlay". Both sentences were written by the planner, minutes apart, and **they contradict each other**: 1200 is above 1000. The executor matched the literal exactly — as its rules require — and reported the discrepancy rather than quietly fixing it, which is exactly why the split exists and is the second time in this session that the executor's discipline caught a planner error. **The deeper cause is worth naming:** the task told the executor to *reuse* `ReservationSlot`'s portal pattern, and then supplied a z-index that pattern does not use. Reuse was specified for the mechanism and abandoned for the value. Had the spec said "use `.menu-panel`'s layer" instead of naming a number, there would have been nothing to get wrong. **Rule: when a task instructs reuse of an existing pattern, derive its constants from that pattern by reference rather than restating them — and where a number must be restated, verify it against every sibling value rather than against intent.** An audit of all four `z-index` values in play (3, 200, 1000, 1200) makes the error obvious in one line; the intent sentence alone never would. (Found during the TJ-043a planner review, 2026-09-15.)
