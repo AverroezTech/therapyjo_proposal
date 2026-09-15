@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useRef, useState } from "react";
 import type { CSSProperties } from "react";
 import ReservationSlot from "./ReservationSlot";
 
@@ -52,6 +53,20 @@ const MIN_COL_WIDTH = 110;
 const MAX_COL_WIDTH = 320; // never let a lone card stretch absurdly wide
 const COL_GAP = 6;
 const LABEL_WIDTH = 72;
+// Smallest the whole grid may be scaled to before the pane scrolls instead.
+// Below about 0.72 the hour labels and the card type stop being readable at a
+// glance, which defeats the purpose of fitting the day on one screen. (TJ-049b)
+const MIN_SCALE = 0.72;
+// Narrowest pane that may be scaled at all. Below a 768px viewport the calendar
+// stacks (see the @media block) and scaling would only shrink the hour column,
+// so the factor is pinned to 1 there.
+//
+// The test is on the MEASURED PANE, not the viewport, and that is deliberate:
+// the pane is always narrower than the window, so a stacked calendar is always
+// pinned, and the only cost is that a desktop-layout window of roughly
+// 769-833px scrolls instead of scaling. Do not "fix" this to window.innerWidth
+// without re-checking that the stacked layout still gets exactly 1. (TJ-049b)
+const MIN_SCALABLE_PANE_WIDTH = 769;
 
 function formatHour(h: number) {
     if (h === 0) return "12 AM";
@@ -134,15 +149,15 @@ function assignColumns(reservations: Reservation[]): Map<number, number> {
 // quiet hour's cards fill the row proportionally) capped at MAX_COL_WIDTH
 // (so a single card never stretches absurdly wide just because some other
 // hour is busy and widened the shared scroll pane).
-function colWidthCss(n: number): string {
-    if (n <= 1) return `min(100%, ${MAX_COL_WIDTH}px)`;
-    const gapsPx = (n - 1) * COL_GAP;
-    return `min(calc((100% - ${gapsPx}px) / ${n}), ${MAX_COL_WIDTH}px)`;
+function colWidthCss(n: number, maxColWidth: number, colGap: number): string {
+    if (n <= 1) return `min(100%, ${maxColWidth}px)`;
+    const gapsPx = (n - 1) * colGap;
+    return `min(calc((100% - ${gapsPx}px) / ${n}), ${maxColWidth}px)`;
 }
 
-function colLeftCss(n: number, i: number): string {
+function colLeftCss(n: number, i: number, maxColWidth: number, colGap: number): string {
     if (i === 0) return "0px";
-    return `calc(${i} * (${colWidthCss(n)} + ${COL_GAP}px))`;
+    return `calc(${i} * (${colWidthCss(n, maxColWidth, colGap)} + ${colGap}px))`;
 }
 
 export default function Calendar({
@@ -156,6 +171,22 @@ export default function Calendar({
     onEdit,
     canDelete = false,
 }: CalendarProps) {
+    // Measure the pane so a day that will not fit at MIN_COL_WIDTH can be drawn
+    // smaller rather than pushed off the right edge. Layout constants are
+    // scaled; nothing is transformed, so getBoundingClientRect and the sticky
+    // hour labels keep telling the truth. (TJ-049b)
+    const outerRef = useRef<HTMLDivElement>(null);
+    const [paneWidth, setPaneWidth] = useState(0);
+    useEffect(() => {
+        const el = outerRef.current;
+        if (!el) return;
+        const ro = new ResizeObserver((entries) => {
+            for (const entry of entries) setPaneWidth(entry.contentRect.width);
+        });
+        ro.observe(el);
+        return () => ro.disconnect();
+    }, []);
+
     const { minHour, maxHour } = computeHourRange(reservations);
     const HOURS: number[] = [];
     for (let h = minHour; h <= maxHour; h++) HOURS.push(h);
@@ -221,13 +252,26 @@ export default function Calendar({
     const paneMinWidth = maxCols > 0
         ? maxCols * MIN_COL_WIDTH + Math.max(0, maxCols - 1) * COL_GAP + LABEL_WIDTH
         : 0;
+    const scale =
+        paneWidth >= MIN_SCALABLE_PANE_WIDTH && paneMinWidth > paneWidth
+            ? Math.max(MIN_SCALE, paneWidth / paneMinWidth)
+            : 1;
+    const rowHeight = Math.round(ROW_HEIGHT * scale);
+    const labelWidth = Math.round(LABEL_WIDTH * scale);
+    const scaledColGap = Math.round(COL_GAP * scale);
+    const scaledMaxColWidth = Math.round(MAX_COL_WIDTH * scale);
+    const scaledPaneMinWidth = Math.round(paneMinWidth * scale);
 
     return (
         <div className="calendar">
-            <div className="scroll-outer">
+            <div className="scroll-outer" ref={outerRef}>
                 <div
                     className="scroll-inner"
-                    style={{ "--pane-min-width": `${paneMinWidth}px` } as CSSProperties}
+                    style={{
+                        "--pane-min-width": `${scaledPaneMinWidth}px`,
+                        "--row-height": `${rowHeight}px`,
+                        "--label-width": `${labelWidth}px`,
+                    } as CSSProperties}
                 >
                     {HOURS.map((hour) => {
                         const own = ownAt[hour] || [];
@@ -251,16 +295,16 @@ export default function Calendar({
                                     {own.map((r) => {
                                         const idx = colOf.get(r.id) ?? 0;
                                         const minute = getMinute(r.sessionTime);
-                                        const top = (minute / 60) * ROW_HEIGHT;
-                                        const height = (getDurationMinutes(r) / 60) * ROW_HEIGHT - CARD_GAP;
+                                        const top = (minute / 60) * rowHeight;
+                                        const height = (getDurationMinutes(r) / 60) * rowHeight - CARD_GAP;
                                         return (
                                             <div
                                                 key={r.id}
                                                 className="card-wrap"
                                                 style={{
                                                     top,
-                                                    left: colLeftCss(n, idx),
-                                                    width: colWidthCss(n),
+                                                    left: colLeftCss(n, idx, scaledMaxColWidth, scaledColGap),
+                                                    width: colWidthCss(n, scaledMaxColWidth, scaledColGap),
                                                     height,
                                                     zIndex: r.isTwoHours ? 2 : 1,
                                                 }}
@@ -307,12 +351,12 @@ export default function Calendar({
                 }
                 .time-row {
                     display: flex; border-bottom: 1px solid rgba(255,255,255,0.14);
-                    height: ${ROW_HEIGHT}px;
+                    height: var(--row-height, ${ROW_HEIGHT}px);
                 }
                 .time-row:nth-child(even) { background: rgba(255,255,255,0.02); }
                 .time-row:last-child { border-bottom: none; }
                 .time-label {
-                    width: ${LABEL_WIDTH}px; flex-shrink: 0; padding: 0.5rem 0.6rem;
+                    width: var(--label-width, ${LABEL_WIDTH}px); flex-shrink: 0; padding: 0.5rem 0.6rem;
                     font-size: 0.72rem; color: rgba(255,255,255,0.4);
                     font-weight: 500; text-align: right; border-right: 1px solid rgba(255,255,255,0.14);
                     font-variant-numeric: tabular-nums;
