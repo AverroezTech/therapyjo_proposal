@@ -25,6 +25,9 @@ interface ReservationSlotProps {
     onDuplicate: (id: number) => void;
     onDelete: (id: number) => void;
     onClick: (id: number) => void;
+    // Optional: the card body now opens the patient's file, so a dashboard that
+    // also has a session-detail view exposes it here instead.
+    onViewDetails?: (id: number) => void;
     canDelete?: boolean;
 }
 
@@ -114,6 +117,7 @@ export default function ReservationSlot({
     onDuplicate,
     onDelete,
     onClick,
+    onViewDetails,
     canDelete = false,
 }: ReservationSlotProps) {
     const [menuOpen, setMenuOpen] = useState(false);
@@ -154,6 +158,9 @@ export default function ReservationSlot({
     }, [menuOpen]);
 
     const actions: SlotAction[] = [];
+    if (onViewDetails) {
+        actions.push({ label: "Session Details", icon: "📄", onClick: () => onViewDetails(id) });
+    }
     if (status === "SCHEDULED" || status === "WAITING") {
         actions.push({ label: "Check In", icon: "✅", onClick: () => onStatusChange(id, "CHECKED_IN") });
     }
