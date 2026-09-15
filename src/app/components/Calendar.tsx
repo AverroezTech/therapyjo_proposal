@@ -25,6 +25,8 @@ interface CalendarProps {
     // Fires when empty grid space is clicked, carrying the hour clicked (0-23).
     // Separate from onSlotClick, which carries a reservation id.
     onEmptyClick?: (hour: number) => void;
+    // Optional: dashboards that keep a session-detail view pass it here (TJ-048).
+    onViewDetails?: (id: number) => void;
     canDelete?: boolean;
 }
 
@@ -143,6 +145,7 @@ export default function Calendar({
     onDelete,
     onSlotClick,
     onEmptyClick,
+    onViewDetails,
     canDelete = false,
 }: CalendarProps) {
     const { minHour, maxHour } = computeHourRange(reservations);
@@ -269,6 +272,7 @@ export default function Calendar({
                                                     onDuplicate={onDuplicate}
                                                     onDelete={onDelete}
                                                     onClick={onSlotClick}
+                                                    onViewDetails={onViewDetails}
                                                     canDelete={canDelete}
                                                 />
                                             </div>

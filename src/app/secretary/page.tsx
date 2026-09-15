@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
+import { useRouter } from "next/navigation";
 import Calendar from "@/app/components/Calendar";
 import DatePickerPopover from "@/app/components/DatePickerPopover";
 
@@ -32,6 +33,7 @@ interface PatientResult {
 const today = () => new Date().toISOString().split("T")[0];
 
 export default function SecretaryDashboard() {
+    const router = useRouter();
     const [selectedDate, setSelectedDate] = useState(today());
     const [doctorFilter, setDoctorFilter] = useState("all");
     const [doctors, setDoctors] = useState<Doctor[]>([]);
@@ -97,6 +99,15 @@ export default function SecretaryDashboard() {
             return;
         }
         fetchReservations();
+    };
+
+    // Matches the admin dashboard: the card body opens the patient's file.
+    // The secretary has no session-detail view, so no onViewDetails is passed
+    // and no "Session Details" item appears in the menu. (TJ-048)
+    const handleSlotClick = (id: number) => {
+        const r = reservations.find((x) => x.id === id);
+        if (!r) return;
+        router.push(`/secretary/patients/${r.patient.id}`);
     };
 
     // Mirrors the "+ Add Reservation" button, which navigates rather than
@@ -223,7 +234,7 @@ export default function SecretaryDashboard() {
                             onStatusChange={handleStatusChange}
                             onDuplicate={handleDuplicate}
                             onDelete={handleDelete}
-                            onSlotClick={() => { }}
+                            onSlotClick={handleSlotClick}
                             onEmptyClick={handleEmptyClick}
                             canDelete
                         />

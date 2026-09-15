@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import Calendar from "@/app/components/Calendar";
 import DatePickerPopover from "@/app/components/DatePickerPopover";
 
@@ -47,6 +48,7 @@ type ReservationDetail = Reservation & {
 const today = () => new Date().toISOString().split("T")[0];
 
 export default function AdminDashboard() {
+    const router = useRouter();
     const [selectedDate, setSelectedDate] = useState(today());
     const [doctorFilter, setDoctorFilter] = useState("all");
     const [doctors, setDoctors] = useState<Doctor[]>([]);
@@ -164,7 +166,16 @@ export default function AdminDashboard() {
         window.location.href = `/admin/reservations/new?date=${selectedDate}&time=${time}`;
     };
 
-    const handleSlotClick = async (id: number) => {
+    // The card body goes to the person, not the appointment — the file is where
+    // the phone numbers, history and documents are. The appointment's own detail
+    // view moved into the card menu as "Session Details". (TJ-048)
+    const handleSlotClick = (id: number) => {
+        const r = reservations.find((x) => x.id === id);
+        if (!r) return;
+        router.push(`/admin/patients/${r.patient.id}`);
+    };
+
+    const handleViewDetails = async (id: number) => {
         const res = await fetch(`/api/reservations/${id}`);
         const data = await res.json();
         setDetail(data);
@@ -309,6 +320,7 @@ export default function AdminDashboard() {
                             onDuplicate={handleDuplicate}
                             onDelete={handleDelete}
                             onSlotClick={handleSlotClick}
+                            onViewDetails={handleViewDetails}
                             onEmptyClick={handleEmptyClick}
                             canDelete
                         />
