@@ -117,6 +117,10 @@ export default function SecretaryDashboard() {
         window.location.href = `/secretary/reservations/new?date=${selectedDate}&time=${time}`;
     };
 
+    const handleEdit = (id: number) => {
+        window.location.href = `/secretary/reservations/${id}/edit`;
+    };
+
     const handleDelete = async (id: number) => {
         if (!confirm("Delete this reservation?")) return;
         setStatusError("");
@@ -235,6 +239,7 @@ export default function SecretaryDashboard() {
                             onDuplicate={handleDuplicate}
                             onDelete={handleDelete}
                             onSlotClick={handleSlotClick}
+                            onEdit={handleEdit}
                             onEmptyClick={handleEmptyClick}
                             canDelete
                         />
