@@ -100,7 +100,7 @@ Two things that bear repeating here, because this is the file both agents open:
 | TJ-046 | The duplicate path still accepts any hour | BACKLOG — **narrowed 2026-09-15**: its `PUT` half is TJ-047a; only the duplicate route is left | — |
 | TJ-047 | Edit an already-booked reservation | SPLIT — passed 2026-09-15; see TJ-047a, TJ-047b, TJ-047c | — |
 | TJ-047a | Validate the clinic window on the reschedule path, behind a shared helper | DONE — merged to `master` as `1a7157b` with `--no-ff`; **closes TJ-046's `PUT` bullet** | `feat/clinic-window-helper` |
-| TJ-047b | Admin: edit an already-booked reservation | READY — after TJ-047a; **not** concurrent with TJ-048 | `feat/admin-edit-reservation` |
+| TJ-047b | Admin: edit an already-booked reservation | DONE — merged to `master` as `b4ad040` with `--no-ff`; **runtime waived, owed on the live site** | `feat/admin-edit-reservation` |
 | TJ-047c | Secretary: edit an already-booked reservation | READY — after TJ-047b | `feat/secretary-edit-reservation` |
 | TJ-048 | Open the patient's file from a click on their reservation card | DONE — merged to `master` as `04f4325` with `--no-ff`; **runtime review waived by the user, owed on the live site** | `feat/card-opens-patient-file` |
 | TJ-049 | Fit more of a busy day on screen before the schedule scrolls | SPLIT — passed and measured 2026-09-15; see TJ-049a, TJ-049b | — |
@@ -8186,7 +8186,15 @@ Leave every other line of the `data` assembly exactly as it is.
 
 ### TJ-047b — Admin: edit an already-booked reservation
 
-- **Status:** READY
+- **Status:** DONE — task commit `661e137`, merged to `master` as `b4ad040` with `--no-ff` on 2026-09-15. **Runtime review waived by user decision; owed against the live site.** Dispatched twice — the first attempt stopped on stale anchors, see the re-anchoring note above.
+
+**Planner verification, 2026-09-15 — re-run, not accepted.** Read the full `git diff master..feat/admin-edit-reservation`: exactly the four Scope paths, **295 insertions and 0 deletions**, the new page 279 lines. `git diff -- src/app/doctor/` and `git diff -- src/app/secretary/` each return **0 lines** — both untouched, which is the proof `onEdit` is properly optional and the check this task was most likely to fail. Gates re-run by the planner on the branch: `npx tsc --noEmit --incremental false` exits **0**; `npm run build` exits **0** and the route table now lists `ƒ /admin/reservations/[id]/edit`.
+
+**The two hazards this task was filed against were both checked directly, not inferred.** *(1) The date/time round-trip.* The shipped loader reads the date as `String(r.sessionDate).split("T")[0]` and the time as `new Date(r.sessionTime)` with the browser's own `getHours`/`getMinutes` — exactly the split the pass required, so the form agrees with the card that was clicked and the date cannot shift a day for anyone west of UTC. `handleSubmit` sends `sessionDate` and `sessionTime` **together, unconditionally**, so TJ-047a's half-move refusal can never fire from this screen. *(2) The copied styled-jsx block.* Rather than trust the executor's per-class greps, the planner cross-checked every class the new file's markup uses against the rules the new file defines: **twenty classes, all twenty defined, none dangling.** That is the failure this project has been bitten by before and it did not recur.
+
+**One thing the executor caught in itself and reported:** it had added a small `<style jsx>` block to the `loading` early-return that step 7 never asked for, noticed before verifying, and removed it so the shipped file matches the literal instruction. Worth recording because the alternative — keeping an unrequested extra — is how scope quietly grows.
+
+**Runtime review: not performed — user decision, 2026-09-15.** The admin edit round trip, the `03:00` refusal path, the doctor and secretary menu checks and the 320px/2560px stacking check were **not run and are not claimed**. On the live site, check the edit screen's **Date and Time fields against the card you clicked** before anything else: those two lines are the only place in this task where a wrong answer is silent, persists to the database, and looks correct on screen.
 - **Branch:** `feat/admin-edit-reservation`
 - **Depends on:** TJ-047a merged (the `PUT` this screen calls). **Must not run at the same time as TJ-048** — they edit the same three files.
 - **Re-anchored 2026-09-15, after TJ-048 merged.** Steps 1, 2, 4, 5 and 6 originally quoted `onClick` / `onEmptyClick` sitting directly above `canDelete`. TJ-048 inserted its own optional `onViewDetails` prop into exactly those five gaps, so all five anchors stopped matching. They now quote `onViewDetails` as the line above `canDelete` — which is also a stabler anchor, since `onEdit` lands beside it. **Steps 3, 7 and 8 were re-checked against the current files and are unchanged.** If you are reading this before TJ-048 has merged, the old anchors are the right ones; check `git log --oneline --grep="TJ-048"` first.
