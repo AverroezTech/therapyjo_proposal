@@ -247,7 +247,9 @@ export default function ReservationSlot({
             <div className="slot-main">
                 <span className={`slot-name ${isVoided ? "strike" : ""}`}>{patientName}</span>
                 <span className="slot-sub">
-                    {patientPhone} <span className="slot-time">· {time}</span>
+                    <span className="slot-phone">{patientPhone}</span>
+                    <span className="slot-sep" aria-hidden="true">·</span>
+                    <span className="slot-time">{time}</span>
                 </span>
                 {showNoteOnCalendar && note && (
                     <span className="slot-note">📝 {note}</span>
@@ -310,8 +312,6 @@ export default function ReservationSlot({
                 }
                 .slot-main {
                     display: flex; flex-direction: column; gap: 0.05rem; min-width: 0; flex: 1;
-                    /* lets .slot-note react to the card's own rendered width via @container below */
-                    container-type: inline-size;
                 }
                 .slot-name {
                     font-weight: 700; font-size: 0.8rem; white-space: nowrap;
@@ -319,16 +319,17 @@ export default function ReservationSlot({
                 }
                 .slot-name.strike { text-decoration: line-through; }
                 .slot-sub {
+                    display: flex; align-items: baseline; gap: 0.3rem;
                     font-size: 0.7rem; opacity: 0.8; white-space: nowrap;
-                    overflow: hidden; text-overflow: ellipsis;
+                    overflow: hidden; min-width: 0;
                 }
-                .slot-time { opacity: 0.85; }
+                /* The phone is the half that may truncate; the time never is. */
+                .slot-phone { overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+                .slot-sep { flex-shrink: 0; opacity: 0.6; }
+                .slot-time { flex-shrink: 0; opacity: 0.85; }
                 .slot-note {
                     font-size: 0.68rem; opacity: 0.75; font-style: italic;
                     white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-                }
-                @container (max-width: 220px) {
-                    .slot-note { display: none; }
                 }
                 .slot-right { display: flex; align-items: center; gap: 0.4rem; flex-shrink: 0; margin-left: 0.3rem; }
                 .menu-wrap { position: relative; }
@@ -354,6 +355,30 @@ export default function ReservationSlot({
                 .menu-item:hover { background: rgba(255,255,255,0.06); }
                 .menu-item.danger { color: #fca5a5; }
                 .menu-item.danger:hover { background: rgba(220,38,38,0.1); }
+
+                /* Thresholds are column widths — the container is .card-wrap in
+                   Calendar.tsx, which is exactly one column wide. These sit at the
+                   END of the block deliberately: a container query adds no
+                   specificity, so any base rule declared after them would win on
+                   source order, which is precisely what silently killed the
+                   .slot-right and .menu-trigger tiers the first time round.
+                   Each tier gives back the space the tier above could not afford,
+                   in order of what the front desk needs least. (TJ-049a) */
+                @container reservation-card (max-width: 265px) {
+                    .slot-note { display: none; }
+                }
+                @container reservation-card (max-width: 200px) {
+                    .slot { padding: 0.35rem 0.45rem; }
+                    .slot-name { font-size: 0.75rem; }
+                    .slot-sub { font-size: 0.66rem; }
+                }
+                @container reservation-card (max-width: 150px) {
+                    .slot { padding: 0.3rem 0.35rem; }
+                    .slot-name { font-size: 0.72rem; }
+                    .slot-phone, .slot-sep { display: none; }
+                    .slot-right { margin-left: 0.15rem; }
+                    .menu-trigger { font-size: 1rem; padding: 0.1rem 0.15rem; }
+                }
 
                 @media (max-width: 768px) {
                     .slot { height: auto; min-height: 54px; }

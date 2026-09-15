@@ -43,7 +43,12 @@ const DEFAULT_MAX_HOUR = 18; // 9 AM – 6 PM reads by default, but nothing outs
 // default font. Do not reduce further without re-measuring. (TJ-044)
 const ROW_HEIGHT = 68;
 const CARD_GAP = 4; // keeps back-to-back reservations visually distinct without changing their time geometry
-const MIN_COL_WIDTH = 150; // never pack columns narrower than this — scroll instead of clipping
+// Floor for a packed column. Lowered from 150 by TJ-049a: 150 was the width at
+// which a card can still show name, phone and time at full size, not a layout
+// requirement. ReservationSlot now sheds the note, then the phone, then some
+// type size as its own container narrows, so 110 still identifies the session.
+// Below 110 the patient's name itself starts to ellipsize — scroll instead.
+const MIN_COL_WIDTH = 110;
 const MAX_COL_WIDTH = 320; // never let a lone card stretch absurdly wide
 const COL_GAP = 6;
 const LABEL_WIDTH = 72;
@@ -317,7 +322,15 @@ export default function Calendar({
                 .time-slots {
                     flex: 1; min-width: 0; position: relative;
                 }
-                .card-wrap { position: absolute; }
+                .card-wrap {
+                    position: absolute;
+                    /* The query container is the COLUMN, not the card: an element
+                       cannot be styled by a container query it establishes itself,
+                       so .slot could never respond to one it owned. Named, so the
+                       @container rules over in ReservationSlot.tsx bind to this box
+                       explicitly across the two style blocks. (TJ-049a) */
+                    container: reservation-card / inline-size;
+                }
                 .empty-slot {
                     position: absolute; inset: 0;
                     background: rgba(255,255,255,0.03);
