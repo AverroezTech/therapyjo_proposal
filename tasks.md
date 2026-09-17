@@ -107,6 +107,7 @@ Two things that bear repeating here, because this is the file both agents open:
 | TJ-049a | Let a schedule column go narrower, and keep the card readable when it does | DONE — merged as `f762343`; **runtime VERIFIED live 2026-09-15** — a real 10-column day that would have scrolled now fits | `feat/narrower-schedule-columns` |
 | TJ-049b | Scale the whole schedule down to fit before it scrolls | DONE — merged as `3d2e6c1`; **runtime VERIFIED live 2026-09-15** — 0.72 floor and the pane pin both observed | `feat/schedule-scale-to-fit` |
 | TJ-050 | Nested agent worktrees corrupt every whole-project measurement | BACKLOG — no planning pass; **blocks trustworthy lint/tsc/build gates** | — |
+| TJ-051 | Staff who open `/Login` land on a 404 | READY | `bugfix/canonicalise-login-case` |
 
 ---
 
@@ -9267,6 +9268,116 @@ with:
 - **Why it matters beyond tidiness:** every task filed on 2026-09-15 carries "lint must not rise above 63" as a drift check. That number is only valid in a checkout with **no nested worktree**, and a task must never be failed on a lint count measured while one exists. It also means `Claude_Instructions.md`'s "Build must pass" gate can be reported against code the task did not touch.
 - **What its planning pass owes:** decide where the exclusion belongs — `.claude` in `tsconfig.json`'s `exclude` array, an `ignores` entry in `eslint.config.mjs`, or both; check whether `next build` honours the `tsconfig` exclude or needs its own. `.gitignore` does **not** solve this: these directories are untracked rather than ignored, and neither tool consults `.gitignore` for this. Confirm the fix by creating a throwaway worktree and re-measuring lint against the 63 baseline.
 - **Found** while reviewing TJ-047a's and TJ-048's executor reports, 2026-09-15 — TJ-047a's executor measured 171 and 237 on unmodified code and correctly refused to treat either as a signal.
+
+---
+
+### TJ-051 — Staff who open `/Login` land on a 404
+
+- **Status:** READY
+- **Branch:** `bugfix/canonicalise-login-case`
+- **Why:** Clinic staff open the dashboard from a bookmark reading `https://therapyjo.com/Login` — capital `L`, carried over from years of the legacy ASP.NET `Login.aspx`. Next.js routing is case-sensitive and this app only has `/login`, so `/Login` matches no route and serves Next's built-in 404. There is no `not-found.tsx` anywhere in `src/app`, which is why the screen the clinic photographed is the unstyled "404 | This page could not be found." **Two distinct code paths reach it**, which is why it presents as intermittent rather than constant:
+  1. **Already signed in.** `authorized()` in `src/lib/auth.config.ts` compares `pathname === "/login"` exactly, so `/Login` is not recognised as the login page, is not matched by `publicRoutes`, does not trip `!isLoggedIn`, and does not start with `/admin`, `/secretary` or `/doctor`. The callback falls all the way through and returns `true`; the request is allowed into routing and nothing matches.
+  2. **Signed out.** The callback redirects to `/login?callbackUrl=%2FLogin`, the form renders, the credentials work — and then `src/app/login/page.tsx` reads that `callbackUrl` and, because `"/Login".includes("/login")` is `false`, navigates the user to `/Login`. They are dumped on the 404 *after* a successful sign-in.
+- **Measured against production 2026-09-17**, not inferred: `/login` → `200` with `X-Matched-Path: /login` and `X-Nextjs-Prerender: 1`; `/Login` signed out → `302 Location: /login?callbackUrl=%2FLogin`; `https://www.therapyjo.com/Login` → `308` to the apex **with the capital L preserved**; `/Login.aspx` → `307 Location: /clinic/Login.aspx` (already handled, not part of this bug). When this lands, every case variant of the login path resolves to the real login page, and a signed-in visitor is forwarded to their role dashboard as usual.
+
+**Planning pass:** 2026-09-17 — read `src/lib/auth.config.ts` in full, `src/app/login/page.tsx` lines 1–75, `src/middleware.ts` in full, and `next.config.mjs` in full. Confirmed `src/app/admin/page.tsx`, `src/app/secretary/page.tsx`, `src/app/doctor/page.tsx` and `src/app/login/page.tsx` all exist, so the post-sign-in destinations are sound and the login path is the only broken one. Confirmed `callbackUrl` has exactly one reader (`src/app/login/page.tsx:36`) and one writer (`src/lib/auth.config.ts:64`); the three `signOut({ callbackUrl: "/login" })` call sites pass a hard-coded lowercase literal and are unaffected.
+
+**Corrected the assumption this task started from:** that a plain refresh of `/Login` recovers. It does not. A signed-in refresh of `/Login` 404s again, because the guard that lets it through is auth-state-independent. What actually recovers the clinic is re-entering the URL — Chrome autocompletes the lowercase `/login` already in history — or pressing Back to `/login?callbackUrl=…`, where a now-signed-in user is forwarded to their dashboard. **Do not write a verification bullet that expects a same-URL refresh to pass on today's code.**
+
+**Confirmed the fix cannot collide with the legacy proxy.** Next's routing order is headers → redirects → middleware → `beforeFiles` rewrites → filesystem, so `/Login.aspx` is consumed by `redirects()` in `next.config.mjs` and never reaches middleware, and `/clinic/` is excluded by the middleware matcher. Neither is touched here.
+
+**Why the guard goes in `authorized()` and not in `src/middleware.ts`.** `auth(handler)` runs the `authorized` callback first and returns its `Response` immediately; the wrapped handler only runs when the callback returns `true`. A guard in `middleware.ts` would therefore never see a signed-out `/Login`, and path 2 above would survive the fix. It also has to sit *above* the `publicRoutes` block so it fires regardless of auth state.
+
+All three files in the blast radius are **CRLF**. Match anchors on their text; do not rely on byte offsets or line numbers.
+
+**Scope — touch only these:**
+- `src/lib/auth.config.ts`
+- `src/app/login/page.tsx`
+
+**Do not touch:** anything else. Specifically not `src/middleware.ts` (see above — the guard belongs in the callback, not the wrapped handler), not `next.config.mjs` or any `/clinic` proxy rule, not the `signOut({ callbackUrl: "/login" })` call sites in `src/app/admin/layout.tsx`, `src/app/secretary/layout.tsx` or `src/app/doctor/layout.tsx`, and no new `not-found.tsx`.
+
+**Instructions:**
+
+1. In `src/lib/auth.config.ts`, locate this anchor verbatim:
+
+   ```
+           authorized({ auth, request: { nextUrl } }) {
+               const isLoggedIn = !!auth?.user;
+               const pathname = nextUrl.pathname;
+   ```
+
+   Immediately after the `const pathname = nextUrl.pathname;` line, and **before** the blank line that precedes the `// Public routes` comment, insert exactly:
+
+   ```ts
+
+            // Staff carry years of muscle memory for the legacy ASP.NET
+            // "/Login.aspx" and bookmark "/Login" with a capital L. Next.js
+            // routing is case-sensitive, so "/Login" matches no route in this
+            // app. Signed OUT it redirected to "/login?callbackUrl=%2FLogin"
+            // and then bounced the user to "/Login" — a 404 — immediately
+            // after a SUCCESSFUL sign-in. Signed IN it fell through every
+            // check below (not "/login", not public, not unauthenticated, no
+            // /admin, /secretary or /doctor prefix), returned true, and 404'd
+            // outright. Canonicalise the case here, ahead of every other
+            // check, so both paths land on the real login page.
+            //
+            // This must live in this callback rather than in the wrapped
+            // handler in src/middleware.ts: NextAuth runs this callback first
+            // and returns its Response immediately, so a guard there would
+            // never see a signed-out request. nextUrl.search is carried over
+            // so an existing callbackUrl survives the hop. The first conjunct
+            // is what makes a loop impossible — "/login" itself never matches.
+            // (TJ-051)
+            if (pathname !== "/login" && pathname.toLowerCase() === "/login") {
+                return Response.redirect(new URL("/login" + nextUrl.search, nextUrl));
+            }
+   ```
+
+   Indentation is 12 spaces for the `if`, matching the sibling statements in this callback. `Response.redirect` needs an absolute URL; `new URL(..., nextUrl)` supplies one — the same idiom the three existing redirects in this file already use.
+
+2. In `src/app/login/page.tsx`, replace this single line verbatim:
+
+   ```
+               if (callbackUrl && !callbackUrl.includes("/login")) {
+   ```
+
+   with:
+
+   ```
+               // Case-insensitive on purpose: a callbackUrl of "/Login" is not
+               // caught by a case-sensitive includes(), and replacing to it
+               // lands on a 404. The guard in auth.config.ts stops that value
+               // being minted in the first place; this is the second line of
+               // defence for a hand-edited or externally supplied URL. (TJ-051)
+               if (callbackUrl && !callbackUrl.toLowerCase().includes("/login")) {
+   ```
+
+   Change nothing else in the `handleSubmit` body — the role switch, the `/api/auth/session` fetch and both `router.refresh()` calls stay exactly as they are.
+
+**Verification:**
+
+Static and build gates — all must pass:
+- `npx tsc --noEmit` — no new errors.
+- `npm run build` — passes.
+- `git diff --stat` — exactly two files changed, and they are the two in Scope.
+- `grep -c 'pathname.toLowerCase() === "/login"' src/lib/auth.config.ts` → `1`
+- `grep -c 'callbackUrl.toLowerCase().includes' src/app/login/page.tsx` → `1`
+- `grep -c 'callbackUrl.includes("/login")' src/app/login/page.tsx` → `0`
+
+Read-and-confirm, no runtime needed:
+- The new guard's first conjunct is `pathname !== "/login"`, so it cannot fire on `/login` itself and no redirect loop is reachable. Confirm by reading the final file, not by asserting it.
+- The guard sits above the `publicRoutes` block, so it applies to signed-in and signed-out requests alike.
+
+**Do not gate on `npm run lint`.** The baseline is broken and the count is meaningless while a nested agent worktree exists — see TJ-050. A lint number is not a reason to fail this task.
+
+**Runtime verification is waived** under the user's standing override: merge on `tsc` + `build`, push, and confirm behaviour on the live site. The executor needs no browser and no database here — do not start a dev server and do not touch Prisma.
+
+**Done when:**
+- [ ] `authorized()` canonicalises every case variant of `/login` before any other check
+- [ ] The `callbackUrl` guard in the login page is case-insensitive
+- [ ] `npx tsc --noEmit` and `npm run build` both pass
+- [ ] Exactly two files changed; `src/middleware.ts` and `next.config.mjs` untouched
+- [ ] Planner confirms on the live site after push: signed out, `/Login` and `/LOGIN` both render the login form; signed in, both forward to the role dashboard; `/login` and the `/clinic/` proxy are unchanged
 
 ---
 
