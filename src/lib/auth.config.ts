@@ -31,6 +31,28 @@ export const authConfig: NextAuthConfig = {
             const isLoggedIn = !!auth?.user;
             const pathname = nextUrl.pathname;
 
+            // Staff carry years of muscle memory for the legacy ASP.NET
+            // "/Login.aspx" and bookmark "/Login" with a capital L. Next.js
+            // routing is case-sensitive, so "/Login" matches no route in this
+            // app. Signed OUT it redirected to "/login?callbackUrl=%2FLogin"
+            // and then bounced the user to "/Login" — a 404 — immediately
+            // after a SUCCESSFUL sign-in. Signed IN it fell through every
+            // check below (not "/login", not public, not unauthenticated, no
+            // /admin, /secretary or /doctor prefix), returned true, and 404'd
+            // outright. Canonicalise the case here, ahead of every other
+            // check, so both paths land on the real login page.
+            //
+            // This must live in this callback rather than in the wrapped
+            // handler in src/middleware.ts: NextAuth runs this callback first
+            // and returns its Response immediately, so a guard there would
+            // never see a signed-out request. nextUrl.search is carried over
+            // so an existing callbackUrl survives the hop. The first conjunct
+            // is what makes a loop impossible — "/login" itself never matches.
+            // (TJ-051)
+            if (pathname !== "/login" && pathname.toLowerCase() === "/login") {
+                return Response.redirect(new URL("/login" + nextUrl.search, nextUrl));
+            }
+
             // Public routes — accessible to everyone
             // "/clinic" is served by the legacy clinical system at the proxy and should never
             // reach this app. It is listed here so that if a proxy rule stops matching, the
