@@ -33,7 +33,12 @@ function LoginForm() {
 
             // Use callbackUrl if present, otherwise determine by role
             const callbackUrl = searchParams.get("callbackUrl");
-            if (callbackUrl && !callbackUrl.includes("/login")) {
+            // Case-insensitive on purpose: a callbackUrl of "/Login" is not
+            // caught by a case-sensitive includes(), and replacing to it
+            // lands on a 404. The guard in auth.config.ts stops that value
+            // being minted in the first place; this is the second line of
+            // defence for a hand-edited or externally supplied URL. (TJ-051)
+            if (callbackUrl && !callbackUrl.toLowerCase().includes("/login")) {
                 router.replace(callbackUrl);
                 router.refresh();
                 return;
