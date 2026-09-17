@@ -107,7 +107,7 @@ Two things that bear repeating here, because this is the file both agents open:
 | TJ-049a | Let a schedule column go narrower, and keep the card readable when it does | DONE — merged as `f762343`; **runtime VERIFIED live 2026-09-15** — a real 10-column day that would have scrolled now fits | `feat/narrower-schedule-columns` |
 | TJ-049b | Scale the whole schedule down to fit before it scrolls | DONE — merged as `3d2e6c1`; **runtime VERIFIED live 2026-09-15** — 0.72 floor and the pane pin both observed | `feat/schedule-scale-to-fit` |
 | TJ-050 | Nested agent worktrees corrupt every whole-project measurement | BACKLOG — no planning pass; **blocks trustworthy lint/tsc/build gates** | — |
-| TJ-051 | Staff who open `/Login` land on a 404 | READY | `bugfix/canonicalise-login-case` |
+| TJ-051 | Staff who open `/Login` land on a 404 | DONE — merged as `138c3d0`; **live confirmation owed** against production after push | `bugfix/canonicalise-login-case` |
 
 ---
 
@@ -9273,7 +9273,7 @@ with:
 
 ### TJ-051 — Staff who open `/Login` land on a 404
 
-- **Status:** READY
+- **Status:** DONE — task commit `8ad6a7b`, merged to `master` as `138c3d0` with `--no-ff` on 2026-09-17. Planner-verified on both gates in a provisioned checkout. **Live confirmation is waived and owed against the production site** once `master` is pushed: signed out, `/Login` and `/LOGIN` should render the login form; signed in, both should forward to the role dashboard; `/login` and the `/clinic/` proxy unchanged.
 - **Branch:** `bugfix/canonicalise-login-case`
 - **Why:** Clinic staff open the dashboard from a bookmark reading `https://therapyjo.com/Login` — capital `L`, carried over from years of the legacy ASP.NET `Login.aspx`. Next.js routing is case-sensitive and this app only has `/login`, so `/Login` matches no route and serves Next's built-in 404. There is no `not-found.tsx` anywhere in `src/app`, which is why the screen the clinic photographed is the unstyled "404 | This page could not be found." **Two distinct code paths reach it**, which is why it presents as intermittent rather than constant:
   1. **Already signed in.** `authorized()` in `src/lib/auth.config.ts` compares `pathname === "/login"` exactly, so `/Login` is not recognised as the login page, is not matched by `publicRoutes`, does not trip `!isLoggedIn`, and does not start with `/admin`, `/secretary` or `/doctor`. The callback falls all the way through and returns `true`; the request is allowed into routing and nothing matches.
@@ -9289,6 +9289,12 @@ with:
 **Why the guard goes in `authorized()` and not in `src/middleware.ts`.** `auth(handler)` runs the `authorized` callback first and returns its `Response` immediately; the wrapped handler only runs when the callback returns `true`. A guard in `middleware.ts` would therefore never see a signed-out `/Login`, and path 2 above would survive the fix. It also has to sit *above* the `publicRoutes` block so it fires regardless of auth state.
 
 All three files in the blast radius are **CRLF**. Match anchors on their text; do not rely on byte offsets or line numbers.
+
+**Planner verification, 2026-09-17 — re-run, not accepted.** Read `git diff master..bugfix/canonicalise-login-case` in full rather than the executor's summary: exactly the two Scope files, **28 insertions, 1 deletion**, both anchors applied verbatim, and `tasks.md`, `src/middleware.ts` and `next.config.mjs` untouched. The branch is cut from `5bef2c0`, not from a stale worktree HEAD.
+
+**The executor's three `tsc` errors were an artifact, and the artifact is TJ-050's.** It reported `TS2307: Cannot find module '@/generated/prisma/client'` plus a failed `npm run build`, and correctly refused to run `npm install` or `prisma generate` to work around them. Confirmed here that its worktree had neither `node_modules` nor `src/generated/prisma`: a **tsconfig path alias resolves relative to the worktree**, so node resolution's walk up to the outer `node_modules` cannot rescue it. Retired that worktree once its commit was safe on the branch, then re-ran both gates in the main checkout, which is properly provisioned: **`npx tsc --noEmit --incremental false` exits 0** and **`npm run build` exits 0**, with `/login` still listed `○ (Static)` prerendered and the middleware still built. The three greps returned **1 / 1 / 0**. Loop-safety was read off the committed file rather than asserted: the guard's first conjunct is `pathname !== "/login"` at line 52 and `const publicRoutes` is at line 62, so the guard sits above it and applies in both auth states.
+
+**Carry this to TJ-050.** An agent worktree under `.claude/worktrees/` inherits the repo's tsconfig path aliases but none of its generated output, so a task touching nothing Prisma-related still fails both gates there in a way that reads exactly like a real type error in its own diff. The measurement to trust is the one taken in a provisioned checkout. Noted while here: `agent-abe4a2c7c69b8c700` is an **orphaned** `src/` copy with no registered worktree, still walked by tsconfig's `**/*` glob.
 
 **Scope — touch only these:**
 - `src/lib/auth.config.ts`
