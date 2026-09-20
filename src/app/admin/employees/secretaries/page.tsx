@@ -72,10 +72,21 @@ export default function SecretariesPage() {
     const [deleting, setDeleting] = useState(false);
 
     const fetchSecretaries = useCallback(async () => {
-        const res = await fetch("/api/employees/secretaries");
-        const data = await res.json();
-        setSecretaries(data);
-        setLoading(false);
+        try {
+            const res = await fetch("/api/employees/secretaries");
+            const data = await res.json();
+            // A signed-out request now comes back as a 401 (see auth.config.ts),
+            // but res.json() on any non-array body — that 401's own JSON included
+            // — would otherwise poison the table with something to .map() over.
+            setSecretaries(Array.isArray(data) ? data : []);
+        } catch {
+            // A thrown res.json() (dropped connection, non-JSON body) is not
+            // recoverable here — fail quietly with an empty list rather than
+            // letting the rejection escape uncaught from this effect.
+            setSecretaries([]);
+        } finally {
+            setLoading(false);
+        }
     }, []);
 
     useEffect(() => { fetchSecretaries(); }, [fetchSecretaries]);
@@ -83,15 +94,23 @@ export default function SecretariesPage() {
     const loadDocs = useCallback(async (userId: string) => {
         setDocsLoading(true);
         setDocError("");
-        const res = await fetch(`/api/employees/files?userId=${userId}`);
-        if (!res.ok) {
+        try {
+            const res = await fetch(`/api/employees/files?userId=${userId}`);
+            if (!res.ok) {
+                setDocs([]);
+                setDocError("Could not load documents.");
+                return;
+            }
+            setDocs(await res.json());
+        } catch {
+            // res.json() throwing (malformed body) is the same failure to the
+            // user as a non-OK response — surface the same message instead of
+            // leaving docsLoading stuck true with an uncaught rejection.
             setDocs([]);
-            setDocsLoading(false);
             setDocError("Could not load documents.");
-            return;
+        } finally {
+            setDocsLoading(false);
         }
-        setDocs(await res.json());
-        setDocsLoading(false);
     }, []);
 
     const counts = useMemo(() => ({

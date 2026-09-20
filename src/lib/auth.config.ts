@@ -82,6 +82,22 @@ export const authConfig: NextAuthConfig = {
 
             // Not logged in — redirect to login
             if (!isLoggedIn) {
+                // An API call made from a client component (fetch("/api/...")) hits this
+                // same callback, and fetch() follows redirects by default. Redirecting it
+                // to "/login" resolves as a 200 with the login page's HTML — res.ok is
+                // true, so every "if (!res.ok)" guard in the app passes, and the
+                // subsequent res.json() throws on the HTML body. That rejection is often
+                // unawaited, so the calling component's loading state never clears and the
+                // page hangs on "Loading..." with no indication the session expired.
+                // Public API routes ("/api/auth", "/api/public") are already handled by
+                // isPublic above and never reach this branch, so every path starting with
+                // "/api/" here is a protected endpoint being called while signed out —
+                // return a plain 401 instead of a redirect, so callers' res.ok checks
+                // actually fire. Non-API paths keep the redirect: a real page needs an
+                // HTML response and somewhere to land, which is /login.
+                if (pathname.startsWith("/api/")) {
+                    return Response.json({ error: "Unauthorized" }, { status: 401 });
+                }
                 const loginUrl = new URL("/login", nextUrl);
                 loginUrl.searchParams.set("callbackUrl", pathname);
                 return Response.redirect(loginUrl);

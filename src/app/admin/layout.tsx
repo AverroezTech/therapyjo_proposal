@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname } from "next/navigation";
 import { signOut, useSession } from "next-auth/react";
 import { useState, useRef, useEffect } from "react";
 
@@ -99,8 +99,7 @@ export default function AdminLayout({
     children: React.ReactNode;
 }) {
     const pathname = usePathname();
-    const { data: session, status } = useSession();
-    const router = useRouter();
+    const { data: session } = useSession();
     const [pendingCount, setPendingCount] = useState(0);
     const [mobileOpen, setMobileOpen] = useState(false);
 
@@ -114,27 +113,12 @@ export default function AdminLayout({
             .catch(() => {});
     }, [pathname]);
 
-    // When page becomes visible again (back/forward nav from bfcache),
-    // re-check the session. If signed out, redirect to login.
-    useEffect(() => {
-        const onVisible = async () => {
-            if (document.visibilityState !== "visible") return;
-            const res = await fetch("/api/auth/session");
-            const data = await res.json();
-            if (!data?.user) {
-                router.replace("/login");
-            }
-        };
-        document.addEventListener("visibilitychange", onVisible);
-        return () => document.removeEventListener("visibilitychange", onVisible);
-    }, [router]);
-
-    // Also guard on initial render / status change
-    useEffect(() => {
-        if (status === "unauthenticated") {
-            router.replace("/login");
-        }
-    }, [status, router]);
+    // An ended session used to be handled here with a hard redirect to
+    // /login on visibilitychange and on status === "unauthenticated" — both
+    // removed. That bounced the user away with no explanation, and now fights
+    // the shared SessionExpiryNotice (src/app/SessionExpiryNotice.tsx, mounted
+    // in providers.tsx) which shows a modal instead. That component is the
+    // single place that reacts to a session ending, for every staff area.
 
     return (
         <div className="admin-layout">
