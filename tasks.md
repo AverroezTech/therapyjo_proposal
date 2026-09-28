@@ -116,7 +116,7 @@ Two things that bear repeating here, because this is the file both agents open:
 | TJ-054c | Server: stop sending phone numbers to doctors (patient routes) | DONE — task commit `da2d4cf`, merged as `d9a53ee` | `feat/doctor-phone-boundary-patients` |
 | TJ-054d | Server: stop sending phone numbers to doctors (reservation routes and the schedule card) | DONE — task commit `c8ee974`, merged as `d9a53ee` | `feat/doctor-phone-boundary-reservations` |
 | TJ-055 | `--font-heading` has never resolved: headings render in the body font, not Bodoni Moda | DONE — task commit `32bd05c`, merged as `d9a53ee` on 2026-09-28; option 2 (keep the body face), chosen by the planner at the user's request; no visible change measured | `bugfix/heading-font-variable` |
-| TJ-056 | Card text reads blurry on Windows: unhinted font files and faded muted lines | REVIEW — implemented as `2079d78` on `claude/festive-brown-n77ft7`, 2026-09-28; build and local runtime passed; **not merged: merging deploys to production, awaiting the user** | `bugfix/windows-text-rendering` |
+| TJ-056 | Card text reads blurry on Windows: unhinted font files and faded muted lines | DONE — task commit `2079d78`, merged to `master` as `220ed3e` with `--no-ff` on 2026-09-28 at the user's request; **a look on a Windows machine is owed** | `bugfix/windows-text-rendering` |
 
 ---
 
@@ -10131,7 +10131,7 @@ Option 1 remains available later as a deliberate redesign.
 
 ### TJ-056 — Card text reads blurry on Windows: unhinted font files and faded muted lines
 
-- **Status:** REVIEW — implemented as `2079d78` on `claude/festive-brown-n77ft7`, 2026-09-28. Build and a local runtime check passed. **Not merged:** merging to `master` deploys to production, so the merge waits on the user.
+- **Status:** DONE — task commit `2079d78`, merged to `master` as `220ed3e` with `--no-ff` on 2026-09-28 at the user's request. **Owed:** a look at the live dashboard on a Windows machine, the only place the gain is visible.
 - **Branch:** `bugfix/windows-text-rendering`
 - **Why:** User report, 2026-09-28, with a screenshot of the live dashboard: "the font still kinda looks blurry". The screenshot's own pixels were measured rather than guessed at. Each antialiased text pixel was compared against the straight line from the card colour to the ink colour; greyscale smoothing stays on that line, and ClearType leaves colour fringes off it.
 
