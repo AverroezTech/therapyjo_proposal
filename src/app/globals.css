@@ -60,8 +60,9 @@
   --transition-base: 0.3s ease;
   --transition-slow: 0.5s ease;
 
-  /* Fonts */
-  --font-heading: var(--font-serif), 'Bodoni Moda', serif;
+  /* Fonts. Headings share the body face in both languages; the Bodoni Moda
+     this once named never rendered (see layout.tsx) and was removed. (TJ-055) */
+  --font-heading: var(--font-body), sans-serif;
 }
 
 /* ===== RESET & BASE ===== */
@@ -89,10 +90,6 @@ body {
   overflow-x: hidden;
   overscroll-behavior: none;
   min-height: 100svh;
-}
-
-[dir="rtl"] {
-  --font-heading: var(--font-body), sans-serif;
 }
 
 img {

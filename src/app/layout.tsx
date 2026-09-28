@@ -1,5 +1,5 @@
 import type { Viewport } from "next";
-import { IBM_Plex_Sans_Arabic, Outfit, Bodoni_Moda } from "next/font/google";
+import { IBM_Plex_Sans_Arabic, Outfit } from "next/font/google";
 import "./globals.css";
 import { LanguageProvider } from "./i18n/LanguageContext";
 import Providers from "./providers";
@@ -17,12 +17,6 @@ const bodyFont = IBM_Plex_Sans_Arabic({
 const outfit = Outfit({
   subsets: ["latin"],
   variable: "--font-outfit",
-  display: "swap",
-});
-
-const bodoniModa = Bodoni_Moda({
-  subsets: ["latin"],
-  variable: "--font-serif",
   display: "swap",
 });
 
@@ -62,10 +56,16 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en" dir="ltr">
-      <body
-        className={`${bodyFont.variable} ${outfit.variable} ${bodoniModa.variable}`}
-      >
+    // The font variables go on <html>, not <body>: globals.css derives
+    // --font-heading from --font-body on :root, and a variable defined only on
+    // <body> is invisible there. On <body>, --font-heading never resolved and
+    // every heading silently fell back to the body font. (TJ-055)
+    <html
+      lang="en"
+      dir="ltr"
+      className={`${bodyFont.variable} ${outfit.variable}`}
+    >
+      <body>
         <Providers>
           <LanguageProvider>{children}</LanguageProvider>
         </Providers>
