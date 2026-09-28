@@ -117,6 +117,7 @@ Two things that bear repeating here, because this is the file both agents open:
 | TJ-054d | Server: stop sending phone numbers to doctors (reservation routes and the schedule card) | DONE — task commit `c8ee974`, merged as `d9a53ee` | `feat/doctor-phone-boundary-reservations` |
 | TJ-055 | `--font-heading` has never resolved: headings render in the body font, not Bodoni Moda | DONE — task commit `32bd05c`, merged as `d9a53ee` on 2026-09-28; option 2 (keep the body face), chosen by the planner at the user's request; no visible change measured | `bugfix/heading-font-variable` |
 | TJ-056 | Card text reads blurry on Windows: unhinted font files and faded muted lines | DONE — task commit `2079d78`, merged to `master` as `220ed3e` with `--no-ff` on 2026-09-28 at the user's request; **a look on a Windows machine is owed** | `bugfix/windows-text-rendering` |
+| TJ-057 | Draw Arabic 10% larger; clip long Arabic names at their end | REVIEW — implemented as `e60699e` on `claude/festive-brown-n77ft7`, 2026-09-28; build, local runtime and all-roles check passed; **not merged: merging deploys to production, awaiting the user** | `feat/arabic-size-adjust` |
 
 ---
 
@@ -10171,6 +10172,42 @@ Option 1 remains available later as a deliberate redesign.
   - doctor cards still carry no phone and no separator
 - **Owed, and only a Windows machine can give it:** a look at the same dashboard after deploy. Headless Chromium on Linux renders greyscale either way, so the ClearType and hinting gain can't be seen here. It is expected from how Windows renders, not observed.
 - **Offered, not done:** IBM Plex draws its Arabic small for its size. The same Arabic name is 137px wide where Noto Kufi was 154px. A `size-adjust` of about 110% on the Arabic range would bring it back up, but it would also re-flow the Arabic public site, so it's a design decision for the user.
+
+---
+
+### TJ-057 — Draw Arabic 10% larger; clip long Arabic names at their end
+
+- **Status:** REVIEW — implemented as `e60699e` on `claude/festive-brown-n77ft7`, 2026-09-28. **Not merged:** merging to `master` deploys to production, so the merge waits on the user.
+- **Branch:** `feat/arabic-size-adjust`
+- **Why:** User request, 2026-09-28, taking up the option offered in TJ-056. IBM Plex sets its Arabic small for its size: the same name is 137px where Noto Kufi drew 154px, which costs legibility on 11–13px schedule cards.
+
+**Planning pass:** 2026-09-28. Read `src/app/layout.tsx`, the `:root` font block of `src/app/globals.css`, `src/app/components/ReservationSlot.tsx`, the next/font/local option types, and next's `next-font-loader` (`index.js`, `postcss-next-font.js`).
+- **`declarations` works as documented.** next/font/local accepts it and writes it into each generated `@font-face`, so `unicode-range` and `size-adjust` can be set on a second rule that uses the same files.
+- **Corrected mid-pass, measured:** switching the fallback setting off on only the Arabic rule made next/font emit a second copy of every file. It names files `[hash]{-s}{.p}` by those flags, and `-s` is the fallback flag. Preloads went to 9 files / 613 KB. Mirroring the base rule's options gives identical file names, so the browser fetches each file once.
+- **The trap that mirroring creates:** the fallback setting generates a `Fallback` face (`local(Arial)`, no `unicode-range`). If the Arabic rule's full variable sat in the stack, that face would catch Latin text ahead of the base face. So only the Arabic rule's own family name is taken, via `arabicFont.style.fontFamily`, and `--font-body` is set inline on `<html>`. `:root` keeps `--font-body: var(--font-body-base)` as an unscaled fallback.
+- **The range covers the Arabic blocks only:** U+0600–06FF, 0750–077F, 0870–08FF, FB50–FDFF, FE70–FEFF, plus U+200C–200D. ZWNJ/ZWJ must shape in the same face. Digits and punctuation are left out on purpose, so they stay unscaled.
+- **Found during the check:** with the larger letters, one long name in the narrowest column ("عبدالله ابو السخن", 122px) now overflowed, and it clipped its **first** word. The name span inherits the card's LTR direction. That was already true for long enough names; the larger letters just made it happen sooner. The fix: `dir="auto"` on `.slot-name`, so an Arabic name clips its last word instead, with `text-align: left` keeping every name at its old edge.
+
+**Scope:** `src/app/layout.tsx`, `src/app/globals.css` and `src/app/components/ReservationSlot.tsx`.
+
+**Review, 2026-09-28**, on a local build against the fixture database, with ten more Arabic-named sessions at 12:00 so the columns pack narrow:
+- **Gates:** `tsc` exits 0, `npm run build` exits 0, and ESLint is clean.
+- **Generated CSS:** four `arabicFont` faces, each with the range and `size-adjust:110%`. `<html>` carries `--font-body:'arabicFont', var(--font-body-base)`, with no fallback face between them.
+- **Preloads:** 5 files / 322 KB, the same as before this task.
+- **Measured before and after:**
+
+  | Measure | Before | After |
+  |---|---|---|
+  | Arabic phrase at 16px | 109px | **119px** |
+  | Latin phrase at 16px | 157px | **157px** (unchanged) |
+  | Arabic site line counts (hero title, hero subtitle, About title) | 2 / 2 / 2 | 2 / 2 / 2 |
+  | Arabic site page height | 7350px | 7379px |
+  | Card height | 64px | 64px |
+  | Arabic names clipped in the narrowest column (122px) | 0 of 11 | 1 of 11, now at its end ("عبدالله ابو السـ…") |
+
+  Horizontal overflow at 1440px is still none. The overflow at 320px was already there and is unchanged.
+- **All-roles check:** admin, secretary and doctor all render cards in the new stack. Phones show for admin and secretary and not for the doctor. The date picker is still Mist, and patient controls are unchanged per role.
+- **Owed:** a look on a Windows machine after deploy, the same as TJ-056.
 
 ---
 
