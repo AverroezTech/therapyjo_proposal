@@ -13,7 +13,8 @@ interface SlotAction {
 interface ReservationSlotProps {
     id: number;
     patientName: string;
-    patientPhone: string;
+    // Absent for a doctor: the server does not send them the number. (TJ-054)
+    patientPhone?: string | null;
     doctorName: string;
     doctorColor: string;
     status: string;
@@ -247,8 +248,12 @@ export default function ReservationSlot({
             <div className="slot-main">
                 <span className={`slot-name ${isVoided ? "strike" : ""}`}>{patientName}</span>
                 <span className="slot-sub">
-                    <span className="slot-phone">{patientPhone}</span>
-                    <span className="slot-sep" aria-hidden="true">·</span>
+                    {patientPhone && (
+                        <>
+                            <span className="slot-phone">{patientPhone}</span>
+                            <span className="slot-sep" aria-hidden="true">·</span>
+                        </>
+                    )}
                     <span className="slot-time">{time}</span>
                 </span>
                 {showNoteOnCalendar && note && (

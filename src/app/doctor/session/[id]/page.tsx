@@ -17,7 +17,8 @@ interface ReservationDetail {
     isTwoHours: boolean;
     previousSessionNote: string | null;
     previousSessionDate: string | null;
-    patient: { id: number; name: string; phone1: string; phone2: string | null; archived: boolean };
+    // phone1/phone2 are sent to an admin viewing this page, never to a doctor. (TJ-054)
+    patient: { id: number; name: string; phone1?: string; phone2?: string | null; archived: boolean };
     doctor: { id: string; name: string; color: string | null } | null;
     doctorNameSnapshot: string | null;
     soapNote: { subjective: string | null; objective: string | null; assessment: string | null; plan: string | null } | null;
@@ -217,10 +218,12 @@ export default function DoctorSessionPage({ params }: { params: Promise<{ id: st
                         {reservation.patient.name}
                         {reservation.patient.archived && <span className="badge-archived">ARCHIVED</span>}
                     </h1>
-                    <div className="header-meta">
-                        <span>📞 {reservation.patient.phone1}</span>
-                        {reservation.patient.phone2 && <span>· {reservation.patient.phone2}</span>}
-                    </div>
+                    {reservation.patient.phone1 && (
+                        <div className="header-meta">
+                            <span>📞 {reservation.patient.phone1}</span>
+                            {reservation.patient.phone2 && <span>· {reservation.patient.phone2}</span>}
+                        </div>
+                    )}
                 </div>
                 <div className="header-right">
                     <span className="status-badge" style={{ background: `${statusColors[reservation.status]}22`, color: statusColors[reservation.status], border: `1px solid ${statusColors[reservation.status]}44` }}>

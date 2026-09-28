@@ -1,10 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
+import { canManagePatients } from "@/lib/permissions";
 import { removeUpload } from "@/lib/uploads";
 import { logPatientActivity } from "@/lib/audit";
-
-const WRITE_ROLES = ["ADMIN", "DOCTOR", "SECRETARY"];
 
 // DELETE /api/patients/[id]/files/[fileId] — detach a document from a patient
 export async function DELETE(
@@ -15,7 +14,9 @@ export async function DELETE(
     if (!session) {
         return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
-    if (!WRITE_ROLES.includes(session.user.role)) {
+    // A doctor may attach files (POST ../files) but not remove them: the
+    // user permitted adding, and removal changes the record. (TJ-054)
+    if (!canManagePatients(session.user)) {
         return NextResponse.json({ error: "Not permitted to remove patient files" }, { status: 403 });
     }
 

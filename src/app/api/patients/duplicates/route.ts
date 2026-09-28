@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
+import { canViewPatientContact } from "@/lib/permissions";
 import { normalizePhone, phoneKeys, nameSimilarity, normalizeName } from "@/lib/phone";
 
 type DupPatient = {
@@ -65,6 +66,11 @@ export async function GET(req: NextRequest) {
     const session = await auth();
     if (!session) {
         return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+    // Every group here is keyed and labelled by a phone number. Only the
+    // admin pages call this; no doctor screen does. (TJ-054)
+    if (!canViewPatientContact(session.user)) {
+        return NextResponse.json({ error: "Not permitted to view patient phone numbers" }, { status: 403 });
     }
 
     const { searchParams } = new URL(req.url);

@@ -108,6 +108,14 @@ Two things that bear repeating here, because this is the file both agents open:
 | TJ-049b | Scale the whole schedule down to fit before it scrolls | DONE — merged as `3d2e6c1`; **runtime VERIFIED live 2026-09-15** — 0.72 floor and the pane pin both observed | `feat/schedule-scale-to-fit` |
 | TJ-050 | Nested agent worktrees corrupt every whole-project measurement | BACKLOG — no planning pass; **blocks trustworthy lint/tsc/build gates** | — |
 | TJ-051 | Staff who open `/Login` land on a 404 | DONE — merged as `138c3d0`; **runtime VERIFIED live 2026-09-17** — `/Login` and `/LOGIN` both 302 to `/login`, one hop, no loop, legacy proxy intact | `bugfix/canonicalise-login-case` |
+| TJ-052 | Make the date-picker popover opaque | REVIEW — **implemented as `f41cbfb`** on `claude/festive-brown-n77ft7` (option B, Mist); build and local visual review passed 2026-09-28; not yet merged to `master` | `feat/opaque-date-picker` |
+| TJ-053 | One Arabic-capable font for the site's text | REVIEW — **implemented as `a96a37c`** (IBM Plex Sans Arabic); build and local visual review passed 2026-09-28; not yet merged; **one claim corrected, see TJ-055** | `feat/arabic-body-font` |
+| TJ-054 | Doctors: no patient phone numbers, and no patient edits beyond clinical work and files | SPLIT — all four parts implemented in order on `claude/festive-brown-n77ft7`; **runtime-proven against a local database 2026-09-28**; not yet merged | — |
+| TJ-054a | Doctor screens: no create, edit, archive or file removal; phones only when sent | REVIEW — implemented as `3de34c5`; local runtime + visual review passed | `feat/doctor-ui-restrict-patients` |
+| TJ-054b | Server: only admins and secretaries may create, edit or archive a patient, or remove a file | REVIEW — implemented as `a9d28fb`; runtime-proven | `feat/patient-manage-boundary` |
+| TJ-054c | Server: stop sending phone numbers to doctors (patient routes) | REVIEW — implemented as `da2d4cf`; runtime-proven | `feat/doctor-phone-boundary-patients` |
+| TJ-054d | Server: stop sending phone numbers to doctors (reservation routes and the schedule card) | REVIEW — implemented as `c8ee974`; runtime-proven | `feat/doctor-phone-boundary-reservations` |
+| TJ-055 | `--font-heading` has never resolved: headings render in the body font, not Bodoni Moda | REVIEW — **user left the call to the planner: option 2, keep the body face**; implemented as `32bd05c`; measured no visible change, one fewer preload; not yet merged | `bugfix/heading-font-variable` |
 
 ---
 
@@ -9387,6 +9395,732 @@ Read-and-confirm, no runtime needed:
 
 ---
 
+### TJ-052 — Make the date-picker popover opaque
+
+- **Status:** REVIEW — implemented as `f41cbfb` on `claude/festive-brown-n77ft7`, 2026-09-28; see the review block below. Not yet merged to `master`. **User decision, 2026-09-28: option B, Mist (`#eef4f6`).** The user chose among the popover options, which confirms the reading of "the calendar" below. Execute steps 1 and 2 with `SURFACE` = `var(--bg-mist, #eef4f6)`.
+- **Branch:** `feat/opaque-date-picker`
+- **Why:** User request, 2026-09-28: "lessen the transparency of the calendar", using a white that matches the background. The see-through calendar is the month picker. TJ-043a moved it out of the sidebar and into `DatePickerPopover`, which portals it into `document.body` as a `position: fixed` panel over the day schedule. The panel itself (`.dpp-panel`) sets no background. The only surface inside it is `.datepicker { background: rgba(255,255,255,0.03) }` in `DatePicker.tsx`, which is 97% transparent. In the old sidebar that blended into a faint panel (≈ `#21343b` on the `#1a2e35` page) and looked fine. Floating over the schedule, it lets the doctor-coloured reservation cards show straight through the month grid. The same screen's other floating panel, the reservation action menu (`.menu-panel` in `ReservationSlot.tsx`), is already opaque: `var(--bg-dark-secondary, #243b44)` with `box-shadow: 0 8px 32px rgba(0,0,0,0.4)`. The popover never got the same treatment.
+
+**Planning pass:** 2026-09-28. Read `src/app/components/DatePicker.tsx` and `src/app/components/DatePickerPopover.tsx` in full, `src/app/components/Calendar.tsx` and `src/app/components/ReservationSlot.tsx` in full, and the `:root` token block of `src/app/globals.css`. Also read the `DatePickerPopover` call sites in `src/app/admin/page.tsx`, `src/app/secretary/page.tsx` and `src/app/doctor/page.tsx`, and the page background in each of the three staff layouts.
+
+Confirmed:
+- **`DatePicker.tsx` has exactly one importer**, `DatePickerPopover.tsx`. In `grep -rn "DatePicker" src`, every other hit is `DatePickerPopover`. So moving `.datepicker` to a light surface can't leave dark-on-dark text anywhere else.
+- `DatePickerPopover` is used by all three dashboards, and all three sit on `var(--bg-dark, #1a2e35)` from their layout. One change covers every role.
+- The popover's stacking (`z-index: 200`, below `.modal-overlay` at 1000) and its 260px width live in `DatePickerPopover.tsx` and are not touched.
+- **Every text colour inside `.datepicker` is a translucent white** tuned for a dark surface. They must all flip along with the surface, or the month grid becomes white-on-white. Step 2 lists every one. With all anchors applied, `grep -c 'rgba(255,255,255' src/app/components/DatePicker.tsx` goes from **7 to 1**. The survivor is the selected cell's count, which stays white on green.
+- **Dry-run, option A:** the Instructions were applied verbatim by script, every anchor matched exactly once, and `npm run build` exited 0. The checkout was then restored.
+
+**The other reading, recorded so nobody executes the wrong one.** The day schedule grid (`.calendar` in `Calendar.tsx`) is also nearly transparent at `rgba(255,255,255,0.02)`. But it sits on the solid page, so it reads as *dark* rather than see-through. Making it white would be a different, larger change, because all of these would have to flip too:
+- the hour labels
+- the row rules and the zebra stripe
+- the empty-slot boxes
+- the sticky label column's own background (`var(--bg-dark, #1a2e35)`), which must match the surface or cards scrolling under it show through
+
+On top of that, `CHECKED_OUT` cards drawn at `opacity: 0.5` would fade to pastel on white. If the user meant the grid, this task is re-scoped to `Calendar.tsx` and none of the steps below apply.
+
+**Options — the user picks one.** Contrast is WCAG, measured against the page and against the tokens the popover's text will use:
+
+| | Surface | Source | vs page `#1a2e35` | `--text-primary` | `--text-secondary` | `--primary-dark` |
+|---|---|---|---|---|---|---|
+| **A — Mint white** *(recommended)* | `#e8f4f0` | existing token `--bg-tertiary` | 12.5:1 | 12.5:1 | 5.4:1 | 3.5:1 |
+| **B — Mist** | `#eef4f6` | **new** token: the page colour's own hue (195°) at 95% lightness | 12.7:1 | 12.7:1 | 5.5:1 | 3.5:1 |
+| **C — Cream** | `#f8f5ef` | existing token `--bg-page`, the public website's page colour | 13.0:1 | 13.0:1 | 5.6:1 | 3.6:1 |
+| **D — Opaque dark** | `#243b44` | existing token `--bg-dark-secondary`, the same surface as the action menu and every modal | — | text unchanged | | |
+
+**Why A.** It's already a design token, so no new colour enters the system. Its green tint picks up the `#4CAF93` fill of the selected day, so the selected cell looks like part of the design. And it reads as part of the teal dashboard rather than a sheet of paper laid on top. B is the closest hue match to the dashboard but needs a new token. C matches the public website rather than the dashboard. D fixes the see-through problem without adding a light element. It isn't a white, but it's what the action menu already does.
+
+On every light option, "today" and the booking counts move from `--primary` to `--primary-dark`. That is 3.5:1, and both are bold. `--primary` itself would be 2.4:1 on these surfaces. The selected day's white-on-`#4CAF93` (2.7:1) is the same on every option. It is already below AA and is not this task's concern.
+
+**Scope — touch only these:**
+- `src/app/components/DatePicker.tsx`: the `<style jsx>` block only
+- `src/app/globals.css`: **option B only**, one line in the `/* Surfaces */` token block
+
+**Do not touch:**
+- `DatePickerPopover.tsx`. The trigger stays a dark chip on the dark header, and the panel's position, width and z-index stay as they are.
+- `Calendar.tsx`, `ReservationSlot.tsx` and the three dashboard pages
+- Any markup or logic in `DatePicker.tsx`
+
+**Instructions.** For the light options, substitute `SURFACE` with the chosen value:
+- A: `var(--bg-tertiary, #e8f4f0)`
+- B: `var(--bg-mist, #eef4f6)`
+- C: `var(--bg-page, #f8f5ef)`
+
+For D, do step 3 instead of step 2. The file is LF.
+
+1. *(B only)* In `src/app/globals.css`, immediately after the line `  --bg-dark-secondary: #243b44;`, insert:
+   ```
+     --bg-mist: #eef4f6;
+   ```
+2. In `src/app/components/DatePicker.tsx`, inside the `<style jsx>` block, make each replacement below. Every anchor occurs exactly once.
+   1. Replace these three lines of `.datepicker`:
+      ```
+                          background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.06);
+                          border-radius: var(--radius-md, 4px); padding: 0.75rem;
+                          min-width: 240px;
+      ```
+      with:
+      ```
+                          /* Opaque: since TJ-043a this renders in a floating popover over
+                             the schedule, and at 3% white the cards showed through. The
+                             text colours below are tuned for this light surface. (TJ-052) */
+                          background: SURFACE; border: 1px solid rgba(26,46,53,0.12);
+                          border-radius: var(--radius-md, 4px); padding: 0.75rem;
+                          min-width: 240px;
+                          box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+      ```
+      The shadow is the same literal `.menu-panel` uses.
+   2. `background: none; border: none; color: rgba(255,255,255,0.5);` → `background: none; border: none; color: var(--text-secondary, #4a6670);`
+   3. `.dp-nav:hover { background: rgba(255,255,255,0.06); color: #fff; }` → `.dp-nav:hover { background: rgba(26,46,53,0.08); color: var(--text-primary, #1a2e35); }`
+   4. `.dp-month { font-size: 0.85rem; font-weight: 600; color: #fff; }` → `.dp-month { font-size: 0.85rem; font-weight: 600; color: var(--text-primary, #1a2e35); }`
+   5. `color: rgba(255,255,255,0.3); font-weight: 600; text-transform: uppercase;` → `color: var(--text-secondary, #4a6670); font-weight: 600; text-transform: uppercase;`
+   6. `.dp-cell:not(.empty):hover { background: rgba(255,255,255,0.06); }` → `.dp-cell:not(.empty):hover { background: rgba(26,46,53,0.08); }`
+   7. `.dp-cell.today .dp-day { color: var(--primary, #4CAF93); font-weight: 700; }` → `.dp-cell.today .dp-day { color: var(--primary-dark, #3a8f77); font-weight: 700; }`
+   8. `.dp-day { font-size: 0.78rem; color: rgba(255,255,255,0.7); }` → `.dp-day { font-size: 0.78rem; color: var(--text-primary, #1a2e35); }`
+   9. `font-size: 0.55rem; color: var(--primary, #4CAF93);` → `font-size: 0.55rem; color: var(--primary-dark, #3a8f77);`
+
+   Leave these four rules exactly as they are, so the selected cell stays a solid green chip with white text on every option. Their specificity already beats the rules changed above.
+   - `.dp-cell.selected { background: var(--primary, #4CAF93); }`
+   - `.dp-cell.selected .dp-day { … }`
+   - `.dp-cell.selected.today .dp-day { color: #fff; }`
+   - `.dp-cell.selected .dp-count { color: rgba(255,255,255,0.85); }`
+3. *(D only)* Replace the same three-line anchor as step 2.1 with the lines below, and skip the rest of step 2:
+   ```
+                       /* Opaque: since TJ-043a this renders in a floating popover over
+                          the schedule, and at 3% white the cards showed through. (TJ-052) */
+                       background: var(--bg-dark-secondary, #243b44); border: 1px solid rgba(255,255,255,0.1);
+                       border-radius: var(--radius-md, 4px); padding: 0.75rem;
+                       min-width: 240px;
+                       box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+   ```
+
+**Verification:**
+
+Static:
+- `npm run build` passes. A checkout with no `.env` fails page-data collection on `supabaseUrl is required` before and after this change. Build with the placeholder variables described under TJ-053.
+- `git diff --stat` shows one file for A, C and D, and two for B.
+- `grep -c 'rgba(255,255,255' src/app/components/DatePicker.tsx` → `1` for A, B and C; `7` for D.
+
+Read-only, signed in as any role, on a day that has bookings. Do this on `/admin`, `/secretary` and `/doctor`:
+- Open the date popover. `getComputedStyle(document.querySelector('.datepicker')).backgroundColor` returns:
+  - A: `rgb(232, 244, 240)`
+  - B: `rgb(238, 244, 246)`
+  - C: `rgb(248, 245, 239)`
+  - D: `rgb(36, 59, 68)`
+
+  In every case this is an `rgb(`, not an `rgba(`.
+- No reservation card is visible through the panel in a screenshot.
+- Month name, day names, days, the today marker and booking counts are all legible.
+- The selected day is still green with white text.
+- ‹ and › change the month. Escape and an outside click still close the popover.
+- The trigger chip beside the date heading is unchanged.
+
+**Done when:**
+- [ ] The popover surface is opaque in the chosen colour on all three dashboards
+- [ ] Every text colour inside it reads against that surface
+- [ ] Build passes; only the Scope file(s) changed
+- [x] The popover surface is opaque in the chosen colour on all three dashboards
+- [x] Every text colour inside it reads against that surface
+- [x] Build passes; only the Scope files changed
+- [x] Planner visually reviews the open popover over a busy day
+
+**Planner review, 2026-09-28: passed, not yet merged.**
+- **Implemented** as `f41cbfb`: exactly the two Scope files, with the anchors applied verbatim by script. `grep -c 'rgba(255,255,255' src/app/components/DatePicker.tsx` → `1`.
+- **Build:** `npm run build` exits 0.
+- **Runtime:** checked on a local `next start` against a fixture database (recipe in the planner notes), signed in as a doctor on a day with bookings. The open `.datepicker` computes:
+  - `backgroundColor: rgb(238, 244, 246)` with shadow `rgba(0, 0, 0, 0.4) 0px 8px 32px 0px`
+  - month and day numbers `rgb(26, 46, 53)`, day names `rgb(74, 102, 112)`, counts `rgb(58, 143, 119)`
+
+  In the screenshot the cards behind it no longer show through, and the selected day is a green chip with white text.
+- **Owed:** merge to `master`, then a look on the live site.
+
+---
+
+### TJ-053 — One Arabic-capable font for the site's text
+
+- **Status:** REVIEW — implemented as `a96a37c` on `claude/festive-brown-n77ft7`, 2026-09-28; see the review block below. Not yet merged to `master`. **The claim that English headings "keep Bodoni Moda" was wrong: they never had it (TJ-055).** **User decision, 2026-09-28: option A, IBM Plex Sans Arabic.** Execute with `FONT_IMPORT` = `IBM_Plex_Sans_Arabic` and the A options row (the `weight` array is required). This exact option was dry-run in the planning pass: type-checked, built and measured, then reverted.
+- **Branch:** `feat/arabic-body-font`
+- **Why:** User request, 2026-09-28: change the font of the site's text, "most importantly" to one suited to Arabic.
+
+  **Today's body font, Inter, has no Arabic glyphs at all.** Its next/font subsets are cyrillic, cyrillic-ext, greek, greek-ext, latin, latin-ext and vietnamese. The only Arabic face, Noto Kufi Arabic, applies only under `[dir="rtl"]`, i.e. after a visitor switches the public site to Arabic.
+
+  Everywhere else, Arabic glyphs fall to the next face in the stack. That's next/font's `Inter Fallback`, which the built CSS defines as `src: local(Arial)` with a size adjustment and no `unicode-range`. So Arabic renders in Arial where Arial is installed, and in the platform's own sans elsewhere. It never renders in a face this site chose, and it looks different from machine to machine. That covers:
+  - **Every staff screen.** Admin, secretary and doctor pages are LTR only and never set `dir="rtl"`, and they use `font-family: inherit` throughout. So every Arabic patient name, note and SOAP entry is in that fallback.
+  - **The reviewer's name on an Arabic Google review on the English landing page.** `Reviews.tsx` renders it with `dir="auto"`, which flips the direction but not the font. The quote itself is a separate case; see the known leftover below.
+  - **Arabic blog drafts in the admin editor.** `BlogEditor.tsx` sets `dir` to `rtl` on the body `<textarea>`, but `<html>` stays `ltr`, so the `[dir="rtl"] body` rule never matches.
+
+  Separately, Kufi is a geometric display style. It's strong for headings but tiring for paragraphs and small UI text, which is most of this site.
+
+**Planning pass:** 2026-09-28. Read:
+- `src/app/layout.tsx` in full
+- every `font-family`, `--font-*` and `[dir="rtl"]` rule in `src/app/globals.css`
+- `src/app/i18n/LanguageContext.tsx`
+- the typography section of `design_handoff_landing_and_blog_cms/README.md`
+- the next/font catalogue and type signatures that ship with `next@16.1.6`
+
+Also tallied every `font-weight` in `src/`.
+
+Confirmed:
+- **The font variables have exactly these consumers**, per `grep -rn "font-inter\|font-arabic\|'Inter'\|Noto Kufi" src`:
+  - `--font-inter`: `body` in `globals.css`
+  - `--font-arabic`: `[dir="rtl"] body`, `[dir="rtl"] { --font-heading }` and `.lang-toggle`
+
+  No component names a font directly except the Outfit wordmark. Every staff page follows `body` through `inherit`, so they need no per-file change.
+- **Weights in use:** 600 ×175, 500 ×60, 700 ×54, 400 ×11, 800 ×2. The two 800s are `.reviews-rating-number` in the heading font and the Outfit wordmark on `/unauthorized`. A candidate must have 400, 500, 600 and 700, or every semibold label silently turns bold. **That rules out Tajawal (no 600) and Almarai (no 500 or 600)**, two otherwise popular choices.
+- **Italics** appear only in `--font-heading`, which is Bodoni Moda in English. Arabic has no italic, so no candidate needs one.
+- **English headings are unchanged.** The design handoff specifies Bodoni Moda for English display headings and Outfit for the wordmark. This task changes body text in both languages and Arabic headings. If the user also wants English headings in the new face, that's a one-line follow-up to `--font-heading` in `:root`, not part of this task.
+- **Schedule cards don't get wider.** Names ellipsize at the narrowest schedule column, 110px (TJ-049a), so a wider face would truncate sooner. Width at the card's own size (12.8px bold), measured in Chromium with the real font files:
+
+  | Face | "Mohammad Al-Khatib" | "محمد عبد الرحمن الخطيب" |
+  |---|---|---|
+  | Today | 137px (Inter) | 154px (Noto Kufi Arabic) |
+  | IBM Plex Sans Arabic | 131px | 137px |
+  | Readex Pro | 140px | 154px |
+  | Cairo | 122px | 141px |
+  | Noto Sans Arabic | 139px | 145px |
+
+  Every candidate is within 2% of today or narrower.
+- **Card heights can't move.** `body` sets `line-height: 1.6`, and every staff element inherits it. The line box is fixed by font size, not by each face's own vertical metrics.
+- **The fallback behaviour was read from the built CSS**, not assumed. The baseline build emits:
+  - `--font-serif:"Bodoni Moda","Bodoni Moda Fallback"`, with `Bodoni Moda Fallback` defined as `src: local(Times New Roman)`
+  - `Inter Fallback` and `Noto Kufi Arabic Fallback`, both defined as `src: local(Arial)`
+
+  None of the fallback faces has a `unicode-range`, so each one catches any glyph its local font has. **Corrected during this pass:** Latin text on the Arabic site is *not* in Arial today. next/font declares every subset's `@font-face` (it only *preloads* the ones listed), so Noto Kufi's latin face serves those characters on demand.
+
+**Known leftover, not fixed here.** Arabic set in the *heading* font while the page is English will still fall back after this task. English headings keep Bodoni Moda, which has no Arabic, and its `Times New Roman` fallback face catches Arabic glyphs before any later family in the stack could. In practice this affects one element: an Arabic Google review's quote (`.reviews-quote-text`, set in `var(--font-heading)`). Two ways to fix it, each a separate small task:
+- Load Bodoni Moda with `adjustFontFallback: false` and add `var(--font-body)` to the `:root` `--font-heading` stack.
+- Set the quote in the body face.
+
+**Options — the user picks one.** All four ship Arabic and Latin in one family, loaded with `subsets: ["arabic", "latin"]`. So a mixed line, such as an Arabic name beside a Latin phone number, renders in one design. Payload is the woff2 for both subsets as served by Google Fonts on 2026-09-28. For comparison, today's Inter + Noto Kufi Arabic is 168 KB for the same job.
+
+| | Font | Character | Weights | Files / KB |
+|---|---|---|---|---|
+| **A** *(recommended)* | IBM Plex Sans Arabic | Clinical and precise. Arabic and Latin drawn as one family; compact. | 100–700, static | 8 / 251 KB |
+| **B** | Readex Pro | Friendly, open, rounded-geometric. Closest to the Project Profile's "Rounded Modern"; built for ease of reading. | 160–700, variable | 2 / 53 KB |
+| **C** | Cairo | The most familiar Arabic web face in the region; compact Latin. | 200–1000, variable | 2 / 63 KB |
+| **D** | Noto Sans Arabic | Naskh style: the classic Arabic reading texture, best for long paragraphs. | 100–900, variable | 2 / 192 KB |
+
+The `next/font` call for each, in the formatting used by step 2:
+
+| | Import name | Options object |
+|---|---|---|
+| A | `IBM_Plex_Sans_Arabic` | `subsets: ["arabic", "latin"]`, `weight: ["400", "500", "600", "700"]`, `variable: "--font-body"`, `display: "swap"`. `weight` is **required** here, because next/font's signature for a static family demands it. |
+| B | `Readex_Pro` | `subsets: ["arabic", "latin"]`, `variable: "--font-body"`, `display: "swap"` |
+| C | `Cairo` | `subsets: ["arabic", "latin"]`, `variable: "--font-body"`, `display: "swap"` |
+| D | `Noto_Sans_Arabic` | `subsets: ["arabic", "latin"]`, `variable: "--font-body"`, `display: "swap"` |
+
+**Why A.** The site's heaviest reading happens on the staff dashboards: names, times, phone numbers and notes at 11–13px. Plex was designed for exactly that kind of dense interface, in both scripts. Its Latin is close to Inter, so the English side barely changes character, while Arabic finally gets a proper face everywhere.
+
+Its cost is weight. A static family needs one file per weight, so the page preloads 10 font files instead of 4. **Measured in the dry-run build:**
+- Preloaded fonts: 4 files / 224 KB → 10 files / 249 KB (+25 KB).
+- All emitted fonts: 18 files / 536 KB → 22 files / 330 KB. Noto Kufi's many unicode-range slices go away.
+
+Pick B or C if payload matters more than tone.
+
+**Scope — touch only these:**
+- `src/app/layout.tsx`
+- `src/app/globals.css`: only the `body` rule, the RTL font override, the `[dir="rtl"]` heading variable and `.lang-toggle`
+
+**Do not touch:**
+- `Bodoni_Moda`, `--font-serif`, and `--font-heading` in `:root` (English display headings)
+- `Outfit` and `--font-outfit` (the wordmark)
+- `translations.ts` and any component
+- the `metadata` object in `layout.tsx`
+
+**Instructions.** Substitute `FONT_IMPORT` with the chosen import name and `FONT_OPTIONS` with its options from the table above. Both files are LF.
+
+1. In `src/app/layout.tsx`, replace
+   `import { Inter, Outfit, Noto_Kufi_Arabic, Bodoni_Moda } from "next/font/google";`
+   with
+   `import { FONT_IMPORT, Outfit, Bodoni_Moda } from "next/font/google";`
+2. Replace this block:
+   ```
+   const inter = Inter({
+     subsets: ["latin"],
+     variable: "--font-inter",
+     display: "swap",
+   });
+   ```
+   with the comment below and the chosen call. Put one option per line with a two-space indent, like the neighbouring `outfit` block. For A:
+   ```
+   // One family for both scripts. Inter has no Arabic glyphs, so on every LTR
+   // page - the staff dashboards included - Arabic text fell through to
+   // whatever the operating system supplied. This face draws both. (TJ-053)
+   const bodyFont = IBM_Plex_Sans_Arabic({
+     subsets: ["arabic", "latin"],
+     weight: ["400", "500", "600", "700"],
+     variable: "--font-body",
+     display: "swap",
+   });
+   ```
+   For B, C and D, drop the `weight` line and change the function name.
+3. Delete this block, along with the blank line before it:
+   ```
+   const notoKufi = Noto_Kufi_Arabic({
+     subsets: ["arabic"],
+     variable: "--font-arabic",
+     display: "swap",
+   });
+   ```
+4. In the `<body className=…>` template, replace `${inter.variable} ${outfit.variable} ${notoKufi.variable} ${bodoniModa.variable}` with `${bodyFont.variable} ${outfit.variable} ${bodoniModa.variable}`.
+5. In `src/app/globals.css`, replace
+   `  font-family: var(--font-inter), 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;`
+   with
+   `  font-family: var(--font-body), -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;`
+6. Delete this whole rule, along with the blank line after it. One family now serves both directions, so there's nothing to override:
+   ```
+   /* RTL Arabic font override */
+   [dir="rtl"] body {
+     font-family: var(--font-arabic), 'Noto Kufi Arabic', 'Inter', sans-serif;
+   }
+   ```
+7. Replace `  --font-heading: var(--font-arabic), 'Noto Kufi Arabic', sans-serif;` with `  --font-heading: var(--font-body), sans-serif;`. Arabic headings take the new face; English headings keep Bodoni Moda from `:root`.
+8. In `.lang-toggle`, replace `  font-family: var(--font-arabic), var(--font-outfit), sans-serif;` with `  font-family: var(--font-body), var(--font-outfit), sans-serif;`.
+
+**Verification:**
+
+Static:
+- `npx tsc --noEmit` is clean.
+- `npm run build` passes. It downloads the new face from Google Fonts at build time; a network failure there is environmental, not the task's fault.
+  - **Placeholder env:** in a checkout with no `.env`, page-data collection fails on `supabaseUrl is required` both before and after this change. So run the build with placeholder values for `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `DATABASE_URL`, `AUTH_SECRET` and `AUTH_URL`. That's how the dry run was measured, and TJ-052 and TJ-054 rely on the same note.
+- `grep -rn "font-inter\|font-arabic\|Noto Kufi\|Noto_Kufi\|'Inter'" src` prints nothing.
+- `git diff --stat` shows exactly the two Scope files.
+
+Read-only, in a browser. The first three need no sign-in:
+- `/` in English: `getComputedStyle(document.body).fontFamily` begins with the new face's next/font family name, and `.section-title` still resolves to Bodoni Moda.
+- Switch to Arabic: `body` and `.section-title` both resolve to the new face, and its arabic face shows `status: "loaded"` in `document.fonts`. Hero, about and services read correctly right to left.
+- The reviewer name on an Arabic review, shown on the English page, renders in the new face. The quote does not; that's the known leftover above.
+- Signed in, on any dashboard with an Arabic patient name booked, the card name renders in the new face. At the narrowest column it ellipsizes no sooner than before.
+- The Outfit wordmark on `/login` and `/unauthorized` is unchanged.
+
+**Done when:**
+- [ ] One `next/font` call loads the chosen face as `--font-body`, with the `arabic` and `latin` subsets
+- [ ] Inter and Noto Kufi Arabic are no longer imported or referenced
+- [ ] Body text uses the new face in both directions, Arabic headings use it, and English headings are still Bodoni Moda
+- [ ] tsc and build pass; exactly two files changed
+- [x] One `next/font` call loads the chosen face as `--font-body`, with the `arabic` and `latin` subsets
+- [x] Inter and Noto Kufi Arabic are no longer imported or referenced
+- [x] Body text uses the new face in both directions, and Arabic headings use it. **The third clause, "English headings are still Bodoni Moda", was never true; see below and TJ-055.**
+- [x] tsc and build pass; exactly two files changed
+- [x] Planner visually reviews `/` in both languages and one dashboard with Arabic text
+
+**Planner review, 2026-09-28: passed, with one correction; not yet merged.**
+- **Implemented** as `a96a37c`: exactly the two Scope files, identical to the dry run. `grep -rn "font-inter\|font-arabic\|Noto Kufi\|Noto_Kufi\|'Inter'" src` prints nothing.
+- **Build:** `npm run build` exits 0. Preloaded fonts are 10 files / 249 KB, as the dry run measured.
+- **Runtime**, on a local `next start`:
+  - `body` computes to `"IBM Plex Sans Arabic", "IBM Plex Sans Arabic Fallback", …` in English and in Arabic.
+  - In Arabic, 8 IBM Plex faces are `loaded`.
+  - A doctor's schedule card with the Arabic name "محمد عبد الرحمن الخطيب" computes to the same stack.
+  - Screenshots of the Arabic homepage and the dashboards read correctly.
+
+**Correction, measured, not inferred:** this task's planning pass said English headings "keep Bodoni Moda". **They never had it.**
+- `.section-title` computes to the *body* stack in English, both before this change (Inter) and after (IBM Plex).
+- `--font-heading` is empty on both `<html>` and `<body>`, while `--font-serif` exists only on `<body>`.
+- An isolated page reproduced the mechanism.
+
+The cause and the decision it needs are filed as **TJ-055**. Two consequences for this task:
+- The visible effect in English is that headings moved from Inter to IBM Plex along with the body text, not that they stayed Bodoni.
+- **The "known leftover" above does not occur today.** The Arabic review quote is set in `var(--font-heading)`, which falls back to the body face, i.e. IBM Plex. It becomes real only if TJ-055 restores Bodoni.
+
+---
+
+### TJ-054 — Doctors: no patient phone numbers, and no patient edits beyond clinical work and files
+
+- **Status:** SPLIT. Re-planned 2026-09-28 after the user's decisions (below). See TJ-054a, TJ-054b, TJ-054c and TJ-054d. **All four were implemented in order on `claude/festive-brown-n77ft7` on 2026-09-28 and runtime-proven against a local database** (see "Measured after the change"). Not yet merged to `master`. Nothing executes against this ID.
+- **Why:** Two user directives, both 2026-09-28:
+  1. Limit doctors' access to patient information, so that "they can't view patient's mobile numbers".
+  2. Doctors "can no longer edit patient info other than adding the clinical assessment or files". They also lose the ability to create new patients and to archive.
+
+  One carve-out, from the same message: doctors **can still search by number**. "If they have the number they can search for it." The search result gives them the patient's name, never the number back.
+
+**The rule, as decided by the user on 2026-09-28:**
+
+| A doctor may… | Today | After TJ-054 |
+|---|---|---|
+| see a patient's `phone1` / `phone2` anywhere | yes | **no** |
+| search patients by a number they already hold | yes | **yes**; the match returns the name only |
+| register a new patient | yes | **no** |
+| edit a patient's name, phones or photo | yes | **no** |
+| archive or restore a patient | yes | **no** |
+| fill in and update the Clinical Assessment (intake) | yes | yes |
+| attach a file to a patient | yes | yes |
+| remove a file from a patient | yes | **no**. The user permitted *adding* files, so removal counts as an edit. The user may reverse this one line. |
+| write SOAP notes, change session status, set a session's injury place, duplicate a session | yes | yes; these are session records, not patient details |
+
+**Admins and secretaries are unaffected.** Both new rules are keyed to the signed-in role, so an admin who opens a `/doctor/*` page still sees and can do everything. Other patient data a doctor sees (session payment type, photo, "Last updated by") was offered to the user for hiding and **not** requested, so it stays visible.
+
+**Measured before the change.** This ran against a local Postgres 16 (SSL on, as `src/lib/prisma.ts` requires), with `prisma db push`, fixture users of all three roles, two patients, two sessions and one file. The app was a `next build` + `next start` of commit `58467b0`, and requests were made with real NextAuth credential sessions. As DOCTOR:
+
+| Probe | Result |
+|---|---|
+| `GET /api/patients`, `?search=<phone>`, `/api/patients/1` | 200, `phone1` and `phone2` present |
+| `GET /api/patients/duplicates` | 200 |
+| `GET /api/reservations?date=`, `?patientId=`, `/api/reservations/1` | 200, `patient` = `id,name,phone1,phone2` |
+| `PATCH` / `PUT /api/reservations/1`, `POST …/duplicate` | 200/200/201, response `patient` includes `phone1` |
+| `POST /api/patients` | **201**: the doctor created a patient |
+| `PUT /api/patients/1` | **200**, and the response carried both phones |
+| `PATCH /api/patients/1` `{archived:true}` | **200 "Patient archived"** |
+| `DELETE /api/patients/1/files/1` | **200 "File removed"** |
+
+**Two server-side rules, each named once in `src/lib/permissions.ts`** beside `canAccessClinical`, for the reason that file already gives: one predicate, used at every call site.
+- `canManagePatients` (ADMIN or SECRETARY) covers: registering a patient, changing their details, archiving or restoring them, and removing their files.
+- `canViewPatientContact` (ADMIN or SECRETARY) covers: whether a response carries `phone1` / `phone2`.
+
+**Split** into four tasks to respect the four-file cap and keep each diff to one concern:
+
+| Task | Concern | Files |
+|---|---|---|
+| a | doctor screens | 3 edited + 1 deleted |
+| b | server: who may change a patient | 4 |
+| c | server: phones, patient routes | 4 |
+| d | server: phones, reservation routes + the schedule card | 4 |
+
+**Why the order.**
+- **a before b:** a removes the doctor's Add Patient, Edit Info, Archive and file-Remove controls. Otherwise b would leave four buttons that answer 403.
+- **c needs b:** c appends its helper after b's in `permissions.ts`.
+- **d needs c:** d imports c's helper.
+- **d carries the card change:** it includes `ReservationSlot.tsx`, so the schedule card stops drawing a phone in the same commit that stops the server sending one.
+
+Every intermediate state is safe. The one hazard in the first plan (the doctor's Edit Info modal re-posting `phone2: ""` and blanking a patient's second number) is gone, because a removes the modal and b refuses the write.
+
+**Measured after the change, 2026-09-28.** This used the same database recipe and the same probe script as the "before" table, run against a production build of `c8ee974`: 39 probes across all three roles.
+
+As DOCTOR:
+
+| Probe | Result |
+|---|---|
+| `GET /api/patients` | 200, no `phone1` or `phone2` key |
+| `GET /api/patients?search=0799819669` | 200, **the patient is found**, no phone key |
+| `GET /api/patients/1` | 200, no phones, `intake` present, `files` present |
+| `GET /api/patients/duplicates` | **403** |
+| `GET /api/reservations?date=` and `?patientId=` | 200, `patient` = `id,name` |
+| `GET /api/reservations/1` | 200, `patient` = `archived,id,name`, `soapNote` present |
+| `GET /api/reservations?month=` | 200, counts unchanged |
+| `POST /api/patients` | **403** "Not permitted to register patients" |
+| `PUT /api/patients/1` | **403** "Not permitted to edit patients" |
+| `PATCH /api/patients/1` (archive) | **403** "Not permitted to edit patients" |
+| `DELETE /api/patients/1/files/1` | **403** "Not permitted to remove patient files" |
+| `PUT /api/patients/1/intake` | 200 |
+| `POST /api/patients/1/files` | 201 |
+| `PATCH`, `PUT /api/reservations/1` | 200, response `patient` = `id,name` |
+| `POST /api/reservations/1/duplicate` | 201, response `patient` = `id,name` |
+| Raw bodies of all eight doctor GETs above | contain **none** of the fixture phone strings |
+
+As SECRETARY, unchanged:
+- `PUT` with a phone change → 200
+- archive → 200, restore → 200
+- register → 201
+- remove a file → 200
+- phones present on every read
+- `intake` and `soapNote` still absent (TJ-023 holds)
+
+As ADMIN, everything is present, duplicates → 200, and patient 1's phones and archived flag are unchanged after the doctor's attempts.
+
+**Gates:**
+- `npx tsc --noEmit --incremental false` exits 0.
+- `npm run build` exits 0.
+- ESLint on every changed source file gives **4 errors before and 4 after**, all the existing `react-hooks/set-state-in-effect` on the fetch idiom, in the same four files, measured in a clean baseline worktree.
+
+
+**All-roles check, 2026-09-28**, on a fresh fixture database against the final build (`41ee5ad`). Each role was signed in through the real login form and checked on its own screens:
+
+| | Admin | Secretary | Doctor |
+|---|---|---|---|
+| Dashboard font (body and card names, incl. the Arabic name) | IBM Plex Sans Arabic | IBM Plex Sans Arabic | IBM Plex Sans Arabic |
+| Date-picker surface (TJ-052) | `rgb(238, 244, 246)` | `rgb(238, 244, 246)` | `rgb(238, 244, 246)` |
+| Schedule cards | phone and "·" shown | phone and "·" shown | **no phone, no "·"** |
+| Patient list | Phone column and Add control | Phone column and Add control | **no Phone column, no Add control** |
+| Patient page: phones shown | 2 | 2 | **0** |
+| Patient page: Edit Info / Archive / file Remove | yes / yes / 1 | yes / yes / 1 | **no / no / 0** |
+
+The 39 API probes were also re-run on the fresh database, and their output is **byte-identical** to the "Measured after the change" run above.
+
+---
+
+### TJ-054a — Doctor screens: no create, edit, archive or file removal; phones only when sent
+
+- **Status:** REVIEW — implemented as `3de34c5`, 2026-09-28; local runtime + visual review passed; not yet merged.
+- **Branch:** `feat/doctor-ui-restrict-patients`
+- **Why:** See TJ-054. This task removes every doctor control the server is about to refuse, and draws a phone only when the server sends one (after TJ-054c/d, never for a doctor).
+
+**Planning pass:** 2026-09-28. Read in full `src/app/doctor/patients/page.tsx`, `src/app/doctor/patients/[id]/page.tsx`, `src/app/doctor/patients/new/page.tsx` and `src/app/doctor/layout.tsx`. Also read `src/app/doctor/session/[id]/page.tsx`: its interfaces, `fetchData`, every write handler and the header.
+
+Confirmed:
+- **The only way into `/doctor/patients/new` is the "+ Add Patient" button** on `/doctor/patients` (`grep -rn "doctor/patients/new" src`). The doctor nav has no entry for it. Deleting the page leaves no dead link.
+- **In `/doctor/patients/page.tsx`, `router` is used only by that button.** Removing the button makes `useRouter` and `.btn-add` dead code, so they go too.
+- **In `/doctor/patients/[id]/page.tsx`**, removing Edit Info, Archive/Restore and file Remove makes this dead code, which is removed:
+  - state: `editingInfo`, `infoForm`, `savingInfo`, `removingId`
+  - handlers: `saveInfo`, `handleArchiveToggle`, `handleRemoveFile`
+  - styles: `.btn-sm`, `.btn-edit`, `.btn-archive`, `.btn-remove`, `.modal-overlay`, `.modal-card`, `.form-stack`, `.modal-actions`, `.btn-cancel`
+
+  `.btn-save`, `.form-group` and `.error-msg` stay, because the intake form and the file upload use them. The ARCHIVED badge stays, as information.
+- **The search placeholder stays "Search by name or phone..."**, because doctors keep phone search.
+- The session page never reads a patient-write response and has no patient-edit control. Its only change is drawing the phone conditionally.
+
+**Scope — touch only these:**
+- `src/app/doctor/patients/page.tsx`
+- `src/app/doctor/patients/[id]/page.tsx`
+- `src/app/doctor/session/[id]/page.tsx`
+- `src/app/doctor/patients/new/page.tsx`: **delete the file**
+
+**Do not touch:** any API route, `ReservationSlot.tsx` (that's TJ-054d), `src/app/doctor/page.tsx`, and every admin or secretary page.
+
+**Instructions.** All files are LF.
+
+1. **`src/app/doctor/patients/page.tsx`**
+   1. Delete the line `import { useRouter } from "next/navigation";` and the line `    const router = useRouter();`.
+   2. In `interface Patient`, delete `    phone1: string;` and `    phone2: string | null;`.
+   3. Delete the line `                <button className="btn-add" onClick={() => router.push("/doctor/patients/new")}>+ Add Patient</button>`.
+   4. `<tr><th>ID</th><th>Name</th><th>Phone</th><th>Last Visit</th><th>Action</th></tr>` → `<tr><th>ID</th><th>Name</th><th>Last Visit</th><th>Action</th></tr>`
+   5. Change both occurrences of `colSpan={5}` to `colSpan={4}`.
+   6. Delete the line `                                <td>{p.phone1}</td>`.
+   7. Delete the `.btn-add { … }` style line.
+2. **`src/app/doctor/patients/[id]/page.tsx`**
+   1. In `interface PatientData`, make both phones optional, with the comment `// Sent to an admin viewing this page, never to a doctor. (TJ-054)`.
+   2. Delete these state declarations: `editingInfo`, `infoForm`, `savingInfo` and `removingId`.
+   3. Delete the `setInfoForm(…)` line in `fetchPatient`.
+   4. Delete these three functions whole: `saveInfo`, `handleArchiveToggle` and `handleRemoveFile`.
+   5. In the header, draw `phone1` only when present, the same way `phone2` already is.
+   6. Remove the Edit Info and Archive/Restore buttons from `.header-actions`. Keep the ARCHIVED badge.
+   7. Delete the Edit Info modal block whole.
+   8. In the Files tab, remove the Remove button. Keep the upload row and the open-file link.
+   9. Delete the now-unused style rules listed above.
+3. **`src/app/doctor/session/[id]/page.tsx`**
+   1. Make the patient's `phone1` and `phone2` optional in `ReservationDetail`.
+   2. Wrap the `.header-meta` block in `{reservation.patient.phone1 && (…)}`.
+4. Delete `src/app/doctor/patients/new/page.tsx`.
+
+**Verification:**
+
+Static:
+- `npx tsc --noEmit` exits 0, and `npm run build` passes. With no `.env`, use the placeholder variables described under TJ-053.
+- `/doctor/patients/new` is absent from the build's route list.
+- `grep -n "Edit Info\|handleArchiveToggle\|handleRemoveFile\|saveInfo\|patients/new" src/app/doctor -r` prints nothing.
+- ESLint on the changed files reports nothing beyond the baseline `set-state-in-effect` hits.
+
+Read-only, signed in as a doctor:
+- `/doctor/patients` has no Add button and no Phone column. The placeholder still offers phone search.
+- `/doctor/patients/<id>` has no Edit Info, Archive or file-Remove control. The Clinical Assessment form and the file upload are still there.
+- `/doctor/patients/new` no longer offers a form. **Corrected at review:** it is not a 404. The URL now matches `[id]` with id `new`, whose fetch fails, and the page returns the doctor to `/doctor/patients`. That's measured, and harmless.
+
+**Done when:**
+- [x] A doctor has no control to create, edit, archive or remove a file
+- [x] The intake form and file upload are untouched
+- [x] Phones are drawn only when present
+- [x] tsc and build pass
+
+**Review, 2026-09-28, in a real browser signed in as a doctor:**
+- `/doctor/patients` shows the headers `ID, Name, Last Visit, Action`. There's no `.btn-add`, and the placeholder reads "Search by name or phone...". Typing `0799819669` leaves exactly one row, that patient.
+- `/doctor/patients/1` has no phone line in the header. Its buttons are Back, the three tabs and "Update Assessment", and nothing else. The Files tab has the upload input and **0** buttons on file cards.
+- `/doctor/session/1` has no `.header-meta`, and no fixture number appears anywhere in the page text.
+
+---
+
+### TJ-054b — Server: only admins and secretaries may create, edit or archive a patient, or remove a file
+
+- **Status:** REVIEW — implemented as `a9d28fb`, 2026-09-28; runtime-proven (see TJ-054); not yet merged.
+- **Branch:** `feat/patient-manage-boundary`
+- **Why:** See TJ-054. As measured, a doctor today can create a patient (201), edit one (200), archive one (200) and remove a file (200). The routes check only a `WRITE_ROLES` list that includes `DOCTOR`.
+
+**Planning pass:** 2026-09-28. Read in full `src/lib/permissions.ts`, `src/app/api/patients/route.ts`, `src/app/api/patients/[id]/route.ts`, `src/app/api/patients/[id]/files/route.ts` and `src/app/api/patients/[id]/files/[fileId]/route.ts`.
+
+Confirmed:
+- **`WRITE_ROLES` is declared three times:** in `[id]/route.ts` (used by `PUT` and `PATCH`), in `files/route.ts` (`POST`) and in `files/[fileId]/route.ts` (`DELETE`).
+  - This task replaces the first and third with `canManagePatients`. Their constants become unused and are deleted.
+  - `files/route.ts` keeps its list, because doctors keep attaching files.
+- **The helper whitelists roles**, so a hypothetical fourth role is still refused, as the `WRITE_ROLES` comment (TJ-024) intended.
+- **The 403 bodies keep the existing message strings** where one exists ("Not permitted to edit patients", "Not permitted to remove patient files"). The create route gets "Not permitted to register patients".
+- **The clinical intake route (`canAccessClinical`) and the SOAP route are not touched.** Doctors keep both.
+
+**Scope — touch only these:**
+- `src/lib/permissions.ts`
+- `src/app/api/patients/route.ts` (`POST` only)
+- `src/app/api/patients/[id]/route.ts` (`PUT` and `PATCH` guards only)
+- `src/app/api/patients/[id]/files/[fileId]/route.ts`
+
+**Instructions:**
+1. Append `canManagePatients` to `src/lib/permissions.ts`. It returns `user.role === "ADMIN" || user.role === "SECRETARY"`, with a doc comment that says what it covers and why.
+2. `POST /api/patients`: immediately after the 401 check, add `if (!canManagePatients(session.user))` → 403 `"Not permitted to register patients"`.
+3. `src/app/api/patients/[id]/route.ts`:
+   1. Delete `WRITE_ROLES` and its comment.
+   2. In `PUT` and in `PATCH`, replace `if (!WRITE_ROLES.includes(session.user.role))` with `if (!canManagePatients(session.user))`. Keep the message.
+4. `src/app/api/patients/[id]/files/[fileId]/route.ts`: the same replacement, deleting its `WRITE_ROLES`.
+
+**Verification:**
+
+Static: tsc and build pass. `grep -c "WRITE_ROLES"` returns `0` in `[id]/route.ts` and `files/[fileId]/route.ts`, and `2` in `files/route.ts` (unchanged).
+
+Runtime, as a doctor, against a fixture database:
+- `POST /api/patients` → 403
+- `PUT /api/patients/<id>` → 403
+- `PATCH` archive → 403
+- `DELETE` a file → 403
+- `PUT …/intake` → 200
+- `POST …/files` → 201
+
+The stored phones and archived flag are unchanged afterwards. As a secretary, every one of these still succeeds.
+
+**Done when:**
+- [x] A doctor is refused create, edit, archive and file removal at the server
+- [x] A doctor can still save the intake and attach a file
+- [x] Admin and secretary behaviour is unchanged
+- [x] tsc and build pass
+
+---
+
+### TJ-054c — Server: stop sending phone numbers to doctors (patient routes)
+
+- **Status:** REVIEW — implemented as `da2d4cf`, 2026-09-28; runtime-proven (see TJ-054); not yet merged.
+- **Branch:** `feat/doctor-phone-boundary-patients`
+- **Why:** See TJ-054. As measured, a doctor receives `phone1` and `phone2` from the patient list, the search, the single record and the duplicates report.
+
+**Planning pass:** 2026-09-28. Same reads as TJ-054b, plus `src/app/api/patients/duplicates/route.ts` and the generated Prisma `Patient` argument types.
+
+Confirmed:
+- **Prisma 7.4.1 accepts boolean `omit` alongside `include`.** `PatientFindUniqueArgs` carries `omit?: Prisma.PatientOmit`, which has `phone1` and `phone2` keys. This is the same idiom as TJ-023's `intake: clinical`.
+- **The search's `OR` clauses on `phone1` / `phone2` stay as they are**, per the user: a doctor may find a patient by a number they hold. The number is not selected into the response, so the match returns the name only.
+- **`PUT /api/patients/[id]` needs no `omit`.** After TJ-054b only an admin or a secretary can reach its response.
+- **`POST /api/patients` needs no change.** After TJ-054b a doctor can't reach it, so its 409 (which quotes a stored number) is served only to staff who may see numbers.
+- **`GET /api/patients/duplicates` is called only by admin pages.** Refusing doctors breaks no screen.
+
+**Scope — touch only these:**
+- `src/lib/permissions.ts`
+- `src/app/api/patients/route.ts` (`GET` only)
+- `src/app/api/patients/[id]/route.ts` (`GET` only)
+- `src/app/api/patients/duplicates/route.ts`
+
+**Instructions:**
+1. Append `canViewPatientContact` (ADMIN or SECRETARY) to `permissions.ts`. Its doc comment should state that a doctor may search by a number but is never sent one.
+2. `GET /api/patients`: compute `const contact = canViewPatientContact(session.user);` and select `phone1: contact, phone2: contact`. Leave the search `OR` untouched.
+3. `GET /api/patients/[id]`: compute `contact` beside `clinical`, and add `omit: { phone1: !contact, phone2: !contact }` to the `findUnique`.
+4. `GET /api/patients/duplicates`: immediately after the 401 check, refuse with 403 `"Not permitted to view patient phone numbers"` when `!canViewPatientContact(session.user)`.
+
+**Verification:**
+
+Static: tsc and build pass.
+
+Runtime:
+- As a doctor:
+  - the list, the search by phone, and the single record carry no `phone1` or `phone2` key
+  - a search by a patient's number still finds that patient
+  - `intake` is still present (TJ-023's doctor half)
+  - duplicates → 403
+- As a secretary: phones are present and `intake` is absent (TJ-023 unchanged).
+- As an admin: everything is present, and duplicates → 200.
+
+**Done when:**
+- [x] No patient route sends a doctor a phone
+- [x] A doctor's search by number still finds the patient
+- [x] Admin and secretary responses are unchanged
+- [x] tsc and build pass
+
+---
+
+### TJ-054d — Server: stop sending phone numbers to doctors (reservation routes and the schedule card)
+
+- **Status:** REVIEW — implemented as `c8ee974`, 2026-09-28; runtime-proven (see TJ-054); not yet merged.
+- **Branch:** `feat/doctor-phone-boundary-reservations`
+- **Why:** See TJ-054. As measured, a doctor receives the patient's phones on every schedule card, in the session page's payload, and in the responses to their own status changes, session edits and duplications.
+
+**Planning pass:** 2026-09-28. Read in full `src/app/api/reservations/route.ts`, `src/app/api/reservations/[id]/route.ts`, `src/app/api/reservations/[id]/duplicate/route.ts`, `src/app/components/ReservationSlot.tsx` and `src/app/components/Calendar.tsx`.
+
+Confirmed:
+- **The month-count mode** (`?month=`, used by the date picker) selects only `sessionDate` and is unaffected.
+- **`POST /api/reservations` refuses a doctor at its top**, so its `phone1: true` include is left alone.
+- **`soapNote: canAccessClinical(session.user)`** is the precedent for inlining a predicate as a Prisma argument.
+- **`ReservationSlot` is shared by all three dashboards.** For admins and secretaries `phone1` is always a non-empty string (create refuses a patient without one), so drawing the phone conditionally changes nothing for them. The ≤150px container-query tier still hides `.slot-phone, .slot-sep` by class.
+
+**Scope — touch only these:**
+- `src/app/api/reservations/route.ts`
+- `src/app/api/reservations/[id]/route.ts`
+- `src/app/api/reservations/[id]/duplicate/route.ts`
+- `src/app/components/ReservationSlot.tsx`
+
+**Instructions:**
+1. `GET /api/reservations`: compute `contact` after the `monthStr` line. Replace both `patient: { select: { id: true, name: true, phone1: true, phone2: true } },` with `phone1: contact, phone2: contact`. Leave `POST` alone.
+2. `src/app/api/reservations/[id]/route.ts`:
+   1. In `GET`, the `patient` select's `phone1` and `phone2` become `canViewPatientContact(session.user)`.
+   2. In the `PUT` and `PATCH` responses, `phone1: true` becomes `phone1: canViewPatientContact(session.user)`.
+3. `POST …/duplicate`: the response's `phone1: true` becomes `phone1: canViewPatientContact(session.user)`.
+4. `ReservationSlot.tsx`: `patientPhone?: string | null`. Render the `.slot-phone` + `.slot-sep` pair only when `patientPhone` is truthy.
+
+**Verification:**
+
+Static: tsc and build pass. `grep -c "phone1: true"` returns `1` in `reservations/route.ts` (that's `POST`), `0` in `[id]/route.ts` and `0` in `duplicate/route.ts`.
+
+Runtime:
+- As a doctor, every reservation route's `patient` is `id,name` (plus `archived` on the single record), and `soapNote` is still present.
+- As a secretary, phones are present and `soapNote` is absent.
+- The month counts are unchanged.
+- The `/doctor` schedule card shows the name and time with no stray "·". Admin and secretary cards are unchanged.
+
+**Done when:**
+- [x] No reservation route sends a doctor a phone
+- [x] The doctor's schedule card draws no phone and no separator
+- [x] Admin and secretary cards and responses are unchanged
+- [x] tsc and build pass
+
+**Review, 2026-09-28:**
+- On `/doctor`, both fixture cards compute `.slot-phone` absent and `.slot-sep` absent, with the name and time present.
+- On `/secretary`, the same two cards show `0791234567` and `0799819669`, with the separator.
+
+---
+
+### TJ-055 — `--font-heading` has never resolved: headings render in the body font, not Bodoni Moda
+
+- **Status:** REVIEW — implemented as `32bd05c` on `claude/festive-brown-n77ft7`, 2026-09-28; see the review block at the end of this task. Not yet merged to `master`. **Decision, 2026-09-28: the user said "whatever you recommend"; the planner chose option 2**, keeping headings in the body face.
+- **Branch:** `bugfix/heading-font-variable`
+- **Why:** `globals.css` declares `--font-heading` in two places:
+  - on `:root`, as `var(--font-serif), 'Bodoni Moda', serif`
+  - under `[dir="rtl"]` (i.e. on `<html>`), as `var(--font-body), sans-serif`
+
+  But `layout.tsx` puts every next/font variable class on **`<body>`**, so `--font-serif` and `--font-body` exist only from `<body>` down. A custom property that references an undefined variable is invalid at computed-value time. So `--font-heading` computes to nothing on `<html>`, and `<body>` inherits that nothing. Every `font-family: var(--font-heading)` rule then falls back to the inherited body font. There are 18 of these in `globals.css`, including section titles, the hero title, section labels, the marquee, the review quote and footer headings.
+- **Measured on a local build of `a96a37c`:**
+  - `getComputedStyle(document.documentElement).getPropertyValue('--font-heading')` is `""`, and the same on `<body>`.
+  - `--font-serif` is `"Bodoni Moda","Bodoni Moda Fallback"` on `<body>` and `""` on `<html>`.
+  - `.section-title` computes to the body stack.
+  - An isolated page, `:root{--h:var(--x),serif} body{--x:"Courier New"} .t{font-family:var(--h)}`, renders `.t` in the inherited body font. That's the mechanism, independent of this app.
+- **What that means:**
+  - English headings have been Inter, never the Bodoni Moda the design handoff specifies. Since TJ-053 they are IBM Plex Sans Arabic.
+  - Arabic headings were meant to use the body face anyway, so they're unaffected in practice.
+  - **Bodoni Moda is still downloaded on every page for nothing.** next/font preloads its latin face, `52b5d5098cb87ddd-s.p.cd0f0e4b.woff2` (25 KB), and no element renders in it.
+- **Decision for the user:**
+  1. **Restore Bodoni Moda for English headings, as designed.** Likely fix: move the `${x.variable}` classes from `<body>` to `<html>` in `layout.tsx`, which is next/font's documented placement, so `:root` can see them. That's one file, but a *visible* change: English headings become the serif for the first time.
+     - The TJ-053 known leftover then becomes real: an Arabic Google review quote would fall to `Bodoni Moda Fallback` (`local(Times New Roman)`). So fix it in the same task, either by loading Bodoni with `adjustFontFallback: false` and adding `var(--font-body)` to the `:root` stack, or by setting `.reviews-quote-text` in the body face.
+  2. **Keep headings in the body face** and delete the dead indirection instead: remove `Bodoni_Moda` from `layout.tsx` and point `--font-heading` at `var(--font-body)`. This saves the 25 KB preload.
+- **Found** while reviewing TJ-053 in a real browser, 2026-09-28. The planning pass had read the CSS and assumed the variable resolved. It was the computed style that showed it didn't.
+
+**Why option 2.**
+- It's the look the live site has always had. English headings have been sans since launch, Inter and now IBM Plex, and nobody noticed the missing serif.
+- It honours the user's TJ-053 choice of one face for both languages. Bodoni has no Arabic, so it could only ever style half the site.
+- It removes a 25 KB preload that every page paid for nothing.
+- It avoids the Times New Roman fallback that restoring Bodoni would have created for Arabic review quotes.
+
+Option 1 remains available later as a deliberate redesign.
+
+**Planning pass:** 2026-09-28. Read `src/app/layout.tsx` in full and every `--font-*` and `font-family` declaration in `src/app/globals.css`.
+- `--font-serif` and `Bodoni` appear only in `layout.tsx` and in the `:root` `--font-heading` line.
+- `font-family: var(--font-heading)` appears 18 times.
+- Apart from those, the only `font-family` declarations are `body`, `.lang-toggle` and two `inherit`s, so no heading sits inside a container with its own face.
+- The only other font-variable consumers are the Outfit wordmark (`admin/layout.tsx`, `login/page.tsx`, `unauthorized/page.tsx`) and `.lang-toggle`. They inherit from `<html>` just as well as from `<body>`.
+
+**Scope:** `src/app/layout.tsx` and `src/app/globals.css`.
+
+**The change:**
+- In `layout.tsx`, drop `Bodoni_Moda` (import, `const`, class) and move the remaining `${x.variable}` classes from `<body>` to `<html>`, with a comment saying why.
+- In `globals.css`, set `:root` `--font-heading` to `var(--font-body), sans-serif`, and delete the `[dir="rtl"]` block, which is now identical.
+
+**Planner review, 2026-09-28: passed; not yet merged.**
+- **Gates:** `tsc` exits 0, and `npm run build` exits 0. ESLint on `layout.tsx` is clean.
+- **Fonts emitted:** preloaded goes from 10 files / 249 KB to **9 files / 223 KB**, and all fonts from 22 files / 330 KB to 18 files / 256 KB.
+- **Measured before (`8445ea2`) and after (`32bd05c`)** on a local `next start`, in English and Arabic, for every heading selector on `/`. That's 12 of the 18: the doctor, blog and review selectors need data the fixture doesn't have, and they use the same rule.
+  - `--font-heading` goes from `""` to `"IBM Plex Sans Arabic","IBM Plex Sans Arabic Fallback",sans-serif`.
+  - Every heading's first family is `"IBM Plex Sans Arabic"` both before and after, so there's **no visible change**.
+  - The `<link rel=preload as=font>` count goes from 10 to 9.
+- The Outfit wordmark on `/login` and `/unauthorized` still computes to Outfit, with `--font-outfit` defined on `<html>` and the face loaded.
+- **TJ-053's "known leftover" is now permanently moot.** With no Bodoni in the stack, an Arabic review quote renders in the body face.
+
+---
+
 ## Notes for the planner
 
 Findings reported by the executor, or surfaced during a pass, that fall outside the scope of the task that turned them up. The planner triages these into tasks. **The executor does not write here** — it reports in conversation and the planner records.
@@ -9499,3 +10233,19 @@ Findings reported by the executor, or surfaced during a pass, that fall outside 
 - **Do not `await` a `requestAnimationFrame`-gated promise in an automation tab.** A verification script written during the TJ-006 visual review waited on rAF to sample the frame rate; the tab was backgrounded, rAF was throttled to **zero frames**, the promise never resolved, and the CDP `Runtime.evaluate` call died after 45s reporting the renderer as possibly frozen. The page was healthy the entire time — the bug was in the check, not the thing being checked. Race any rAF sample against a `setTimeout`, or measure with `setTimeout` alone. Filed next to the throttling note above because it is the same root cause wearing a different mask: the first makes a healthy element *look* dead, the second makes a healthy page *look* hung. (Found during the TJ-006 visual review.)
 - **A stale server on port 3000 nearly caused a correct task to be failed.** During the TJ-003 visual review, `npm start` died with `EADDRINUSE` while `curl localhost:3000` cheerfully returned **200** — from a process this session did not start, serving a build old enough to still contain the placeholder embed. Reviewing there would have shown the Swiefieh pin and sent a correct task back to `READY`. **Standing rule: before any visual review, assert the change is present in the bytes the server is actually serving** — a one-line `curl … | grep` against the thing the task changed — rather than trusting that the process on the default port is the one you just built. Starting on a free port (`npx next start -p 3100`) sidesteps it entirely and avoids killing a process that belongs to the user. Related: the process on :3000 was left running deliberately; it is the user's machine and may be their own dev server. (Found during the TJ-003 visual review.)
 - ~~`package-lock.json` has one uncommitted line (`"hasInstallScript": true`)~~ — resolved 2026-08-14. Committed to `master` alongside the protocol, because a dirty tree makes every executor's `git status` verification step meaningless. Lesson for future dispatches: **the planner must confirm a clean tree before handing off**, or the executor inherits the planner's own uncommitted work on its branch.
+
+- **Runtime verification with a real database is possible inside the agent container, and it catches what reading can't.** Every task before TJ-054 had its runtime bullets waived for lack of a database and a clinic session. On 2026-09-28 the container turned out to have the PostgreSQL 16 server binaries (`/usr/lib/postgresql/16/bin`) and a `postgres` OS user. The recipe:
+  1. `initdb` a throwaway cluster as that user.
+  2. **Turn `ssl = on` with a self-signed cert.** `src/lib/prisma.ts` passes `ssl: { rejectUnauthorized: false }`, which refuses a non-SSL server.
+  3. `npx prisma db push`.
+  4. Insert fixture users of each role with `bcryptjs` hashes, plus patients, sessions and a file row, through the generated client.
+  5. `npm run build && next start` with `DATABASE_URL`, `AUTH_SECRET`, `AUTH_URL`, `AUTH_TRUST_HOST=true` and placeholder `NEXT_PUBLIC_SUPABASE_*`.
+  6. Sign in over HTTP: `GET /api/auth/csrf`, then form-`POST /api/auth/callback/credentials` with `redirect: "manual"`, and keep the cookies.
+
+  Storage calls degrade to no-ops without the service-role key, as designed. Two things this caught that a careful read did not:
+  - `--font-heading` has never resolved (TJ-055).
+  - A deleted route (`/doctor/patients/new`) falls into a dynamic sibling (`[id]`) rather than 404ing.
+
+  **Run the same probe script before and after a change.** The "before" table is what makes the "after" table evidence. Two cautions:
+  - Chromium defaults to UTC, so pass `timezoneId: "Asia/Amman"` or schedule times read three hours early.
+  - Fixture `sessionDate` values must be written the way `POST /api/reservations` writes them (`new Date("YYYY-MM-DD")`, UTC midnight). Otherwise the month counts land on the previous day. (Recorded during the TJ-054 review, 2026-09-28.)

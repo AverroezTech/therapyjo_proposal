@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
+import { canViewPatientContact } from "@/lib/permissions";
 import { logPatientActivity } from "@/lib/audit";
 
 // POST /api/reservations/[id]/duplicate — clone reservation to a new date
@@ -44,7 +45,7 @@ export async function POST(
             status: "SCHEDULED",
         },
         include: {
-            patient: { select: { id: true, name: true, phone1: true } },
+            patient: { select: { id: true, name: true, phone1: canViewPatientContact(session.user) } },
             doctor: { select: { id: true, name: true, color: true } },
         },
     });

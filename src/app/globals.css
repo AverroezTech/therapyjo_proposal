@@ -16,6 +16,7 @@
   --bg-page: #f8f5ef;
   --bg-dark: #1a2e35;
   --bg-dark-secondary: #243b44;
+  --bg-mist: #eef4f6;
 
   /* Text */
   --text-primary: #1a2e35;
@@ -59,8 +60,9 @@
   --transition-base: 0.3s ease;
   --transition-slow: 0.5s ease;
 
-  /* Fonts */
-  --font-heading: var(--font-serif), 'Bodoni Moda', serif;
+  /* Fonts. Headings share the body face in both languages; the Bodoni Moda
+     this once named never rendered (see layout.tsx) and was removed. (TJ-055) */
+  --font-heading: var(--font-body), sans-serif;
 }
 
 /* ===== RESET & BASE ===== */
@@ -81,22 +83,13 @@ html {
 }
 
 body {
-  font-family: var(--font-inter), 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  font-family: var(--font-body), -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   background: var(--bg-page);
   color: var(--text-primary);
   line-height: 1.6;
   overflow-x: hidden;
   overscroll-behavior: none;
   min-height: 100svh;
-}
-
-/* RTL Arabic font override */
-[dir="rtl"] body {
-  font-family: var(--font-arabic), 'Noto Kufi Arabic', 'Inter', sans-serif;
-}
-
-[dir="rtl"] {
-  --font-heading: var(--font-arabic), 'Noto Kufi Arabic', sans-serif;
 }
 
 img {
@@ -185,7 +178,7 @@ ol {
   border-radius: var(--radius-md);
   cursor: pointer;
   transition: all var(--transition-base);
-  font-family: var(--font-arabic), var(--font-outfit), sans-serif;
+  font-family: var(--font-body), var(--font-outfit), sans-serif;
 }
 
 .lang-toggle:hover {

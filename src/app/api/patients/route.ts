@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
+import { canManagePatients, canViewPatientContact } from "@/lib/permissions";
 import { normalizePhone, phoneKeys } from "@/lib/phone";
 
 // GET /api/patients — list patients with search + pagination
@@ -16,6 +17,10 @@ export async function GET(req: NextRequest) {
     const limit = Math.min(parseInt(searchParams.get("limit") || "20", 10), 100);
     const archived = searchParams.get("archived") === "true";
     const skip = (page - 1) * limit;
+    // The search below still matches phone numbers for everyone — a doctor
+    // may find a patient by a number they hold — but a doctor is not sent
+    // the numbers back. (TJ-054)
+    const contact = canViewPatientContact(session.user);
 
     const where = {
         archived,
@@ -36,8 +41,8 @@ export async function GET(req: NextRequest) {
             select: {
                 id: true,
                 name: true,
-                phone1: true,
-                phone2: true,
+                phone1: contact,
+                phone2: contact,
                 pictureUrl: true,
                 archived: true,
                 lastVisitDate: true,
@@ -63,6 +68,11 @@ export async function POST(req: NextRequest) {
     const session = await auth();
     if (!session) {
         return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+    // Registering a patient is front-desk work; doctors treat the patients
+    // the front desk registers. (TJ-054)
+    if (!canManagePatients(session.user)) {
+        return NextResponse.json({ error: "Not permitted to register patients" }, { status: 403 });
     }
 
     const body = await req.json();

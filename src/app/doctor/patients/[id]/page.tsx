@@ -8,8 +8,9 @@ import { useUnsavedChanges } from "@/lib/useUnsavedChanges";
 interface PatientData {
     id: number;
     name: string;
-    phone1: string;
-    phone2: string | null;
+    // Sent to an admin viewing this page, never to a doctor. (TJ-054)
+    phone1?: string;
+    phone2?: string | null;
     pictureUrl: string | null;
     archived: boolean;
     lastVisitDate: string | null;
@@ -77,15 +78,11 @@ export default function DoctorPatientProfilePage({ params }: { params: Promise<{
     const router = useRouter();
     const [patient, setPatient] = useState<PatientData | null>(null);
     const [loading, setLoading] = useState(true);
-    const [editingInfo, setEditingInfo] = useState(false);
-    const [infoForm, setInfoForm] = useState({ name: "", phone1: "", phone2: "" });
-    const [savingInfo, setSavingInfo] = useState(false);
     const [intakeForm, setIntakeForm] = useState<Record<string, string>>({});
     const [savingIntake, setSavingIntake] = useState(false);
     const [intakeMsg, setIntakeMsg] = useState("");
     const [activeTab, setActiveTab] = useState<"intake" | "sessions" | "files">("intake");
     const [uploadingName, setUploadingName] = useState("");
-    const [removingId, setRemovingId] = useState<number | null>(null);
     const [fileError, setFileError] = useState("");
 
     // The intake form as the server last gave it to us. Anything typed since
@@ -99,7 +96,6 @@ export default function DoctorPatientProfilePage({ params }: { params: Promise<{
         if (!res.ok) { router.push("/doctor/patients"); return; }
         const data = await res.json();
         setPatient(data);
-        setInfoForm({ name: data.name, phone1: data.phone1, phone2: data.phone2 || "" });
 
         // Populate intake form
         const intake: Record<string, string> = {};
@@ -118,18 +114,6 @@ export default function DoctorPatientProfilePage({ params }: { params: Promise<{
 
     useEffect(() => { fetchPatient(); }, [fetchPatient]);
 
-    const saveInfo = async () => {
-        setSavingInfo(true);
-        await fetch(`/api/patients/${id}`, {
-            method: "PUT",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(infoForm),
-        });
-        setSavingInfo(false);
-        setEditingInfo(false);
-        fetchPatient();
-    };
-
     const saveIntake = async () => {
         setSavingIntake(true);
         setIntakeMsg("");
@@ -141,17 +125,6 @@ export default function DoctorPatientProfilePage({ params }: { params: Promise<{
         setSavingIntake(false);
         setIntakeMsg("Assessment saved!");
         setTimeout(() => setIntakeMsg(""), 2500);
-        fetchPatient();
-    };
-
-    const handleArchiveToggle = async () => {
-        const action = patient?.archived ? "restore" : "archive";
-        if (!confirm(`${action.charAt(0).toUpperCase() + action.slice(1)} this patient?`)) return;
-        await fetch(`/api/patients/${id}`, {
-            method: "PATCH",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ archived: !patient?.archived }),
-        });
         fetchPatient();
     };
 
@@ -195,19 +168,6 @@ export default function DoctorPatientProfilePage({ params }: { params: Promise<{
         fetchPatient();
     };
 
-    const handleRemoveFile = async (fileId: number) => {
-        if (!confirmDiscard("Removing this file will reload this patient and discard your unsaved Clinical Assessment edits. Continue?")) return;
-        setFileError("");
-        setRemovingId(fileId);
-        const res = await fetch(`/api/patients/${id}/files/${fileId}`, { method: "DELETE" });
-        setRemovingId(null);
-        if (!res.ok) {
-            setFileError("Could not remove the document.");
-            return;
-        }
-        fetchPatient();
-    };
-
     const formatDate = (d: string | null) => {
         if (!d) return "—";
         return new Date(d).toLocaleDateString("en-US", { year: "numeric", month: "short", day: "numeric" });
@@ -242,7 +202,7 @@ export default function DoctorPatientProfilePage({ params }: { params: Promise<{
                     <div className="header-info">
                         <h1>{patient.name}</h1>
                         <div className="header-meta">
-                            <span>📞 <a href={`tel:${patient.phone1}`}>{patient.phone1}</a></span>
+                            {patient.phone1 && <span>📞 <a href={`tel:${patient.phone1}`}>{patient.phone1}</a></span>}
                             {patient.phone2 && <span>📞 <a href={`tel:${patient.phone2}`}>{patient.phone2}</a></span>}
                             <span>Last visit: {formatDate(patient.lastVisitDate)}</span>
                             <span>Patient #{patient.id}</span>
@@ -253,44 +213,14 @@ export default function DoctorPatientProfilePage({ params }: { params: Promise<{
                             </p>
                         )}
                     </div>
+                    {/* No controls to change or archive the patient: a doctor's writes
+                        to a patient are the Clinical Assessment and attaching files,
+                        and the server refuses anything else from them. (TJ-054) */}
                     <div className="header-actions">
                         {patient.archived && <span className="badge-archived">ARCHIVED</span>}
-                        <button className="btn-sm btn-edit" onClick={() => setEditingInfo(true)}>Edit Info</button>
-                        <button className="btn-sm btn-archive" onClick={handleArchiveToggle}>
-                            {patient.archived ? "Restore" : "Archive"}
-                        </button>
                     </div>
                 </div>
             </div>
-
-            {/* Edit Info Modal */}
-            {editingInfo && (
-                <div className="modal-overlay" onClick={() => setEditingInfo(false)}>
-                    <div className="modal-card" onClick={(e) => e.stopPropagation()}>
-                        <h2>Update Patient Info</h2>
-                        <div className="form-stack">
-                            <div className="form-group">
-                                <label>Name</label>
-                                <input value={infoForm.name} onChange={(e) => setInfoForm({ ...infoForm, name: e.target.value })} />
-                            </div>
-                            <div className="form-group">
-                                <label>Phone 1</label>
-                                <input value={infoForm.phone1} onChange={(e) => setInfoForm({ ...infoForm, phone1: e.target.value })} />
-                            </div>
-                            <div className="form-group">
-                                <label>Phone 2</label>
-                                <input value={infoForm.phone2} onChange={(e) => setInfoForm({ ...infoForm, phone2: e.target.value })} />
-                            </div>
-                        </div>
-                        <div className="modal-actions">
-                            <button className="btn-cancel" onClick={() => setEditingInfo(false)}>Cancel</button>
-                            <button className="btn-save" onClick={saveInfo} disabled={savingInfo}>
-                                {savingInfo ? "Saving…" : "Save"}
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            )}
 
             {/* Tabs */}
             <div className="tabs">
@@ -394,6 +324,8 @@ export default function DoctorPatientProfilePage({ params }: { params: Promise<{
                         <div className="files-grid">
                             {patient.files.map((f) => (
                                 <div key={f.id} className="file-card">
+                                    {/* Attach only: removing a file is an admin or
+                                        secretary action. (TJ-054) */}
                                     <a
                                         href={clinicalFileUrl(f.filePath)}
                                         target="_blank"
@@ -404,14 +336,6 @@ export default function DoctorPatientProfilePage({ params }: { params: Promise<{
                                         <span className="file-name">{f.fileName}</span>
                                         <span className="file-date">{formatDate(f.uploadedAt)}</span>
                                     </a>
-                                    <button
-                                        type="button"
-                                        className="btn-sm btn-remove"
-                                        disabled={removingId === f.id}
-                                        onClick={() => handleRemoveFile(f.id)}
-                                    >
-                                        {removingId === f.id ? "Removing…" : "Remove"}
-                                    </button>
                                 </div>
                             ))}
                         </div>
@@ -439,14 +363,6 @@ export default function DoctorPatientProfilePage({ params }: { params: Promise<{
                     padding: 0.2rem 0.6rem; border-radius: var(--radius-sm, 2px);
                     font-size: 0.72rem; font-weight: 700; letter-spacing: 0.04em;
                 }
-                .btn-sm {
-                    padding: 0.3rem 0.7rem; border-radius: var(--radius-sm, 2px); font-size: 0.8rem;
-                    border: none; cursor: pointer; font-weight: 500; font-family: inherit;
-                }
-                .btn-edit { background: rgba(96,165,250,0.12); color: #93c5fd; }
-                .btn-edit:hover { background: rgba(96,165,250,0.22); }
-                .btn-archive { background: rgba(251,191,36,0.12); color: #fbbf24; }
-                .btn-archive:hover { background: rgba(251,191,36,0.22); }
                 .tabs {
                     display: flex; gap: 0; margin-bottom: 1rem;
                     border-bottom: 1px solid rgba(255,255,255,0.06);
@@ -526,11 +442,6 @@ export default function DoctorPatientProfilePage({ params }: { params: Promise<{
                 }
                 .file-input { font-size: 0.82rem; color: rgba(255,255,255,0.6); max-width: 100%; }
                 .field-hint { font-size: 0.72rem; color: rgba(255,255,255,0.35); }
-                .btn-remove {
-                    background: rgba(239,68,68,0.15); color: #fca5a5; margin-top: 0.5rem;
-                }
-                .btn-remove:hover:not(:disabled) { background: rgba(239,68,68,0.25); }
-                .btn-remove:disabled { opacity: 0.5; cursor: not-allowed; }
                 .error-msg {
                     background: rgba(220,38,38,0.1); border: 1px solid rgba(220,38,38,0.2);
                     color: #fca5a5; padding: 0.5rem 0.75rem; border-radius: var(--radius-sm, 2px);
@@ -539,23 +450,6 @@ export default function DoctorPatientProfilePage({ params }: { params: Promise<{
                 .file-icon { font-size: 1.5rem; }
                 .file-name { font-size: 0.78rem; text-align: center; word-break: break-all; }
                 .file-date { font-size: 0.7rem; color: rgba(255,255,255,0.3); }
-                .modal-overlay {
-                    position: fixed; inset: 0; background: rgba(0,0,0,0.6);
-                    display: flex; align-items: center; justify-content: center;
-                    z-index: 1000; backdrop-filter: blur(4px);
-                }
-                .modal-card {
-                    background: var(--bg-dark-secondary, #243b44); border: 1px solid rgba(255,255,255,0.08);
-                    border-radius: var(--radius-md, 4px); padding: 2rem; width: 100%; max-width: 440px;
-                }
-                .modal-card h2 { font-size: 1.2rem; margin-bottom: 1.25rem; font-weight: 600; }
-                .form-stack { display: flex; flex-direction: column; gap: 0.9rem; }
-                .modal-actions { display: flex; justify-content: flex-end; gap: 0.6rem; margin-top: 1.5rem; }
-                .btn-cancel {
-                    background: rgba(255,255,255,0.06); color: rgba(255,255,255,0.6);
-                    border: 1px solid rgba(255,255,255,0.1); border-radius: var(--radius-sm, 2px);
-                    padding: 0.5rem 1rem; font-size: 0.85rem; cursor: pointer; font-family: inherit;
-                }
             `}</style>
         </div>
     );

@@ -1,30 +1,22 @@
 import type { Viewport } from "next";
-import { Inter, Outfit, Noto_Kufi_Arabic, Bodoni_Moda } from "next/font/google";
+import { IBM_Plex_Sans_Arabic, Outfit } from "next/font/google";
 import "./globals.css";
 import { LanguageProvider } from "./i18n/LanguageContext";
 import Providers from "./providers";
 
-const inter = Inter({
-  subsets: ["latin"],
-  variable: "--font-inter",
+// One family for both scripts. Inter has no Arabic glyphs, so on every LTR
+// page - the staff dashboards included - Arabic text fell through to
+// whatever the operating system supplied. This face draws both. (TJ-053)
+const bodyFont = IBM_Plex_Sans_Arabic({
+  subsets: ["arabic", "latin"],
+  weight: ["400", "500", "600", "700"],
+  variable: "--font-body",
   display: "swap",
 });
 
 const outfit = Outfit({
   subsets: ["latin"],
   variable: "--font-outfit",
-  display: "swap",
-});
-
-const notoKufi = Noto_Kufi_Arabic({
-  subsets: ["arabic"],
-  variable: "--font-arabic",
-  display: "swap",
-});
-
-const bodoniModa = Bodoni_Moda({
-  subsets: ["latin"],
-  variable: "--font-serif",
   display: "swap",
 });
 
@@ -64,10 +56,16 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en" dir="ltr">
-      <body
-        className={`${inter.variable} ${outfit.variable} ${notoKufi.variable} ${bodoniModa.variable}`}
-      >
+    // The font variables go on <html>, not <body>: globals.css derives
+    // --font-heading from --font-body on :root, and a variable defined only on
+    // <body> is invisible there. On <body>, --font-heading never resolved and
+    // every heading silently fell back to the body font. (TJ-055)
+    <html
+      lang="en"
+      dir="ltr"
+      className={`${bodyFont.variable} ${outfit.variable}`}
+    >
+      <body>
         <Providers>
           <LanguageProvider>{children}</LanguageProvider>
         </Providers>

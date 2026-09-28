@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
-import { canAccessClinical, canDeleteReservation } from "@/lib/permissions";
+import { canAccessClinical, canDeleteReservation, canViewPatientContact } from "@/lib/permissions";
 import { logPatientActivity } from "@/lib/audit";
 import { checkClinicWindow } from "@/lib/clinicHours";
 
@@ -29,7 +29,15 @@ export async function GET(
         where: { id: parseInt(id, 10) },
         include: {
             patient: {
-                select: { id: true, name: true, phone1: true, phone2: true, archived: true },
+                // Numbers omitted for a doctor, like soapNote below for a
+                // secretary. (TJ-054)
+                select: {
+                    id: true,
+                    name: true,
+                    phone1: canViewPatientContact(session.user),
+                    phone2: canViewPatientContact(session.user),
+                    archived: true,
+                },
             },
             doctor: { select: { id: true, name: true, color: true } },
             soapNote: canAccessClinical(session.user),
@@ -144,7 +152,7 @@ export async function PUT(
         where: { id: parseInt(id, 10) },
         data,
         include: {
-            patient: { select: { id: true, name: true, phone1: true } },
+            patient: { select: { id: true, name: true, phone1: canViewPatientContact(session.user) } },
             doctor: { select: { id: true, name: true, color: true } },
         },
     });
@@ -242,7 +250,7 @@ export async function PATCH(
         where: { id: parseInt(id, 10) },
         data: { status: newStatus, ...timestamps },
         include: {
-            patient: { select: { id: true, name: true, phone1: true } },
+            patient: { select: { id: true, name: true, phone1: canViewPatientContact(session.user) } },
             doctor: { select: { id: true, name: true, color: true } },
         },
     });
