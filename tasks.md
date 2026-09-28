@@ -108,12 +108,13 @@ Two things that bear repeating here, because this is the file both agents open:
 | TJ-049b | Scale the whole schedule down to fit before it scrolls | DONE — merged as `3d2e6c1`; **runtime VERIFIED live 2026-09-15** — 0.72 floor and the pane pin both observed | `feat/schedule-scale-to-fit` |
 | TJ-050 | Nested agent worktrees corrupt every whole-project measurement | BACKLOG — no planning pass; **blocks trustworthy lint/tsc/build gates** | — |
 | TJ-051 | Staff who open `/Login` land on a 404 | DONE — merged as `138c3d0`; **runtime VERIFIED live 2026-09-17** — `/Login` and `/LOGIN` both 302 to `/login`, one hop, no loop, legacy proxy intact | `bugfix/canonicalise-login-case` |
-| TJ-052 | Make the date-picker popover opaque | BLOCKED — passed 2026-09-28; **needs the user's pick of surface colour** (A mint white recommended) | `feat/opaque-date-picker` |
-| TJ-053 | One Arabic-capable font for the site's text | BLOCKED — passed 2026-09-28; **needs the user's pick of font** (A IBM Plex Sans Arabic recommended); recommended option dry-run built | `feat/arabic-body-font` |
-| TJ-054 | Doctors must not see patients' phone numbers | SPLIT — passed 2026-09-28; see TJ-054a, TJ-054b, TJ-054c; **lands in order a → b → c** | — |
-| TJ-054a | Doctor screens stop drawing patient phone numbers | READY — passed 2026-09-28; **merges first** | `feat/doctor-ui-hide-phones` |
-| TJ-054b | Stop serving phone numbers to doctors: the patient routes | READY — passed 2026-09-28; after TJ-054a | `feat/doctor-phone-boundary-patients` |
-| TJ-054c | Stop serving phone numbers to doctors: the reservation routes | READY — passed 2026-09-28; after TJ-054b (imports its helper) | `feat/doctor-phone-boundary-reservations` |
+| TJ-052 | Make the date-picker popover opaque | READY — **user chose option B, Mist `#eef4f6`**, 2026-09-28 | `feat/opaque-date-picker` |
+| TJ-053 | One Arabic-capable font for the site's text | READY — **user chose option A, IBM Plex Sans Arabic**, 2026-09-28 | `feat/arabic-body-font` |
+| TJ-054 | Doctors: no patient phone numbers, and no patient edits beyond clinical work and files | SPLIT — re-planned 2026-09-28 on the user's decisions; see TJ-054a … TJ-054d; **lands in order a → b → c → d** | — |
+| TJ-054a | Doctor screens: no create, edit, archive or file removal; phones only when sent | READY — re-planned 2026-09-28; **lands first** | `feat/doctor-ui-restrict-patients` |
+| TJ-054b | Server: only admins and secretaries may create, edit or archive a patient, or remove a file | READY — re-planned 2026-09-28 | `feat/patient-manage-boundary` |
+| TJ-054c | Server: stop sending phone numbers to doctors (patient routes) | READY — re-planned 2026-09-28 | `feat/doctor-phone-boundary-patients` |
+| TJ-054d | Server: stop sending phone numbers to doctors (reservation routes and the schedule card) | READY — re-planned 2026-09-28 | `feat/doctor-phone-boundary-reservations` |
 
 ---
 
@@ -9395,7 +9396,7 @@ Read-and-confirm, no runtime needed:
 
 ### TJ-052 — Make the date-picker popover opaque
 
-- **Status:** BLOCKED — planning pass run 2026-09-28. **Needs the user's pick of surface colour**: options A–D below, A recommended. The user should also confirm the reading of "the calendar" given below. If they meant the day schedule grid, this task is re-scoped, not executed.
+- **Status:** READY — planning pass run 2026-09-28. **User decision, 2026-09-28: option B, Mist (`#eef4f6`).** The user chose among the popover options, which confirms the reading of "the calendar" below. Execute steps 1 and 2 with `SURFACE` = `var(--bg-mist, #eef4f6)`.
 - **Branch:** `feat/opaque-date-picker`
 - **Why:** User request, 2026-09-28: "lessen the transparency of the calendar", using a white that matches the background. The see-through calendar is the month picker. TJ-043a moved it out of the sidebar and into `DatePickerPopover`, which portals it into `document.body` as a `position: fixed` panel over the day schedule. The panel itself (`.dpp-panel`) sets no background. The only surface inside it is `.datepicker { background: rgba(255,255,255,0.03) }` in `DatePicker.tsx`, which is 97% transparent. In the old sidebar that blended into a faint panel (≈ `#21343b` on the `#1a2e35` page) and looked fine. Floating over the schedule, it lets the doctor-coloured reservation cards show straight through the month grid. The same screen's other floating panel, the reservation action menu (`.menu-panel` in `ReservationSlot.tsx`), is already opaque: `var(--bg-dark-secondary, #243b44)` with `box-shadow: 0 8px 32px rgba(0,0,0,0.4)`. The popover never got the same treatment.
 
@@ -9522,7 +9523,7 @@ Read-only, signed in as any role, on a day that has bookings. Do this on `/admin
 
 ### TJ-053 — One Arabic-capable font for the site's text
 
-- **Status:** BLOCKED — planning pass run 2026-09-28. **Needs the user's pick of font**: options A–D below, A recommended. Everything else is pinned. The recommended option was applied in a scratch checkout, type-checked, built (`npm run build` exit 0) and measured, then reverted.
+- **Status:** READY — planning pass run 2026-09-28. **User decision, 2026-09-28: option A, IBM Plex Sans Arabic.** Execute with `FONT_IMPORT` = `IBM_Plex_Sans_Arabic` and the A options row (the `weight` array is required). This exact option was dry-run in the planning pass: type-checked, built and measured, then reverted.
 - **Branch:** `feat/arabic-body-font`
 - **Why:** User request, 2026-09-28: change the font of the site's text, "most importantly" to one suited to Arabic.
 
@@ -9686,456 +9687,284 @@ Read-only, in a browser. The first three need no sign-in:
 
 ---
 
-### TJ-054 — Doctors must not see patients' phone numbers
+### TJ-054 — Doctors: no patient phone numbers, and no patient edits beyond clinical work and files
 
-- **Status:** SPLIT — passed 2026-09-28; see TJ-054a, TJ-054b and TJ-054c. **The order is load-bearing: a → b → c.** Nothing executes against this ID.
-- **Why:** User directive, 2026-09-28: limit doctors' access to patient information, so that "they can't view patient's mobile numbers". Today ten route handlers serve a doctor patients' phone numbers, and four doctor screens display them. As in TJ-023, the fix belongs where the data leaves the server. Hiding the numbers in the UI is not the boundary.
+- **Status:** SPLIT. Re-planned 2026-09-28 after the user's decisions (below). See TJ-054a, TJ-054b, TJ-054c and TJ-054d. **The order is load-bearing: a → b → c → d.** Nothing executes against this ID.
+- **Why:** Two user directives, both 2026-09-28:
+  1. Limit doctors' access to patient information, so that "they can't view patient's mobile numbers".
+  2. Doctors "can no longer edit patient info other than adding the clinical assessment or files". They also lose the ability to create new patients and to archive.
 
-**Where a doctor gets phone numbers today.** This is every hit from `grep -rn "phone" src/app/api src/app/doctor src/app/components`. Each of these routes checks only that *someone* is signed in.
+  One carve-out, from the same message: doctors **can still search by number**. "If they have the number they can search for it." The search result gives them the patient's name, never the number back.
 
-| Surface | What a doctor gets | Fixed by |
+**The rule, as decided by the user on 2026-09-28:**
+
+| A doctor may… | Today | After TJ-054 |
 |---|---|---|
-| `GET /api/patients` (list and search) | `phone1` and `phone2` for every patient; the search also matches digits against both | 054b |
-| `GET /api/patients/[id]` | the full row, both phones included | 054b |
-| `PUT /api/patients/[id]` | can overwrite both phones, and the response echoes the full row | 054b |
-| `POST /api/patients` → 409 | the colliding patient's stored `phone1`, in both `error` and `duplicates[]` | 054b |
-| `GET /api/patients/duplicates` | every patient's phones, grouped. No doctor screen calls it, but nothing stops one. | 054b |
-| `GET /api/reservations` (day and patient modes) | `phone1` and `phone2` on every card | 054c |
-| `GET /api/reservations/[id]` | both phones | 054c |
-| `PUT` / `PATCH /api/reservations/[id]`, `POST …/duplicate` | `phone1` echoed in the response | 054c |
-| `/doctor/patients` | a Phone column, and the hint "Search by name or phone..." | 054a |
-| `/doctor/patients/[id]` | 📞 links in the header; Phone 1 and Phone 2 inputs in Edit Info | 054a |
-| `/doctor/session/[id]` | 📞 in the header | 054a |
-| `/doctor` schedule cards | the phone under the name (`ReservationSlot`) | 054a |
+| see a patient's `phone1` / `phone2` anywhere | yes | **no** |
+| search patients by a number they already hold | yes | **yes**; the match returns the name only |
+| register a new patient | yes | **no** |
+| edit a patient's name, phones or photo | yes | **no** |
+| archive or restore a patient | yes | **no** |
+| fill in and update the Clinical Assessment (intake) | yes | yes |
+| attach a file to a patient | yes | yes |
+| remove a file from a patient | yes | **no**. The user permitted *adding* files, so removal counts as an edit. The user may reverse this one line. |
+| write SOAP notes, change session status, set a session's injury place, duplicate a session | yes | yes; these are session records, not patient details |
 
-**Decided in this pass. The user may override any of these before execution:**
-1. **A doctor can't change a phone either.** If they can't see it, they can't knowingly edit it. `PUT` refuses phone fields from a doctor with a 403, the same shape as the reservation `PUT`'s refusal of a doctor's reschedule.
-2. **A doctor's patient search matches names only.** Otherwise, typing a number would confirm whose number it is.
-3. **A doctor can still register a new patient**, phone included, because they typed it. But on a duplicate collision they aren't handed back the stored number of the existing patient.
-4. **Admins and secretaries are unaffected.** The rule is keyed to the signed-in role, so an admin who opens a `/doctor/*` page still sees numbers. The UI draws a phone only when one arrives.
+**Admins and secretaries are unaffected.** Both new rules are keyed to the signed-in role, so an admin who opens a `/doctor/*` page still sees and can do everything. Other patient data a doctor sees (session payment type, photo, "Last updated by") was offered to the user for hiding and **not** requested, so it stays visible.
 
-**Open question for the user: does "patient information" go beyond phones?** A doctor currently also sees the following. This task changes none of them, and each would be its own task:
-- the **payment type** of every session (the Sessions tab and the session page)
-- the **patient photo**
-- **uploaded patient files**, which may include ID documents
-- "**Last updated by** <staff name>"
+**Measured before the change.** This ran against a local Postgres 16 (SSL on, as `src/lib/prisma.ts` requires), with `prisma db push`, fixture users of all three roles, two patients, two sessions and one file. The app was a `next build` + `next start` of commit `58467b0`, and requests were made with real NextAuth credential sessions. As DOCTOR:
 
-**Why the order matters.** Today the doctor's Edit Info modal sends back `{ name, phone1, phone2: data.phone2 || "" }`. Once 054b stops serving phones to doctors, that becomes `{ name, phone2: "" }`. Without 054b's refusal, that would blank the second number of every patient a doctor renames. With the refusal, every doctor rename would fail with a 403. TJ-054a takes the phones out of the modal first. After that, every intermediate state is safe. **TJ-054c imports the helper that TJ-054b adds**, so it lands last. If 054c landed before 054a, it would only leave a stray "·" on schedule cards and an empty 📞 in the session header, but don't.
+| Probe | Result |
+|---|---|
+| `GET /api/patients`, `?search=<phone>`, `/api/patients/1` | 200, `phone1` and `phone2` present |
+| `GET /api/patients/duplicates` | 200 |
+| `GET /api/reservations?date=`, `?patientId=`, `/api/reservations/1` | 200, `patient` = `id,name,phone1,phone2` |
+| `PATCH` / `PUT /api/reservations/1`, `POST …/duplicate` | 200/200/201, response `patient` includes `phone1` |
+| `POST /api/patients` | **201**: the doctor created a patient |
+| `PUT /api/patients/1` | **200**, and the response carried both phones |
+| `PATCH /api/patients/1` `{archived:true}` | **200 "Patient archived"** |
+| `DELETE /api/patients/1/files/1` | **200 "File removed"** |
 
-**Split** to respect the four-file cap and keep each diff reviewable: the UI (4 files), the patient routes (4) and the reservation routes (3). The helper lives in `src/lib/permissions.ts` beside `canAccessClinical`, for the reason that file already gives: one predicate, used at every call site.
+**Two server-side rules, each named once in `src/lib/permissions.ts`** beside `canAccessClinical`, for the reason that file already gives: one predicate, used at every call site.
+- `canManagePatients` (ADMIN or SECRETARY) covers: registering a patient, changing their details, archiving or restoring them, and removing their files.
+- `canViewPatientContact` (ADMIN or SECRETARY) covers: whether a response carries `phone1` / `phone2`.
 
-**Dry-run, 2026-09-28.**
-- All three tasks' Instructions were applied verbatim, by script, to a clean checkout. **Every anchor matched exactly the stated number of times.**
-- `npx tsc --noEmit --incremental false` exited 0.
-- `eslint` on the eleven files reported **3 problems before and 3 after**. All three are the existing `react-hooks/set-state-in-effect` finding on the fetch-in-effect idiom (TJ-030).
-- The checkout was then restored.
+**Split** into four tasks to respect the four-file cap and keep each diff to one concern:
 
-**Not measured live.** This environment has no database and no clinic session. Each task's Verification probes are owed at review.
+| Task | Concern | Files |
+|---|---|---|
+| a | doctor screens | 3 edited + 1 deleted |
+| b | server: who may change a patient | 4 |
+| c | server: phones, patient routes | 4 |
+| d | server: phones, reservation routes + the schedule card | 4 |
+
+**Why the order.**
+- **a before b:** a removes the doctor's Add Patient, Edit Info, Archive and file-Remove controls. Otherwise b would leave four buttons that answer 403.
+- **c needs b:** c appends its helper after b's in `permissions.ts`.
+- **d needs c:** d imports c's helper.
+- **d carries the card change:** it includes `ReservationSlot.tsx`, so the schedule card stops drawing a phone in the same commit that stops the server sending one.
+
+Every intermediate state is safe. The one hazard in the first plan (the doctor's Edit Info modal re-posting `phone2: ""` and blanking a patient's second number) is gone, because a removes the modal and b refuses the write.
 
 ---
 
-### TJ-054a — Doctor screens stop drawing patient phone numbers
+### TJ-054a — Doctor screens: no create, edit, archive or file removal; phones only when sent
 
-- **Status:** READY — passed 2026-09-28. **Merges before TJ-054b and TJ-054c.**
-- **Branch:** `feat/doctor-ui-hide-phones`
-- **Why:** See TJ-054. This is the UI half, in three parts:
-  - Remove the phone inputs from the doctor's Edit Info modal. This is the prerequisite that makes the server halves safe.
-  - Drop the Phone column and the phone search hint from the doctor's patient list.
-  - Draw a phone in the two doctor headers, and on schedule cards, only when the server sends one. After 054b and 054c it never will for a doctor.
+- **Status:** READY — re-planned 2026-09-28. **Lands first.**
+- **Branch:** `feat/doctor-ui-restrict-patients`
+- **Why:** See TJ-054. This task removes every doctor control the server is about to refuse, and draws a phone only when the server sends one (after TJ-054c/d, never for a doctor).
 
-**Planning pass:** 2026-09-28. Read in full `src/app/components/ReservationSlot.tsx`, `src/app/components/Calendar.tsx`, `src/app/doctor/page.tsx`, `src/app/doctor/patients/page.tsx` and `src/app/doctor/patients/[id]/page.tsx`. Also read `src/app/doctor/session/[id]/page.tsx`: the interfaces, `fetchData`, every write handler, the header markup and the style block.
+**Planning pass:** 2026-09-28. Read in full `src/app/doctor/patients/page.tsx`, `src/app/doctor/patients/[id]/page.tsx`, `src/app/doctor/patients/new/page.tsx` and `src/app/doctor/layout.tsx`. Also read `src/app/doctor/session/[id]/page.tsx`: its interfaces, `fetchData`, every write handler and the header.
 
 Confirmed:
-- **`ReservationSlot` is shared by all three dashboards** through `Calendar`, which passes `r.patient.phone1`. For admins and secretaries that's always a non-empty string, because `POST /api/patients` refuses a patient without `phone1`. So making the phone conditional changes nothing for them. The ≤150px container-query tier that hides `.slot-phone, .slot-sep` keeps working, because the class names don't change.
-- **The session page never reads the `PUT` or `PATCH` response bodies**; it re-fetches after each write. So 054c's narrower responses can't break it.
-- `src/app/doctor/page.tsx` types `patient.phone1: string` but never reads it. It's left alone to stay within four files. At runtime the value is `undefined` and nothing touches it.
-- The project compiles with `strict: false`. The new optional types compile either way, and the dry-run tsc exited 0.
+- **The only way into `/doctor/patients/new` is the "+ Add Patient" button** on `/doctor/patients` (`grep -rn "doctor/patients/new" src`). The doctor nav has no entry for it. Deleting the page leaves no dead link.
+- **In `/doctor/patients/page.tsx`, `router` is used only by that button.** Removing the button makes `useRouter` and `.btn-add` dead code, so they go too.
+- **In `/doctor/patients/[id]/page.tsx`**, removing Edit Info, Archive/Restore and file Remove makes this dead code, which is removed:
+  - state: `editingInfo`, `infoForm`, `savingInfo`, `removingId`
+  - handlers: `saveInfo`, `handleArchiveToggle`, `handleRemoveFile`
+  - styles: `.btn-sm`, `.btn-edit`, `.btn-archive`, `.btn-remove`, `.modal-overlay`, `.modal-card`, `.form-stack`, `.modal-actions`, `.btn-cancel`
+
+  `.btn-save`, `.form-group` and `.error-msg` stay, because the intake form and the file upload use them. The ARCHIVED badge stays, as information.
+- **The search placeholder stays "Search by name or phone..."**, because doctors keep phone search.
+- The session page never reads a patient-write response and has no patient-edit control. Its only change is drawing the phone conditionally.
 
 **Scope — touch only these:**
-- `src/app/components/ReservationSlot.tsx`
 - `src/app/doctor/patients/page.tsx`
 - `src/app/doctor/patients/[id]/page.tsx`
 - `src/app/doctor/session/[id]/page.tsx`
+- `src/app/doctor/patients/new/page.tsx`: **delete the file**
 
-**Do not touch:**
-- any API route (that's 054b and 054c)
-- `Calendar.tsx` and `src/app/doctor/page.tsx`
-- `src/app/doctor/patients/new/page.tsx`. A doctor still enters a phone when registering a patient.
-- any admin or secretary page
+**Do not touch:** any API route, `ReservationSlot.tsx` (that's TJ-054d), `src/app/doctor/page.tsx`, and every admin or secretary page.
 
-**Instructions.** All four files are LF.
+**Instructions.** All files are LF.
 
-1. In `src/app/components/ReservationSlot.tsx`:
-   1. Replace the line `    patientPhone: string;` with:
-      ```
-          // Absent for a doctor: the server does not send them the number. (TJ-054)
-          patientPhone?: string | null;
-      ```
-   2. Replace these two lines:
-      ```
-                          <span className="slot-phone">{patientPhone}</span>
-                          <span className="slot-sep" aria-hidden="true">·</span>
-      ```
-      with:
-      ```
-                          {patientPhone && (
-                              <>
-                                  <span className="slot-phone">{patientPhone}</span>
-                                  <span className="slot-sep" aria-hidden="true">·</span>
-                              </>
-                          )}
-      ```
-2. In `src/app/doctor/patients/page.tsx`:
-   1. In `interface Patient`, delete the two lines `    phone1: string;` and `    phone2: string | null;`.
-   2. `placeholder="Search by name or phone..."` → `placeholder="Search by name..."`
-   3. `<tr><th>ID</th><th>Name</th><th>Phone</th><th>Last Visit</th><th>Action</th></tr>` → `<tr><th>ID</th><th>Name</th><th>Last Visit</th><th>Action</th></tr>`
-   4. Change both occurrences of `colSpan={5}` to `colSpan={4}`. There are exactly two: the Loading row and the No-patients row.
-   5. Delete the line `                                <td>{p.phone1}</td>`.
-3. In `src/app/doctor/patients/[id]/page.tsx`:
-   1. In `interface PatientData`, replace the lines `    phone1: string;` and `    phone2: string | null;` with:
-      ```
-          // Sent to an admin viewing this page, never to a doctor. (TJ-054)
-          phone1?: string;
-          phone2?: string | null;
-      ```
-   2. `    const [infoForm, setInfoForm] = useState({ name: "", phone1: "", phone2: "" });` → `    const [infoForm, setInfoForm] = useState({ name: "" });`
-   3. Replace `        setInfoForm({ name: data.name, phone1: data.phone1, phone2: data.phone2 || "" });` with:
-      ```
-              // Name only: a doctor may not change a patient's numbers, and the
-              // server refuses a PUT that carries them. (TJ-054)
-              setInfoForm({ name: data.name });
-      ```
-   4. Replace this line:
-      ```
-                                  <span>📞 <a href={`tel:${patient.phone1}`}>{patient.phone1}</a></span>
-      ```
-      with:
-      ```
-                                  {patient.phone1 && <span>📞 <a href={`tel:${patient.phone1}`}>{patient.phone1}</a></span>}
-      ```
-      The `phone2` line below it is already conditional; leave it.
-   5. In the Edit Info modal, delete the two `form-group` blocks labelled `Phone 1` and `Phone 2`. That's these eight lines, verbatim:
-      ```
-                                  <div className="form-group">
-                                      <label>Phone 1</label>
-                                      <input value={infoForm.phone1} onChange={(e) => setInfoForm({ ...infoForm, phone1: e.target.value })} />
-                                  </div>
-                                  <div className="form-group">
-                                      <label>Phone 2</label>
-                                      <input value={infoForm.phone2} onChange={(e) => setInfoForm({ ...infoForm, phone2: e.target.value })} />
-                                  </div>
-      ```
-      The Name group and the modal's actions stay.
-4. In `src/app/doctor/session/[id]/page.tsx`:
-   1. Replace `    patient: { id: number; name: string; phone1: string; phone2: string | null; archived: boolean };` with:
-      ```
-          // phone1/phone2 are sent to an admin viewing this page, never to a doctor. (TJ-054)
-          patient: { id: number; name: string; phone1?: string; phone2?: string | null; archived: boolean };
-      ```
-   2. Replace:
-      ```
-                          <div className="header-meta">
-                              <span>📞 {reservation.patient.phone1}</span>
-                              {reservation.patient.phone2 && <span>· {reservation.patient.phone2}</span>}
-                          </div>
-      ```
-      with:
-      ```
-                          {reservation.patient.phone1 && (
-                              <div className="header-meta">
-                                  <span>📞 {reservation.patient.phone1}</span>
-                                  {reservation.patient.phone2 && <span>· {reservation.patient.phone2}</span>}
-                              </div>
-                          )}
-      ```
+1. **`src/app/doctor/patients/page.tsx`**
+   1. Delete the line `import { useRouter } from "next/navigation";` and the line `    const router = useRouter();`.
+   2. In `interface Patient`, delete `    phone1: string;` and `    phone2: string | null;`.
+   3. Delete the line `                <button className="btn-add" onClick={() => router.push("/doctor/patients/new")}>+ Add Patient</button>`.
+   4. `<tr><th>ID</th><th>Name</th><th>Phone</th><th>Last Visit</th><th>Action</th></tr>` → `<tr><th>ID</th><th>Name</th><th>Last Visit</th><th>Action</th></tr>`
+   5. Change both occurrences of `colSpan={5}` to `colSpan={4}`.
+   6. Delete the line `                                <td>{p.phone1}</td>`.
+   7. Delete the `.btn-add { … }` style line.
+2. **`src/app/doctor/patients/[id]/page.tsx`**
+   1. In `interface PatientData`, make both phones optional, with the comment `// Sent to an admin viewing this page, never to a doctor. (TJ-054)`.
+   2. Delete these state declarations: `editingInfo`, `infoForm`, `savingInfo` and `removingId`.
+   3. Delete the `setInfoForm(…)` line in `fetchPatient`.
+   4. Delete these three functions whole: `saveInfo`, `handleArchiveToggle` and `handleRemoveFile`.
+   5. In the header, draw `phone1` only when present, the same way `phone2` already is.
+   6. Remove the Edit Info and Archive/Restore buttons from `.header-actions`. Keep the ARCHIVED badge.
+   7. Delete the Edit Info modal block whole.
+   8. In the Files tab, remove the Remove button. Keep the upload row and the open-file link.
+   9. Delete the now-unused style rules listed above.
+3. **`src/app/doctor/session/[id]/page.tsx`**
+   1. Make the patient's `phone1` and `phone2` optional in `ReservationDetail`.
+   2. Wrap the `.header-meta` block in `{reservation.patient.phone1 && (…)}`.
+4. Delete `src/app/doctor/patients/new/page.tsx`.
 
 **Verification:**
 
 Static:
-- `npx tsc --noEmit` exits 0, and `npm run build` passes. If there's no `.env`, use the placeholder variables described under TJ-053.
-- `git diff --stat` shows exactly the four Scope files.
-- `grep -c phone src/app/doctor/patients/page.tsx` → `0`
-- `grep -c 'Phone 1\|Phone 2' "src/app/doctor/patients/[id]/page.tsx"` → `0`
-- ESLint on the four files reports nothing beyond the baseline. The three `set-state-in-effect` hits on the fetch idiom, one each in the three doctor pages, were already there.
+- `npx tsc --noEmit` exits 0, and `npm run build` passes. With no `.env`, use the placeholder variables described under TJ-053.
+- `/doctor/patients/new` is absent from the build's route list.
+- `grep -n "Edit Info\|handleArchiveToggle\|handleRemoveFile\|saveInfo\|patients/new" src/app/doctor -r` prints nothing.
+- ESLint on the changed files reports nothing beyond the baseline `set-state-in-effect` hits.
 
-Read-only, signed in as a doctor. With this task alone, the server still sends phones:
-- `/doctor/patients` has four columns (ID, Name, Last Visit, Action), and the search placeholder reads "Search by name...". The Loading and empty rows span the whole table.
-- On `/doctor/patients/<id>`, the Edit Info modal has only the Name field.
-- `/doctor` and `/doctor/session/<id>` still show phones. That's correct until 054c lands.
-- Schedule cards on `/admin` and `/secretary` still show name, phone · time, unchanged.
-
-Write, signed in as a doctor, on a fixture patient:
-- Rename the patient through Edit Info. The save succeeds, and reopening the patient as an admin shows **phone1 and phone2 unchanged**. This is the regression the ordering exists to prevent.
+Read-only, signed in as a doctor:
+- `/doctor/patients` has no Add button and no Phone column. The placeholder still offers phone search.
+- `/doctor/patients/<id>` has no Edit Info, Archive or file-Remove control. The Clinical Assessment form and the file upload are still there.
+- `/doctor/patients/new` returns 404.
 
 **Done when:**
-- [ ] Edit Info sends `{ name }` only
-- [ ] The doctor's patient list has no phone column and no phone search hint
-- [ ] Headers and cards draw a phone only when one is present
-- [ ] Four files changed; tsc and build pass
-- [ ] A doctor rename leaves both phones intact
+- [ ] A doctor has no control to create, edit, archive or remove a file
+- [ ] The intake form and file upload are untouched
+- [ ] Phones are drawn only when present
+- [ ] tsc and build pass
 
 ---
 
-### TJ-054b — Stop serving phone numbers to doctors: the patient routes
+### TJ-054b — Server: only admins and secretaries may create, edit or archive a patient, or remove a file
 
-- **Status:** READY — passed 2026-09-28. **Execute only after TJ-054a is merged.**
-- **Branch:** `feat/doctor-phone-boundary-patients`
-- **Why:** See TJ-054. This task names the rule once, as `canViewPatientContact`, and applies it to the four patient endpoints: list and search, the single record (read and write), create's duplicate response, and the duplicates report.
+- **Status:** READY — re-planned 2026-09-28. After TJ-054a.
+- **Branch:** `feat/patient-manage-boundary`
+- **Why:** See TJ-054. As measured, a doctor today can create a patient (201), edit one (200), archive one (200) and remove a file (200). The routes check only a `WRITE_ROLES` list that includes `DOCTOR`.
 
-**Planning pass:** 2026-09-28. Read in full `src/lib/permissions.ts`, `src/app/api/patients/route.ts` and `src/app/api/patients/[id]/route.ts`. Read the `GET` head and both query selects of `src/app/api/patients/duplicates/route.ts`. Also read every client caller of these routes (`grep -rn "api/patients" src/app --include=*.tsx`) and the generated Prisma argument types for `Patient`.
+**Planning pass:** 2026-09-28. Read in full `src/lib/permissions.ts`, `src/app/api/patients/route.ts`, `src/app/api/patients/[id]/route.ts`, `src/app/api/patients/[id]/files/route.ts` and `src/app/api/patients/[id]/files/[fileId]/route.ts`.
 
 Confirmed:
-- **Prisma 7.4.1 accepts `omit` with boolean values alongside `include`.** Both `PatientFindUniqueArgs` and `PatientUpdateArgs` carry `omit?: Prisma.PatientOmit`, whose keys include `phone1` and `phone2`. `omit: { phone1: !contact, phone2: !contact }` is the same idiom as TJ-023's `intake: clinical`.
-- `select` takes a boolean per field, so `phone1: contact` in the list query needs no branching.
-- **`GET /api/patients/duplicates` has only two callers:** `src/app/admin/page.tsx` (the duplicates chip) and `src/app/admin/patients/duplicates/page.tsx`. Both are admin-only pages, so refusing doctors breaks no screen.
-- **`POST /api/patients` stays open to doctors**, because `src/app/doctor/patients/new/page.tsx` calls it. That page renders a 409 as `data.error + (data.duplicate ? " (ID: … — name)" : "")`. The new message drops only the number, so the page needs no change.
-- The `phone1: true, phone2: true` left in `POST`'s `existingPatients` select stays. It feeds the duplicate check and is never returned.
-- `...(contact && { phone1: c.phone1 })` is the idiom `PUT` already uses (`...(name !== undefined && { name })`), so it compiles under this config. The dry-run tsc exited 0.
+- **`WRITE_ROLES` is declared three times:** in `[id]/route.ts` (used by `PUT` and `PATCH`), in `files/route.ts` (`POST`) and in `files/[fileId]/route.ts` (`DELETE`).
+  - This task replaces the first and third with `canManagePatients`. Their constants become unused and are deleted.
+  - `files/route.ts` keeps its list, because doctors keep attaching files.
+- **The helper whitelists roles**, so a hypothetical fourth role is still refused, as the `WRITE_ROLES` comment (TJ-024) intended.
+- **The 403 bodies keep the existing message strings** where one exists ("Not permitted to edit patients", "Not permitted to remove patient files"). The create route gets "Not permitted to register patients".
+- **The clinical intake route (`canAccessClinical`) and the SOAP route are not touched.** Doctors keep both.
 
 **Scope — touch only these:**
 - `src/lib/permissions.ts`
-- `src/app/api/patients/route.ts`
-- `src/app/api/patients/[id]/route.ts`
-- `src/app/api/patients/duplicates/route.ts`
+- `src/app/api/patients/route.ts` (`POST` only)
+- `src/app/api/patients/[id]/route.ts` (`PUT` and `PATCH` guards only)
+- `src/app/api/patients/[id]/files/[fileId]/route.ts`
 
-**Do not touch:**
-- the reservation routes (that's 054c)
-- `src/lib/auth.config.ts`, any page, and `prisma/schema.prisma`
-- `canAccessClinical` and `canDeleteReservation`
-
-**Instructions.** All four files are LF.
-
-1. Append this to the end of `src/lib/permissions.ts`, after `canDeleteReservation`, with one blank line between:
-   ```ts
-   /**
-    * May this user see a patient's phone numbers?
-    *
-    * ADMIN and SECRETARY may; DOCTOR may not. The front desk books, confirms and
-    * chases patients by phone; a doctor treats the patient in the room and does
-    * not need to hold their number. User decision, 2026-09-28.
-    *
-    * Enforced where the data leaves the server, not in the UI, for the same
-    * reason as canAccessClinical: a number that reaches the browser is one
-    * devtools tab away whether or not a screen draws it. A doctor may still
-    * register a new patient with a phone — they typed it — but is never served
-    * one back, cannot search by one, and cannot change one. (TJ-054)
-    */
-   export function canViewPatientContact(
-       user: Session["user"] | undefined | null
-   ): boolean {
-       if (!user) return false;
-       return user.role === "ADMIN" || user.role === "SECRETARY";
-   }
-   ```
-2. In `src/app/api/patients/route.ts`:
-   1. Immediately after `import { auth } from "@/lib/auth";`, add `import { canViewPatientContact } from "@/lib/permissions";`.
-   2. In `GET`, immediately after `    const skip = (page - 1) * limit;`, add `    const contact = canViewPatientContact(session.user);`.
-   3. In the `OR` array, replace the two lines
-      ```
-                          { phone1: { contains: search } },
-                          { phone2: { contains: search } },
-      ```
-      with:
-      ```
-                          // A doctor searching by number would learn whose number
-                          // it is, so for them the search matches names only. (TJ-054)
-                          ...(contact
-                              ? [{ phone1: { contains: search } }, { phone2: { contains: search } }]
-                              : []),
-      ```
-   4. In the `findMany` `select`, change the pair between `name: true,` and `pictureUrl: true,`: `phone1: true,` becomes `phone1: contact,`, and `phone2: true,` becomes `phone2: contact,`.
-   5. In `POST`, immediately before the line `    // Duplicate check by normalized phone1/phone2 — raw-string equality let`, insert `    const contact = canViewPatientContact(session.user);` followed by one blank line.
-   6. Replace the line
-      ```
-                          error: `A patient with this phone number already exists: ${first.name} (${first.phone1})`,
-      ```
-      with:
-      ```
-                          // A doctor may register a patient, but is not handed
-                          // back the stored number of the one they collided with. (TJ-054)
-                          error: contact
-                              ? `A patient with this phone number already exists: ${first.name} (${first.phone1})`
-                              : `A patient with this phone number already exists: ${first.name}`,
-      ```
-   7. Inside `duplicates: collisions.map(...)`, replace `                        phone1: c.phone1,` with `                        ...(contact && { phone1: c.phone1 }),`.
-3. In `src/app/api/patients/[id]/route.ts`:
-   1. `import { canAccessClinical } from "@/lib/permissions";` → `import { canAccessClinical, canViewPatientContact } from "@/lib/permissions";`
-   2. In `GET`, replace:
-      ```
-          const clinical = canAccessClinical(session.user);
-
-          const patient = await prisma.patient.findUnique({
-              where: { id: patientId },
-      ```
-      with:
-      ```
-          const clinical = canAccessClinical(session.user);
-          // Same idiom for the phones: omitted for a doctor, not refused. (TJ-054)
-          const contact = canViewPatientContact(session.user);
-
-          const patient = await prisma.patient.findUnique({
-              where: { id: patientId },
-              omit: { phone1: !contact, phone2: !contact },
-      ```
-   3. In `PUT`, immediately after `    const { name, phone1, phone2, pictureUrl } = body;`, insert a blank line and then:
-      ```
-          // A doctor is never served a patient's numbers, so cannot knowingly
-          // change them either. Refuse rather than let a blind write through —
-          // the same shape as the reservation PUT's refusal of a doctor's
-          // reschedule. (TJ-054)
-          const contact = canViewPatientContact(session.user);
-          if (!contact && (phone1 !== undefined || phone2 !== undefined)) {
-              return NextResponse.json(
-                  { error: "Doctors cannot change a patient's phone numbers" },
-                  { status: 403 }
-              );
-          }
-      ```
-   4. In `PUT`'s `prisma.patient.update`, replace these three lines (the only occurrence in the file; `PATCH` writes `updatedById` on a single line):
-      ```
-                  updatedById: session.user.id,
-              },
-          });
-      ```
-      with:
-      ```
-                  updatedById: session.user.id,
-              },
-              omit: { phone1: !contact, phone2: !contact },
-          });
-      ```
-4. In `src/app/api/patients/duplicates/route.ts`:
-   1. Immediately after `import { auth } from "@/lib/auth";`, add `import { canViewPatientContact } from "@/lib/permissions";`.
-   2. In `GET`, immediately after the `if (!session) { … 401 … }` block, insert:
-      ```
-          // Every group here is keyed and labelled by a phone number, and both
-          // modes search by one. No doctor screen calls this. (TJ-054)
-          if (!canViewPatientContact(session.user)) {
-              return NextResponse.json({ error: "Not permitted to view patient phone numbers" }, { status: 403 });
-          }
-      ```
+**Instructions:**
+1. Append `canManagePatients` to `src/lib/permissions.ts`. It returns `user.role === "ADMIN" || user.role === "SECRETARY"`, with a doc comment that says what it covers and why.
+2. `POST /api/patients`: immediately after the 401 check, add `if (!canManagePatients(session.user))` → 403 `"Not permitted to register patients"`.
+3. `src/app/api/patients/[id]/route.ts`:
+   1. Delete `WRITE_ROLES` and its comment.
+   2. In `PUT` and in `PATCH`, replace `if (!WRITE_ROLES.includes(session.user.role))` with `if (!canManagePatients(session.user))`. Keep the message.
+4. `src/app/api/patients/[id]/files/[fileId]/route.ts`: the same replacement, deleting its `WRITE_ROLES`.
 
 **Verification:**
 
-Static:
-- `npx tsc --noEmit` exits 0, and `npm run build` passes (with placeholder env, as under TJ-053).
-- `git diff --stat` shows exactly the four Scope files.
-- `grep -c "export function canViewPatientContact" src/lib/permissions.ts` → `1`
-- `grep -c canViewPatientContact` returns:
-  - `src/app/api/patients/route.ts` → `3`
-  - `src/app/api/patients/[id]/route.ts` → `3`
-  - `src/app/api/patients/duplicates/route.ts` → `2`
-- `grep -c "phone1: true" src/app/api/patients/route.ts` → `1`. That's the internal duplicate-check select.
+Static: tsc and build pass. `grep -c "WRITE_ROLES"` returns `0` in `[id]/route.ts` and `files/[fileId]/route.ts`, and `2` in `files/route.ts` (unchanged).
 
-Read-only probes. Assert on the body, not the status alone (see the planner note on `fetch` following redirects):
-- As a doctor, `GET /api/patients?limit=5` returns no patient with a `phone1` or `phone2` key. As a secretary and as an admin, both keys are present.
-- As a doctor, `GET /api/patients?search=<4 digits of a known patient's phone>` does not return that patient. As a secretary, it does.
-- As a doctor, `GET /api/patients/<id>` has no phone keys, **but `intake` is present** (TJ-023's doctor half must hold), and so are `files` and `reservations`. As a secretary, the phones are present and `intake` is absent, as TJ-023 left it.
-- As a doctor, `GET /api/patients/duplicates` → 403. As an admin → 200, and the dashboard's duplicates chip still shows its count.
+Runtime, as a doctor, against a fixture database:
+- `POST /api/patients` → 403
+- `PUT /api/patients/<id>` → 403
+- `PATCH` archive → 403
+- `DELETE` a file → 403
+- `PUT …/intake` → 200
+- `POST …/files` → 201
 
-Write probes, on a fixture patient:
-- As a doctor, `PUT /api/patients/<id>` with `{"name":"<same name>"}` → 200, and the response has no phone keys.
-- As a doctor, the same `PUT` with `{"phone2":""}` → 403. Reading the patient as an admin shows `phone2` unchanged.
-- As a secretary, a `PUT` that changes a phone → 200, as today.
-- As a doctor, `POST /api/patients` reusing an existing patient's phone → 409. The `error` ends with the patient's name and contains none of their stored digits, and `duplicates[0]` has no `phone1`. As a secretary, the same request gives a 409 that includes the number, as today.
+The stored phones and archived flag are unchanged afterwards. As a secretary, every one of these still succeeds.
 
 **Done when:**
-- [ ] `canViewPatientContact` exists in `permissions.ts` and is used by all four routes
-- [ ] No patient route returns a phone to a doctor, and admin and secretary responses are unchanged
-- [ ] A doctor can't change a phone or search by one, and can still register a patient
-- [ ] TJ-023's clinical boundary holds in both directions
-- [ ] Four files changed; tsc and build pass
+- [ ] A doctor is refused create, edit, archive and file removal at the server
+- [ ] A doctor can still save the intake and attach a file
+- [ ] Admin and secretary behaviour is unchanged
+- [ ] tsc and build pass
 
 ---
 
-### TJ-054c — Stop serving phone numbers to doctors: the reservation routes
+### TJ-054c — Server: stop sending phone numbers to doctors (patient routes)
 
-- **Status:** READY — passed 2026-09-28. **Execute only after TJ-054b is merged**; it imports the helper 054b adds.
-- **Branch:** `feat/doctor-phone-boundary-reservations`
-- **Why:** See TJ-054. This task covers the other half of the boundary: the schedule, the session page and the responses to a doctor's session writes all stop carrying the patient's numbers.
+- **Status:** READY — re-planned 2026-09-28. After TJ-054b.
+- **Branch:** `feat/doctor-phone-boundary-patients`
+- **Why:** See TJ-054. As measured, a doctor receives `phone1` and `phone2` from the patient list, the search, the single record and the duplicates report.
 
-**Planning pass:** 2026-09-28. Read in full `src/app/api/reservations/route.ts`, `src/app/api/reservations/[id]/route.ts` and `src/app/api/reservations/[id]/duplicate/route.ts`. Also read every client caller: `grep -rn "api/reservations" src/app --include=*.tsx` covers the three dashboards, both edit pages, the doctor session page and `DatePicker.tsx`.
+**Planning pass:** 2026-09-28. Same reads as TJ-054b, plus `src/app/api/patients/duplicates/route.ts` and the generated Prisma `Patient` argument types.
 
 Confirmed:
-- **The month-count mode** (`?month=`, used by the date picker) selects only `sessionDate`. It carries no patient data and is unaffected.
-- **`POST /api/reservations` refuses a doctor at its top** ("Doctors cannot create reservations"), so its `phone1: true` include never reaches one. It's left as it is.
-- **`soapNote: canAccessClinical(session.user)` in `GET /api/reservations/[id]`** is the precedent for inlining a predicate as a Prisma argument.
-- **`DELETE` returns no patient data**, and doctors are refused it anyway (TJ-040).
-- The admin and secretary callers keep their phones. The doctor callers draw a phone only if one is present, after 054a.
+- **Prisma 7.4.1 accepts boolean `omit` alongside `include`.** `PatientFindUniqueArgs` carries `omit?: Prisma.PatientOmit`, which has `phone1` and `phone2` keys. This is the same idiom as TJ-023's `intake: clinical`.
+- **The search's `OR` clauses on `phone1` / `phone2` stay as they are**, per the user: a doctor may find a patient by a number they hold. The number is not selected into the response, so the match returns the name only.
+- **`PUT /api/patients/[id]` needs no `omit`.** After TJ-054b only an admin or a secretary can reach its response.
+- **`POST /api/patients` needs no change.** After TJ-054b a doctor can't reach it, so its 409 (which quotes a stored number) is served only to staff who may see numbers.
+- **`GET /api/patients/duplicates` is called only by admin pages.** Refusing doctors breaks no screen.
+
+**Scope — touch only these:**
+- `src/lib/permissions.ts`
+- `src/app/api/patients/route.ts` (`GET` only)
+- `src/app/api/patients/[id]/route.ts` (`GET` only)
+- `src/app/api/patients/duplicates/route.ts`
+
+**Instructions:**
+1. Append `canViewPatientContact` (ADMIN or SECRETARY) to `permissions.ts`. Its doc comment should state that a doctor may search by a number but is never sent one.
+2. `GET /api/patients`: compute `const contact = canViewPatientContact(session.user);` and select `phone1: contact, phone2: contact`. Leave the search `OR` untouched.
+3. `GET /api/patients/[id]`: compute `contact` beside `clinical`, and add `omit: { phone1: !contact, phone2: !contact }` to the `findUnique`.
+4. `GET /api/patients/duplicates`: immediately after the 401 check, refuse with 403 `"Not permitted to view patient phone numbers"` when `!canViewPatientContact(session.user)`.
+
+**Verification:**
+
+Static: tsc and build pass.
+
+Runtime:
+- As a doctor:
+  - the list, the search by phone, and the single record carry no `phone1` or `phone2` key
+  - a search by a patient's number still finds that patient
+  - `intake` is still present (TJ-023's doctor half)
+  - duplicates → 403
+- As a secretary: phones are present and `intake` is absent (TJ-023 unchanged).
+- As an admin: everything is present, and duplicates → 200.
+
+**Done when:**
+- [ ] No patient route sends a doctor a phone
+- [ ] A doctor's search by number still finds the patient
+- [ ] Admin and secretary responses are unchanged
+- [ ] tsc and build pass
+
+---
+
+### TJ-054d — Server: stop sending phone numbers to doctors (reservation routes and the schedule card)
+
+- **Status:** READY — re-planned 2026-09-28. After TJ-054c (it imports that task's helper).
+- **Branch:** `feat/doctor-phone-boundary-reservations`
+- **Why:** See TJ-054. As measured, a doctor receives the patient's phones on every schedule card, in the session page's payload, and in the responses to their own status changes, session edits and duplications.
+
+**Planning pass:** 2026-09-28. Read in full `src/app/api/reservations/route.ts`, `src/app/api/reservations/[id]/route.ts`, `src/app/api/reservations/[id]/duplicate/route.ts`, `src/app/components/ReservationSlot.tsx` and `src/app/components/Calendar.tsx`.
+
+Confirmed:
+- **The month-count mode** (`?month=`, used by the date picker) selects only `sessionDate` and is unaffected.
+- **`POST /api/reservations` refuses a doctor at its top**, so its `phone1: true` include is left alone.
+- **`soapNote: canAccessClinical(session.user)`** is the precedent for inlining a predicate as a Prisma argument.
+- **`ReservationSlot` is shared by all three dashboards.** For admins and secretaries `phone1` is always a non-empty string (create refuses a patient without one), so drawing the phone conditionally changes nothing for them. The ≤150px container-query tier still hides `.slot-phone, .slot-sep` by class.
 
 **Scope — touch only these:**
 - `src/app/api/reservations/route.ts`
 - `src/app/api/reservations/[id]/route.ts`
 - `src/app/api/reservations/[id]/duplicate/route.ts`
+- `src/app/components/ReservationSlot.tsx`
 
-**Do not touch:**
-- `src/lib/permissions.ts` (054b adds the helper)
-- the patient routes, any page, and `src/app/api/reservations/[id]/soap/route.ts`
-
-**Instructions.** All three files are LF.
-
-1. In `src/app/api/reservations/route.ts`:
-   1. Immediately after `import { auth } from "@/lib/auth";`, add `import { canViewPatientContact } from "@/lib/permissions";`.
-   2. Immediately after `    const monthStr = searchParams.get("month"); // YYYY-MM format`, insert:
-      ```
-          // A doctor's schedule and session history carry the patient's name but
-          // not their numbers. (TJ-054)
-          const contact = canViewPatientContact(session.user);
-      ```
-   3. Replace **both** occurrences of `patient: { select: { id: true, name: true, phone1: true, phone2: true } },` with `patient: { select: { id: true, name: true, phone1: contact, phone2: contact } },`. There are exactly two: the patient-only query and the day-view query. Leave `POST`'s `patient: { select: { id: true, name: true, phone1: true } },` alone.
-2. In `src/app/api/reservations/[id]/route.ts`:
-   1. `import { canAccessClinical, canDeleteReservation } from "@/lib/permissions";` → `import { canAccessClinical, canDeleteReservation, canViewPatientContact } from "@/lib/permissions";`
-   2. In `GET`, replace the line
-      ```
-                      select: { id: true, name: true, phone1: true, phone2: true, archived: true },
-      ```
-      with:
-      ```
-                      // Numbers omitted for a doctor, like soapNote below for a
-                      // secretary. (TJ-054)
-                      select: {
-                          id: true,
-                          name: true,
-                          phone1: canViewPatientContact(session.user),
-                          phone2: canViewPatientContact(session.user),
-                          archived: true,
-                      },
-      ```
-   3. Replace **both** occurrences of `            patient: { select: { id: true, name: true, phone1: true } },` with `            patient: { select: { id: true, name: true, phone1: canViewPatientContact(session.user) } },`. There are exactly two: the `PUT` and `PATCH` responses.
-3. In `src/app/api/reservations/[id]/duplicate/route.ts`:
-   1. Immediately after `import { auth } from "@/lib/auth";`, add `import { canViewPatientContact } from "@/lib/permissions";`.
-   2. Replace `            patient: { select: { id: true, name: true, phone1: true } },` with `            patient: { select: { id: true, name: true, phone1: canViewPatientContact(session.user) } },`.
+**Instructions:**
+1. `GET /api/reservations`: compute `contact` after the `monthStr` line. Replace both `patient: { select: { id: true, name: true, phone1: true, phone2: true } },` with `phone1: contact, phone2: contact`. Leave `POST` alone.
+2. `src/app/api/reservations/[id]/route.ts`:
+   1. In `GET`, the `patient` select's `phone1` and `phone2` become `canViewPatientContact(session.user)`.
+   2. In the `PUT` and `PATCH` responses, `phone1: true` becomes `phone1: canViewPatientContact(session.user)`.
+3. `POST …/duplicate`: the response's `phone1: true` becomes `phone1: canViewPatientContact(session.user)`.
+4. `ReservationSlot.tsx`: `patientPhone?: string | null`. Render the `.slot-phone` + `.slot-sep` pair only when `patientPhone` is truthy.
 
 **Verification:**
 
-Static:
-- `npx tsc --noEmit` exits 0, and `npm run build` passes (with placeholder env, as under TJ-053).
-- `git diff --stat` shows exactly the three Scope files.
-- `grep -c "phone1: true"` returns:
-  - `src/app/api/reservations/route.ts` → `1` (that's `POST`)
-  - `src/app/api/reservations/[id]/route.ts` → `0`
-  - `src/app/api/reservations/[id]/duplicate/route.ts` → `0`
-- `grep -c canViewPatientContact` returns:
-  - `src/app/api/reservations/route.ts` → `2`
-  - `src/app/api/reservations/[id]/route.ts` → `5`
-  - `src/app/api/reservations/[id]/duplicate/route.ts` → `2`
+Static: tsc and build pass. `grep -c "phone1: true"` returns `1` in `reservations/route.ts` (that's `POST`), `0` in `[id]/route.ts` and `0` in `duplicate/route.ts`.
 
-Read-only probes:
-- As a doctor, `GET /api/reservations?date=<a busy day>` returns each `patient` with exactly `id` and `name`. As a secretary, `phone1` and `phone2` are also present.
-- As a doctor, `GET /api/reservations?patientId=<id>` has the same shape.
-- As a doctor, `GET /api/reservations/<id>` returns `patient` with `id`, `name` and `archived`, and `soapNote` is present. As a secretary, the phones are present and `soapNote` is absent, as TJ-023 left it.
-- As a doctor, `GET /api/reservations?month=YYYY-MM` returns `{ counts }` as before.
-- On the `/doctor` schedule, cards show the name and time with no phone and no stray "·". `/doctor/session/<id>` has no 📞 line. `/admin` and `/secretary` are unchanged.
-
-Write probes, on a fixture reservation:
-- As a doctor, `PATCH` the status → 200, and the response's `patient` has no `phone1`.
-- As a doctor, duplicate it → 201, with the same shape.
+Runtime:
+- As a doctor, every reservation route's `patient` is `id,name` (plus `archived` on the single record), and `soapNote` is still present.
+- As a secretary, phones are present and `soapNote` is absent.
+- The month counts are unchanged.
+- The `/doctor` schedule card shows the name and time with no stray "·". Admin and secretary cards are unchanged.
 
 **Done when:**
-- [ ] No reservation route returns a phone to a doctor, and admin and secretary responses are unchanged
-- [ ] The date-picker counts are unaffected
-- [ ] TJ-023's `soapNote` boundary holds in both directions
-- [ ] Three files changed; tsc and build pass
+- [ ] No reservation route sends a doctor a phone
+- [ ] The doctor's schedule card draws no phone and no separator
+- [ ] Admin and secretary cards and responses are unchanged
+- [ ] tsc and build pass
 
 ---
 
