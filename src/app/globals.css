@@ -82,7 +82,7 @@ html {
 }
 
 body {
-  font-family: var(--font-inter), 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  font-family: var(--font-body), -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   background: var(--bg-page);
   color: var(--text-primary);
   line-height: 1.6;
@@ -91,13 +91,8 @@ body {
   min-height: 100svh;
 }
 
-/* RTL Arabic font override */
-[dir="rtl"] body {
-  font-family: var(--font-arabic), 'Noto Kufi Arabic', 'Inter', sans-serif;
-}
-
 [dir="rtl"] {
-  --font-heading: var(--font-arabic), 'Noto Kufi Arabic', sans-serif;
+  --font-heading: var(--font-body), sans-serif;
 }
 
 img {
@@ -186,7 +181,7 @@ ol {
   border-radius: var(--radius-md);
   cursor: pointer;
   transition: all var(--transition-base);
-  font-family: var(--font-arabic), var(--font-outfit), sans-serif;
+  font-family: var(--font-body), var(--font-outfit), sans-serif;
 }
 
 .lang-toggle:hover {
