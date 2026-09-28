@@ -9820,6 +9820,20 @@ As ADMIN, everything is present, duplicates → 200, and patient 1's phones and 
 - `npm run build` exits 0.
 - ESLint on every changed source file gives **4 errors before and 4 after**, all the existing `react-hooks/set-state-in-effect` on the fetch idiom, in the same four files, measured in a clean baseline worktree.
 
+
+**All-roles check, 2026-09-28**, on a fresh fixture database against the final build (`41ee5ad`). Each role was signed in through the real login form and checked on its own screens:
+
+| | Admin | Secretary | Doctor |
+|---|---|---|---|
+| Dashboard font (body and card names, incl. the Arabic name) | IBM Plex Sans Arabic | IBM Plex Sans Arabic | IBM Plex Sans Arabic |
+| Date-picker surface (TJ-052) | `rgb(238, 244, 246)` | `rgb(238, 244, 246)` | `rgb(238, 244, 246)` |
+| Schedule cards | phone and "·" shown | phone and "·" shown | **no phone, no "·"** |
+| Patient list | Phone column and Add control | Phone column and Add control | **no Phone column, no Add control** |
+| Patient page: phones shown | 2 | 2 | **0** |
+| Patient page: Edit Info / Archive / file Remove | yes / yes / 1 | yes / yes / 1 | **no / no / 0** |
+
+The 39 API probes were also re-run on the fresh database, and their output is **byte-identical** to the "Measured after the change" run above.
+
 ---
 
 ### TJ-054a — Doctor screens: no create, edit, archive or file removal; phones only when sent
