@@ -116,6 +116,7 @@ Two things that bear repeating here, because this is the file both agents open:
 | TJ-054c | Server: stop sending phone numbers to doctors (patient routes) | DONE — task commit `da2d4cf`, merged as `d9a53ee` | `feat/doctor-phone-boundary-patients` |
 | TJ-054d | Server: stop sending phone numbers to doctors (reservation routes and the schedule card) | DONE — task commit `c8ee974`, merged as `d9a53ee` | `feat/doctor-phone-boundary-reservations` |
 | TJ-055 | `--font-heading` has never resolved: headings render in the body font, not Bodoni Moda | DONE — task commit `32bd05c`, merged as `d9a53ee` on 2026-09-28; option 2 (keep the body face), chosen by the planner at the user's request; no visible change measured | `bugfix/heading-font-variable` |
+| TJ-056 | Card text reads blurry on Windows: unhinted font files and faded muted lines | REVIEW — implemented as `2079d78` on `claude/festive-brown-n77ft7`, 2026-09-28; build and local runtime passed; **not merged: merging deploys to production, awaiting the user** | `bugfix/windows-text-rendering` |
 
 ---
 
@@ -10125,6 +10126,51 @@ Option 1 remains available later as a deliberate redesign.
   - The `<link rel=preload as=font>` count goes from 10 to 9.
 - The Outfit wordmark on `/login` and `/unauthorized` still computes to Outfit, with `--font-outfit` defined on `<html>` and the face loaded.
 - **TJ-053's "known leftover" is now permanently moot.** With no Bodoni in the stack, an Arabic review quote renders in the body face.
+
+---
+
+### TJ-056 — Card text reads blurry on Windows: unhinted font files and faded muted lines
+
+- **Status:** REVIEW — implemented as `2079d78` on `claude/festive-brown-n77ft7`, 2026-09-28. Build and a local runtime check passed. **Not merged:** merging to `master` deploys to production, so the merge waits on the user.
+- **Branch:** `bugfix/windows-text-rendering`
+- **Why:** User report, 2026-09-28, with a screenshot of the live dashboard: "the font still kinda looks blurry". The screenshot's own pixels were measured rather than guessed at. Each antialiased text pixel was compared against the straight line from the card colour to the ink colour; greyscale smoothing stays on that line, and ClearType leaves colour fringes off it.
+
+  | Line in the screenshot | Mean offset from the line (0–765 scale) |
+  |---|---|
+  | Name line, on yellow and on green cards | 43.6 / 43.5 → **ClearType**, so the machine is Windows |
+  | Phone/time line, same cards | 0.9 / 0.8 → **greyscale** |
+
+  Two causes follow.
+  1. **`opacity` on the muted lines.** `.slot-sub` is at 0.8, and `.slot-time` at 0.85 inside it (0.68 overall); the separator and note are faded the same way. Chrome turns off ClearType for text drawn with opacity below 1, which is exactly the split measured above. This predates TJ-053. The new face made it more visible.
+  2. **Unhinted font files.** next/font/google fetches with a Mac user agent (`fetch-resource.js`), and Google serves Macs unhinted files. Measured on the Google CSS2 files:
+
+     | | Hinting tables | Glyphs with instructions |
+     |---|---|---|
+     | Mac UA (what the build shipped) | `gasp` only | 0 |
+     | Windows UA | `fpgm`, `prep`, `cvt `, `gasp` | 434 Arabic, 188 Latin |
+
+     All 16 IBM Plex files in the TJ-053/055 build had no hinting. Windows needs hinting to grid-fit 11–13px text. The Arial it replaced for Arabic is fully hinted.
+
+**Planning pass:** 2026-09-28. Read `src/app/layout.tsx`, `src/app/components/ReservationSlot.tsx` and next/font's `fetch-resource.js`.
+- `@ibm/plex-sans-arabic@1.1.0` on npm is IBM's own release, licensed OFL-1.1. Its `fonts/complete/woff2` files are **hinted**: `fpgm`, `prep` and `cvt `, with 711–851 instructed glyphs per weight. Each carries Arabic and Latin in a single file.
+- The files are copied in, not added as a dependency, so `package.json` is unchanged.
+- **Exception to the "existing directories only" rule:** new directory `src/app/fonts/ibm-plex-sans-arabic/`. next/font/local resolves paths relative to `layout.tsx`, and `public/` would also serve the files raw at a second URL.
+- **`color-mix(in srgb, currentColor N%, var(--slot-bg))` gives the same shade the old opacity did.** Compositing is linear in sRGB, so it is the same blend, just opaque. `.slot` sets `--slot-bg` inline from the doctor colour. A malformed doctor colour makes the mix invalid, and the text then inherits full colour, which is still readable.
+- **Not touched:** `.menu-trigger` (0.7, an icon, not text) and a checked-out card's whole-card `opacity: 0.5`, which is deliberate dimming.
+
+**Scope:** `src/app/layout.tsx`, `src/app/components/ReservationSlot.tsx`, and new files `src/app/fonts/ibm-plex-sans-arabic/{Regular,Medium,SemiBold,Bold}.woff2` plus `LICENSE.txt`.
+
+**Review, 2026-09-28:**
+- **Gates:** `tsc` exits 0, `npm run build` exits 0, and ESLint is clean on both files.
+- **Fonts:** all 4 shipped IBM Plex files carry `fpgm` / `prep` / `cvt `. Preloaded fonts go from 9 files / 223 KB to **5 files / 322 KB** (+99 KB, four fewer requests).
+- **Runtime**, local `next start` against the fixture database, as a secretary and as a doctor:
+  - all four `bodyFont` weights are `loaded`
+  - on a `#93c5fd` card, `.slot-sub` computes to `color(srgb 0.1969 0.2988 0.3647)`, which is exactly 80% ink over the card colour
+  - `.slot-time` computes to 0.68 of ink, identical to the old combined opacity
+  - every muted line reports `opacity: 1`
+  - doctor cards still carry no phone and no separator
+- **Owed, and only a Windows machine can give it:** a look at the same dashboard after deploy. Headless Chromium on Linux renders greyscale either way, so the ClearType and hinting gain can't be seen here. It is expected from how Windows renders, not observed.
+- **Offered, not done:** IBM Plex draws its Arabic small for its size. The same Arabic name is 137px wide where Noto Kufi was 154px. A `size-adjust` of about 110% on the Arabic range would bring it back up, but it would also re-flow the Arabic public site, so it's a design decision for the user.
 
 ---
 
