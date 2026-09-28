@@ -2,6 +2,7 @@
 
 import { useState, useRef, useEffect } from "react";
 import { createPortal } from "react-dom";
+import type { CSSProperties } from "react";
 
 interface SlotAction {
     label: string;
@@ -237,7 +238,9 @@ export default function ReservationSlot({
                 color: textColor,
                 borderLeftColor: edgeColor,
                 opacity: isCheckedOut ? 0.5 : 1,
-            }}
+                // Read by the muted text below to mix its colour. (TJ-056)
+                "--slot-bg": doctorColor,
+            } as CSSProperties}
             onClick={() => onClick(id)}
             title={`${patientName} — ${statusLabel} — ${doctorName}`}
             aria-label={`${patientName}, ${statusLabel}, with ${doctorName} at ${time}`}
@@ -323,17 +326,24 @@ export default function ReservationSlot({
                     overflow: hidden; text-overflow: ellipsis;
                 }
                 .slot-name.strike { text-decoration: line-through; }
+                /* The muted lines are MIXED toward the card colour, not faded with
+                   opacity. Chrome drops ClearType for any text drawn with opacity
+                   below 1, so on Windows the phone/time line fell back to soft
+                   greyscale smoothing (measured in a clinic screenshot). Same
+                   shades as before, but opaque. (TJ-056) */
                 .slot-sub {
                     display: flex; align-items: baseline; gap: 0.3rem;
-                    font-size: 0.7rem; opacity: 0.8; white-space: nowrap;
+                    font-size: 0.7rem; white-space: nowrap;
+                    color: color-mix(in srgb, currentColor 80%, var(--slot-bg));
                     overflow: hidden; min-width: 0;
                 }
                 /* The phone is the half that may truncate; the time never is. */
                 .slot-phone { overflow: hidden; text-overflow: ellipsis; min-width: 0; }
-                .slot-sep { flex-shrink: 0; opacity: 0.6; }
-                .slot-time { flex-shrink: 0; opacity: 0.85; }
+                .slot-sep { flex-shrink: 0; color: color-mix(in srgb, currentColor 60%, var(--slot-bg)); }
+                .slot-time { flex-shrink: 0; color: color-mix(in srgb, currentColor 85%, var(--slot-bg)); }
                 .slot-note {
-                    font-size: 0.68rem; opacity: 0.75; font-style: italic;
+                    font-size: 0.68rem; font-style: italic;
+                    color: color-mix(in srgb, currentColor 75%, var(--slot-bg));
                     white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
                 }
                 .slot-right { display: flex; align-items: center; gap: 0.4rem; flex-shrink: 0; margin-left: 0.3rem; }

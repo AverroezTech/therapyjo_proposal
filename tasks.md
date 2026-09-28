@@ -108,14 +108,15 @@ Two things that bear repeating here, because this is the file both agents open:
 | TJ-049b | Scale the whole schedule down to fit before it scrolls | DONE — merged as `3d2e6c1`; **runtime VERIFIED live 2026-09-15** — 0.72 floor and the pane pin both observed | `feat/schedule-scale-to-fit` |
 | TJ-050 | Nested agent worktrees corrupt every whole-project measurement | BACKLOG — no planning pass; **blocks trustworthy lint/tsc/build gates** | — |
 | TJ-051 | Staff who open `/Login` land on a 404 | DONE — merged as `138c3d0`; **runtime VERIFIED live 2026-09-17** — `/Login` and `/LOGIN` both 302 to `/login`, one hop, no loop, legacy proxy intact | `bugfix/canonicalise-login-case` |
-| TJ-052 | Make the date-picker popover opaque | REVIEW — **implemented as `f41cbfb`** on `claude/festive-brown-n77ft7` (option B, Mist); build and local visual review passed 2026-09-28; not yet merged to `master` | `feat/opaque-date-picker` |
-| TJ-053 | One Arabic-capable font for the site's text | REVIEW — **implemented as `a96a37c`** (IBM Plex Sans Arabic); build and local visual review passed 2026-09-28; not yet merged; **one claim corrected, see TJ-055** | `feat/arabic-body-font` |
-| TJ-054 | Doctors: no patient phone numbers, and no patient edits beyond clinical work and files | SPLIT — all four parts implemented in order on `claude/festive-brown-n77ft7`; **runtime-proven against a local database 2026-09-28**; not yet merged | — |
-| TJ-054a | Doctor screens: no create, edit, archive or file removal; phones only when sent | REVIEW — implemented as `3de34c5`; local runtime + visual review passed | `feat/doctor-ui-restrict-patients` |
-| TJ-054b | Server: only admins and secretaries may create, edit or archive a patient, or remove a file | REVIEW — implemented as `a9d28fb`; runtime-proven | `feat/patient-manage-boundary` |
-| TJ-054c | Server: stop sending phone numbers to doctors (patient routes) | REVIEW — implemented as `da2d4cf`; runtime-proven | `feat/doctor-phone-boundary-patients` |
-| TJ-054d | Server: stop sending phone numbers to doctors (reservation routes and the schedule card) | REVIEW — implemented as `c8ee974`; runtime-proven | `feat/doctor-phone-boundary-reservations` |
-| TJ-055 | `--font-heading` has never resolved: headings render in the body font, not Bodoni Moda | REVIEW — **user left the call to the planner: option 2, keep the body face**; implemented as `32bd05c`; measured no visible change, one fewer preload; not yet merged | `bugfix/heading-font-variable` |
+| TJ-052 | Make the date-picker popover opaque | DONE — task commit `f41cbfb`, merged to `master` as `d9a53ee` with `--no-ff` on 2026-09-28; checked on all three dashboards locally; **live check owed** | `feat/opaque-date-picker` |
+| TJ-053 | One Arabic-capable font for the site's text | DONE — task commit `a96a37c`, merged as `d9a53ee` with `--no-ff` on 2026-09-28; **live check owed** | `feat/arabic-body-font` |
+| TJ-054 | Doctors: no patient phone numbers, and no patient edits beyond clinical work and files | SPLIT — **complete**: all four parts merged as `d9a53ee` on 2026-09-28; runtime-proven for all three roles against a local database; **live check owed** | — |
+| TJ-054a | Doctor screens: no create, edit, archive or file removal; phones only when sent | DONE — task commit `3de34c5`, merged as `d9a53ee` | `feat/doctor-ui-restrict-patients` |
+| TJ-054b | Server: only admins and secretaries may create, edit or archive a patient, or remove a file | DONE — task commit `a9d28fb`, merged as `d9a53ee` | `feat/patient-manage-boundary` |
+| TJ-054c | Server: stop sending phone numbers to doctors (patient routes) | DONE — task commit `da2d4cf`, merged as `d9a53ee` | `feat/doctor-phone-boundary-patients` |
+| TJ-054d | Server: stop sending phone numbers to doctors (reservation routes and the schedule card) | DONE — task commit `c8ee974`, merged as `d9a53ee` | `feat/doctor-phone-boundary-reservations` |
+| TJ-055 | `--font-heading` has never resolved: headings render in the body font, not Bodoni Moda | DONE — task commit `32bd05c`, merged as `d9a53ee` on 2026-09-28; option 2 (keep the body face), chosen by the planner at the user's request; no visible change measured | `bugfix/heading-font-variable` |
+| TJ-056 | Card text reads blurry on Windows: unhinted font files and faded muted lines | REVIEW — implemented as `2079d78` on `claude/festive-brown-n77ft7`, 2026-09-28; build and local runtime passed; **not merged: merging deploys to production, awaiting the user** | `bugfix/windows-text-rendering` |
 
 ---
 
@@ -9397,7 +9398,7 @@ Read-and-confirm, no runtime needed:
 
 ### TJ-052 — Make the date-picker popover opaque
 
-- **Status:** REVIEW — implemented as `f41cbfb` on `claude/festive-brown-n77ft7`, 2026-09-28; see the review block below. Not yet merged to `master`. **User decision, 2026-09-28: option B, Mist (`#eef4f6`).** The user chose among the popover options, which confirms the reading of "the calendar" below. Execute steps 1 and 2 with `SURFACE` = `var(--bg-mist, #eef4f6)`.
+- **Status:** DONE — task commit `f41cbfb`, merged to `master` as `d9a53ee` with `--no-ff` on 2026-09-28 at the user's request; **live check owed after the Vercel deploy.** Before the merge this read: REVIEW — implemented as `f41cbfb` on `claude/festive-brown-n77ft7`, 2026-09-28; see the review block below. Not yet merged to `master`. **User decision, 2026-09-28: option B, Mist (`#eef4f6`).** The user chose among the popover options, which confirms the reading of "the calendar" below. Execute steps 1 and 2 with `SURFACE` = `var(--bg-mist, #eef4f6)`.
 - **Branch:** `feat/opaque-date-picker`
 - **Why:** User request, 2026-09-28: "lessen the transparency of the calendar", using a white that matches the background. The see-through calendar is the month picker. TJ-043a moved it out of the sidebar and into `DatePickerPopover`, which portals it into `document.body` as a `position: fixed` panel over the day schedule. The panel itself (`.dpp-panel`) sets no background. The only surface inside it is `.datepicker { background: rgba(255,255,255,0.03) }` in `DatePicker.tsx`, which is 97% transparent. In the old sidebar that blended into a faint panel (≈ `#21343b` on the `#1a2e35` page) and looked fine. Floating over the schedule, it lets the doctor-coloured reservation cards show straight through the month grid. The same screen's other floating panel, the reservation action menu (`.menu-panel` in `ReservationSlot.tsx`), is already opaque: `var(--bg-dark-secondary, #243b44)` with `box-shadow: 0 8px 32px rgba(0,0,0,0.4)`. The popover never got the same treatment.
 
@@ -9537,7 +9538,7 @@ Read-only, signed in as any role, on a day that has bookings. Do this on `/admin
 
 ### TJ-053 — One Arabic-capable font for the site's text
 
-- **Status:** REVIEW — implemented as `a96a37c` on `claude/festive-brown-n77ft7`, 2026-09-28; see the review block below. Not yet merged to `master`. **The claim that English headings "keep Bodoni Moda" was wrong: they never had it (TJ-055).** **User decision, 2026-09-28: option A, IBM Plex Sans Arabic.** Execute with `FONT_IMPORT` = `IBM_Plex_Sans_Arabic` and the A options row (the `weight` array is required). This exact option was dry-run in the planning pass: type-checked, built and measured, then reverted.
+- **Status:** DONE — task commit `a96a37c`, merged to `master` as `d9a53ee` with `--no-ff` on 2026-09-28 at the user's request; **live check owed after the Vercel deploy.** Before the merge this read: REVIEW — implemented as `a96a37c` on `claude/festive-brown-n77ft7`, 2026-09-28; see the review block below. Not yet merged to `master`. **The claim that English headings "keep Bodoni Moda" was wrong: they never had it (TJ-055).** **User decision, 2026-09-28: option A, IBM Plex Sans Arabic.** Execute with `FONT_IMPORT` = `IBM_Plex_Sans_Arabic` and the A options row (the `weight` array is required). This exact option was dry-run in the planning pass: type-checked, built and measured, then reverted.
 - **Branch:** `feat/arabic-body-font`
 - **Why:** User request, 2026-09-28: change the font of the site's text, "most importantly" to one suited to Arabic.
 
@@ -9725,7 +9726,14 @@ The cause and the decision it needs are filed as **TJ-055**. Two consequences fo
 
 ### TJ-054 — Doctors: no patient phone numbers, and no patient edits beyond clinical work and files
 
-- **Status:** SPLIT. Re-planned 2026-09-28 after the user's decisions (below). See TJ-054a, TJ-054b, TJ-054c and TJ-054d. **All four were implemented in order on `claude/festive-brown-n77ft7` on 2026-09-28 and runtime-proven against a local database** (see "Measured after the change"). Not yet merged to `master`. Nothing executes against this ID.
+- **Status:** SPLIT. Re-planned 2026-09-28 after the user's decisions (below). See TJ-054a, TJ-054b, TJ-054c and TJ-054d. **All four were implemented in order on `claude/festive-brown-n77ft7` on 2026-09-28, runtime-proven against a local database** (see "Measured after the change"), **and merged to `master` as `d9a53ee`.**
+
+**Live check owed after the deploy.** No agent holds a clinic login, so the doctor-side bullets can be confirmed only by someone who does. On production, as a doctor:
+- no phone on schedule cards, the patient list, the patient page or the session page
+- no Add Patient, Edit Info, Archive or file-Remove control
+- a search by a known number still finds the patient
+
+As a secretary, everything is unchanged. Nothing executes against this ID.
 - **Why:** Two user directives, both 2026-09-28:
   1. Limit doctors' access to patient information, so that "they can't view patient's mobile numbers".
   2. Doctors "can no longer edit patient info other than adding the clinical assessment or files". They also lose the ability to create new patients and to archive.
@@ -9838,7 +9846,7 @@ The 39 API probes were also re-run on the fresh database, and their output is **
 
 ### TJ-054a — Doctor screens: no create, edit, archive or file removal; phones only when sent
 
-- **Status:** REVIEW — implemented as `3de34c5`, 2026-09-28; local runtime + visual review passed; not yet merged.
+- **Status:** DONE — task commit `3de34c5`, merged to `master` as `d9a53ee` with `--no-ff` on 2026-09-28; **live check owed.** Before the merge this read: implemented as `3de34c5`, 2026-09-28; local runtime + visual review passed; not yet merged.
 - **Branch:** `feat/doctor-ui-restrict-patients`
 - **Why:** See TJ-054. This task removes every doctor control the server is about to refuse, and draws a phone only when the server sends one (after TJ-054c/d, never for a doctor).
 
@@ -9917,7 +9925,7 @@ Read-only, signed in as a doctor:
 
 ### TJ-054b — Server: only admins and secretaries may create, edit or archive a patient, or remove a file
 
-- **Status:** REVIEW — implemented as `a9d28fb`, 2026-09-28; runtime-proven (see TJ-054); not yet merged.
+- **Status:** DONE — task commit `a9d28fb`, merged to `master` as `d9a53ee` with `--no-ff` on 2026-09-28; **live check owed.** Before the merge this read: implemented as `a9d28fb`, 2026-09-28; runtime-proven (see TJ-054); not yet merged.
 - **Branch:** `feat/patient-manage-boundary`
 - **Why:** See TJ-054. As measured, a doctor today can create a patient (201), edit one (200), archive one (200) and remove a file (200). The routes check only a `WRITE_ROLES` list that includes `DOCTOR`.
 
@@ -9969,7 +9977,7 @@ The stored phones and archived flag are unchanged afterwards. As a secretary, ev
 
 ### TJ-054c — Server: stop sending phone numbers to doctors (patient routes)
 
-- **Status:** REVIEW — implemented as `da2d4cf`, 2026-09-28; runtime-proven (see TJ-054); not yet merged.
+- **Status:** DONE — task commit `da2d4cf`, merged to `master` as `d9a53ee` with `--no-ff` on 2026-09-28; **live check owed.** Before the merge this read: implemented as `da2d4cf`, 2026-09-28; runtime-proven (see TJ-054); not yet merged.
 - **Branch:** `feat/doctor-phone-boundary-patients`
 - **Why:** See TJ-054. As measured, a doctor receives `phone1` and `phone2` from the patient list, the search, the single record and the duplicates report.
 
@@ -10017,7 +10025,7 @@ Runtime:
 
 ### TJ-054d — Server: stop sending phone numbers to doctors (reservation routes and the schedule card)
 
-- **Status:** REVIEW — implemented as `c8ee974`, 2026-09-28; runtime-proven (see TJ-054); not yet merged.
+- **Status:** DONE — task commit `c8ee974`, merged to `master` as `d9a53ee` with `--no-ff` on 2026-09-28; **live check owed.** Before the merge this read: implemented as `c8ee974`, 2026-09-28; runtime-proven (see TJ-054); not yet merged.
 - **Branch:** `feat/doctor-phone-boundary-reservations`
 - **Why:** See TJ-054. As measured, a doctor receives the patient's phones on every schedule card, in the session page's payload, and in the responses to their own status changes, session edits and duplications.
 
@@ -10067,7 +10075,7 @@ Runtime:
 
 ### TJ-055 — `--font-heading` has never resolved: headings render in the body font, not Bodoni Moda
 
-- **Status:** REVIEW — implemented as `32bd05c` on `claude/festive-brown-n77ft7`, 2026-09-28; see the review block at the end of this task. Not yet merged to `master`. **Decision, 2026-09-28: the user said "whatever you recommend"; the planner chose option 2**, keeping headings in the body face.
+- **Status:** DONE — task commit `32bd05c`, merged to `master` as `d9a53ee` with `--no-ff` on 2026-09-28 at the user's request; **live check owed after the Vercel deploy.** Before the merge this read: REVIEW — implemented as `32bd05c` on `claude/festive-brown-n77ft7`, 2026-09-28; see the review block at the end of this task. Not yet merged to `master`. **Decision, 2026-09-28: the user said "whatever you recommend"; the planner chose option 2**, keeping headings in the body face.
 - **Branch:** `bugfix/heading-font-variable`
 - **Why:** `globals.css` declares `--font-heading` in two places:
   - on `:root`, as `var(--font-serif), 'Bodoni Moda', serif`
@@ -10118,6 +10126,51 @@ Option 1 remains available later as a deliberate redesign.
   - The `<link rel=preload as=font>` count goes from 10 to 9.
 - The Outfit wordmark on `/login` and `/unauthorized` still computes to Outfit, with `--font-outfit` defined on `<html>` and the face loaded.
 - **TJ-053's "known leftover" is now permanently moot.** With no Bodoni in the stack, an Arabic review quote renders in the body face.
+
+---
+
+### TJ-056 — Card text reads blurry on Windows: unhinted font files and faded muted lines
+
+- **Status:** REVIEW — implemented as `2079d78` on `claude/festive-brown-n77ft7`, 2026-09-28. Build and a local runtime check passed. **Not merged:** merging to `master` deploys to production, so the merge waits on the user.
+- **Branch:** `bugfix/windows-text-rendering`
+- **Why:** User report, 2026-09-28, with a screenshot of the live dashboard: "the font still kinda looks blurry". The screenshot's own pixels were measured rather than guessed at. Each antialiased text pixel was compared against the straight line from the card colour to the ink colour; greyscale smoothing stays on that line, and ClearType leaves colour fringes off it.
+
+  | Line in the screenshot | Mean offset from the line (0–765 scale) |
+  |---|---|
+  | Name line, on yellow and on green cards | 43.6 / 43.5 → **ClearType**, so the machine is Windows |
+  | Phone/time line, same cards | 0.9 / 0.8 → **greyscale** |
+
+  Two causes follow.
+  1. **`opacity` on the muted lines.** `.slot-sub` is at 0.8, and `.slot-time` at 0.85 inside it (0.68 overall); the separator and note are faded the same way. Chrome turns off ClearType for text drawn with opacity below 1, which is exactly the split measured above. This predates TJ-053. The new face made it more visible.
+  2. **Unhinted font files.** next/font/google fetches with a Mac user agent (`fetch-resource.js`), and Google serves Macs unhinted files. Measured on the Google CSS2 files:
+
+     | | Hinting tables | Glyphs with instructions |
+     |---|---|---|
+     | Mac UA (what the build shipped) | `gasp` only | 0 |
+     | Windows UA | `fpgm`, `prep`, `cvt `, `gasp` | 434 Arabic, 188 Latin |
+
+     All 16 IBM Plex files in the TJ-053/055 build had no hinting. Windows needs hinting to grid-fit 11–13px text. The Arial it replaced for Arabic is fully hinted.
+
+**Planning pass:** 2026-09-28. Read `src/app/layout.tsx`, `src/app/components/ReservationSlot.tsx` and next/font's `fetch-resource.js`.
+- `@ibm/plex-sans-arabic@1.1.0` on npm is IBM's own release, licensed OFL-1.1. Its `fonts/complete/woff2` files are **hinted**: `fpgm`, `prep` and `cvt `, with 711–851 instructed glyphs per weight. Each carries Arabic and Latin in a single file.
+- The files are copied in, not added as a dependency, so `package.json` is unchanged.
+- **Exception to the "existing directories only" rule:** new directory `src/app/fonts/ibm-plex-sans-arabic/`. next/font/local resolves paths relative to `layout.tsx`, and `public/` would also serve the files raw at a second URL.
+- **`color-mix(in srgb, currentColor N%, var(--slot-bg))` gives the same shade the old opacity did.** Compositing is linear in sRGB, so it is the same blend, just opaque. `.slot` sets `--slot-bg` inline from the doctor colour. A malformed doctor colour makes the mix invalid, and the text then inherits full colour, which is still readable.
+- **Not touched:** `.menu-trigger` (0.7, an icon, not text) and a checked-out card's whole-card `opacity: 0.5`, which is deliberate dimming.
+
+**Scope:** `src/app/layout.tsx`, `src/app/components/ReservationSlot.tsx`, and new files `src/app/fonts/ibm-plex-sans-arabic/{Regular,Medium,SemiBold,Bold}.woff2` plus `LICENSE.txt`.
+
+**Review, 2026-09-28:**
+- **Gates:** `tsc` exits 0, `npm run build` exits 0, and ESLint is clean on both files.
+- **Fonts:** all 4 shipped IBM Plex files carry `fpgm` / `prep` / `cvt `. Preloaded fonts go from 9 files / 223 KB to **5 files / 322 KB** (+99 KB, four fewer requests).
+- **Runtime**, local `next start` against the fixture database, as a secretary and as a doctor:
+  - all four `bodyFont` weights are `loaded`
+  - on a `#93c5fd` card, `.slot-sub` computes to `color(srgb 0.1969 0.2988 0.3647)`, which is exactly 80% ink over the card colour
+  - `.slot-time` computes to 0.68 of ink, identical to the old combined opacity
+  - every muted line reports `opacity: 1`
+  - doctor cards still carry no phone and no separator
+- **Owed, and only a Windows machine can give it:** a look at the same dashboard after deploy. Headless Chromium on Linux renders greyscale either way, so the ClearType and hinting gain can't be seen here. It is expected from how Windows renders, not observed.
+- **Offered, not done:** IBM Plex draws its Arabic small for its size. The same Arabic name is 137px wide where Noto Kufi was 154px. A `size-adjust` of about 110% on the Arabic range would bring it back up, but it would also re-flow the Arabic public site, so it's a design decision for the user.
 
 ---
 

@@ -1,5 +1,6 @@
 import type { Viewport } from "next";
-import { IBM_Plex_Sans_Arabic, Outfit } from "next/font/google";
+import { Outfit } from "next/font/google";
+import localFont from "next/font/local";
 import "./globals.css";
 import { LanguageProvider } from "./i18n/LanguageContext";
 import Providers from "./providers";
@@ -7,9 +8,20 @@ import Providers from "./providers";
 // One family for both scripts. Inter has no Arabic glyphs, so on every LTR
 // page - the staff dashboards included - Arabic text fell through to
 // whatever the operating system supplied. This face draws both. (TJ-053)
-const bodyFont = IBM_Plex_Sans_Arabic({
-  subsets: ["arabic", "latin"],
-  weight: ["400", "500", "600", "700"],
+//
+// Self-hosted from IBM's own release (@ibm/plex-sans-arabic 1.1.0, SIL OFL,
+// licence alongside) rather than next/font/google: next/font downloads with a
+// Mac user agent, and Google serves Macs UNHINTED files. Windows needs the
+// hinting to grid-fit small text, so the dashboards' 11-13px card text read
+// as blurry on the clinic's Windows machines. IBM's files are hinted and carry
+// Arabic and Latin in one file. (TJ-056)
+const bodyFont = localFont({
+  src: [
+    { path: "./fonts/ibm-plex-sans-arabic/IBMPlexSansArabic-Regular.woff2", weight: "400", style: "normal" },
+    { path: "./fonts/ibm-plex-sans-arabic/IBMPlexSansArabic-Medium.woff2", weight: "500", style: "normal" },
+    { path: "./fonts/ibm-plex-sans-arabic/IBMPlexSansArabic-SemiBold.woff2", weight: "600", style: "normal" },
+    { path: "./fonts/ibm-plex-sans-arabic/IBMPlexSansArabic-Bold.woff2", weight: "700", style: "normal" },
+  ],
   variable: "--font-body",
   display: "swap",
 });
