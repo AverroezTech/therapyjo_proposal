@@ -117,7 +117,7 @@ Two things that bear repeating here, because this is the file both agents open:
 | TJ-054d | Server: stop sending phone numbers to doctors (reservation routes and the schedule card) | DONE — task commit `c8ee974`, merged as `d9a53ee` | `feat/doctor-phone-boundary-reservations` |
 | TJ-055 | `--font-heading` has never resolved: headings render in the body font, not Bodoni Moda | DONE — task commit `32bd05c`, merged as `d9a53ee` on 2026-09-28; option 2 (keep the body face), chosen by the planner at the user's request; no visible change measured | `bugfix/heading-font-variable` |
 | TJ-056 | Card text reads blurry on Windows: unhinted font files and faded muted lines | DONE — task commit `2079d78`, merged to `master` as `220ed3e` with `--no-ff` on 2026-09-28 at the user's request; **a look on a Windows machine is owed** | `bugfix/windows-text-rendering` |
-| TJ-057 | Draw Arabic 10% larger; clip long Arabic names at their end | REVIEW — implemented as `e60699e` on `claude/festive-brown-n77ft7`, 2026-09-28; build, local runtime and all-roles check passed; **not merged: merging deploys to production, awaiting the user** | `feat/arabic-size-adjust` |
+| TJ-057 | Draw Arabic 10% larger; clip long Arabic names at their end | DONE — task commit `e60699e`, merged to `master` as `01cfb82` with `--no-ff` on 2026-09-28 at the user's request; **a look on a Windows machine is owed** | `feat/arabic-size-adjust` |
 
 ---
 
@@ -10177,7 +10177,7 @@ Option 1 remains available later as a deliberate redesign.
 
 ### TJ-057 — Draw Arabic 10% larger; clip long Arabic names at their end
 
-- **Status:** REVIEW — implemented as `e60699e` on `claude/festive-brown-n77ft7`, 2026-09-28. **Not merged:** merging to `master` deploys to production, so the merge waits on the user.
+- **Status:** DONE — task commit `e60699e`, merged to `master` as `01cfb82` with `--no-ff` on 2026-09-28 at the user's request. **Owed:** a look at the live site and dashboard on a Windows machine.
 - **Branch:** `feat/arabic-size-adjust`
 - **Why:** User request, 2026-09-28, taking up the option offered in TJ-056. IBM Plex sets its Arabic small for its size: the same name is 137px where Noto Kufi drew 154px, which costs legibility on 11–13px schedule cards.
 
