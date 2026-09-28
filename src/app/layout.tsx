@@ -1,3 +1,4 @@
+import type { CSSProperties } from "react";
 import type { Viewport } from "next";
 import { Outfit } from "next/font/google";
 import localFont from "next/font/local";
@@ -22,8 +23,37 @@ const bodyFont = localFont({
     { path: "./fonts/ibm-plex-sans-arabic/IBMPlexSansArabic-SemiBold.woff2", weight: "600", style: "normal" },
     { path: "./fonts/ibm-plex-sans-arabic/IBMPlexSansArabic-Bold.woff2", weight: "700", style: "normal" },
   ],
-  variable: "--font-body",
+  variable: "--font-body-base",
   display: "swap",
+});
+
+// The same files again, limited to the Arabic blocks and drawn 10% larger.
+// IBM Plex sets its Arabic small for its size (a name is ~11% narrower than
+// in Noto Kufi), which on 11-13px schedule cards costs legibility. Arabic
+// letters take this face; everything else, digits and punctuation included,
+// falls through to the unscaled one. (TJ-057)
+//
+// Options deliberately mirror bodyFont's (src, preload and the default
+// adjustFontFallback): next/font names emitted files by those flags, and any
+// difference emits a second copy of every file under a new URL, doubling the
+// download. That means this call also generates an Arial "Fallback" face
+// with no unicode-range, which would catch Latin text if it sat in the stack
+// ahead of bodyFont. So only this face's own family name is taken below,
+// never its variable.
+const arabicFont = localFont({
+  src: [
+    { path: "./fonts/ibm-plex-sans-arabic/IBMPlexSansArabic-Regular.woff2", weight: "400", style: "normal" },
+    { path: "./fonts/ibm-plex-sans-arabic/IBMPlexSansArabic-Medium.woff2", weight: "500", style: "normal" },
+    { path: "./fonts/ibm-plex-sans-arabic/IBMPlexSansArabic-SemiBold.woff2", weight: "600", style: "normal" },
+    { path: "./fonts/ibm-plex-sans-arabic/IBMPlexSansArabic-Bold.woff2", weight: "700", style: "normal" },
+  ],
+  display: "swap",
+  declarations: [
+    // Arabic, Arabic Supplement, Arabic Extended-B and -A, both Presentation
+    // Forms blocks, and ZWNJ/ZWJ (joiners must shape in the same face).
+    { prop: "unicode-range", value: "U+0600-06FF, U+0750-077F, U+0870-08FF, U+FB50-FDFF, U+FE70-FEFF, U+200C-200D" },
+    { prop: "size-adjust", value: "110%" },
+  ],
 });
 
 const outfit = Outfit({
@@ -31,6 +61,9 @@ const outfit = Outfit({
   variable: "--font-outfit",
   display: "swap",
 });
+
+// "'arabicFont', 'arabicFont Fallback'" -> "'arabicFont'" (see above).
+const arabicFamily = arabicFont.style.fontFamily.split(",")[0].trim();
 
 export const metadata = {
   title: "Therapy Jo — Physiotherapy Center in Amman, Jordan | مركز العلاج الطبيعي",
@@ -76,6 +109,7 @@ export default function RootLayout({
       lang="en"
       dir="ltr"
       className={`${bodyFont.variable} ${outfit.variable}`}
+      style={{ "--font-body": `${arabicFamily}, var(--font-body-base)` } as CSSProperties}
     >
       <body>
         <Providers>
