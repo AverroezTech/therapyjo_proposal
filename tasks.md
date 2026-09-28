@@ -115,7 +115,7 @@ Two things that bear repeating here, because this is the file both agents open:
 | TJ-054b | Server: only admins and secretaries may create, edit or archive a patient, or remove a file | REVIEW — implemented as `a9d28fb`; runtime-proven | `feat/patient-manage-boundary` |
 | TJ-054c | Server: stop sending phone numbers to doctors (patient routes) | REVIEW — implemented as `da2d4cf`; runtime-proven | `feat/doctor-phone-boundary-patients` |
 | TJ-054d | Server: stop sending phone numbers to doctors (reservation routes and the schedule card) | REVIEW — implemented as `c8ee974`; runtime-proven | `feat/doctor-phone-boundary-reservations` |
-| TJ-055 | `--font-heading` has never resolved: headings render in the body font, not Bodoni Moda | BACKLOG — found and measured 2026-09-28 during TJ-053's review; **needs the user's decision** | — |
+| TJ-055 | `--font-heading` has never resolved: headings render in the body font, not Bodoni Moda | REVIEW — **user left the call to the planner: option 2, keep the body face**; implemented as `32bd05c`; measured no visible change, one fewer preload; not yet merged | `bugfix/heading-font-variable` |
 
 ---
 
@@ -10053,7 +10053,8 @@ Runtime:
 
 ### TJ-055 — `--font-heading` has never resolved: headings render in the body font, not Bodoni Moda
 
-- **Status:** BACKLOG — found and measured 2026-09-28 during TJ-053's review. **Needs the user's decision** (below) before a planning pass. Do not execute against this ID.
+- **Status:** REVIEW — implemented as `32bd05c` on `claude/festive-brown-n77ft7`, 2026-09-28; see the review block at the end of this task. Not yet merged to `master`. **Decision, 2026-09-28: the user said "whatever you recommend"; the planner chose option 2**, keeping headings in the body face.
+- **Branch:** `bugfix/heading-font-variable`
 - **Why:** `globals.css` declares `--font-heading` in two places:
   - on `:root`, as `var(--font-serif), 'Bodoni Moda', serif`
   - under `[dir="rtl"]` (i.e. on `<html>`), as `var(--font-body), sans-serif`
@@ -10073,6 +10074,36 @@ Runtime:
      - The TJ-053 known leftover then becomes real: an Arabic Google review quote would fall to `Bodoni Moda Fallback` (`local(Times New Roman)`). So fix it in the same task, either by loading Bodoni with `adjustFontFallback: false` and adding `var(--font-body)` to the `:root` stack, or by setting `.reviews-quote-text` in the body face.
   2. **Keep headings in the body face** and delete the dead indirection instead: remove `Bodoni_Moda` from `layout.tsx` and point `--font-heading` at `var(--font-body)`. This saves the 25 KB preload.
 - **Found** while reviewing TJ-053 in a real browser, 2026-09-28. The planning pass had read the CSS and assumed the variable resolved. It was the computed style that showed it didn't.
+
+**Why option 2.**
+- It's the look the live site has always had. English headings have been sans since launch, Inter and now IBM Plex, and nobody noticed the missing serif.
+- It honours the user's TJ-053 choice of one face for both languages. Bodoni has no Arabic, so it could only ever style half the site.
+- It removes a 25 KB preload that every page paid for nothing.
+- It avoids the Times New Roman fallback that restoring Bodoni would have created for Arabic review quotes.
+
+Option 1 remains available later as a deliberate redesign.
+
+**Planning pass:** 2026-09-28. Read `src/app/layout.tsx` in full and every `--font-*` and `font-family` declaration in `src/app/globals.css`.
+- `--font-serif` and `Bodoni` appear only in `layout.tsx` and in the `:root` `--font-heading` line.
+- `font-family: var(--font-heading)` appears 18 times.
+- Apart from those, the only `font-family` declarations are `body`, `.lang-toggle` and two `inherit`s, so no heading sits inside a container with its own face.
+- The only other font-variable consumers are the Outfit wordmark (`admin/layout.tsx`, `login/page.tsx`, `unauthorized/page.tsx`) and `.lang-toggle`. They inherit from `<html>` just as well as from `<body>`.
+
+**Scope:** `src/app/layout.tsx` and `src/app/globals.css`.
+
+**The change:**
+- In `layout.tsx`, drop `Bodoni_Moda` (import, `const`, class) and move the remaining `${x.variable}` classes from `<body>` to `<html>`, with a comment saying why.
+- In `globals.css`, set `:root` `--font-heading` to `var(--font-body), sans-serif`, and delete the `[dir="rtl"]` block, which is now identical.
+
+**Planner review, 2026-09-28: passed; not yet merged.**
+- **Gates:** `tsc` exits 0, and `npm run build` exits 0. ESLint on `layout.tsx` is clean.
+- **Fonts emitted:** preloaded goes from 10 files / 249 KB to **9 files / 223 KB**, and all fonts from 22 files / 330 KB to 18 files / 256 KB.
+- **Measured before (`8445ea2`) and after (`32bd05c`)** on a local `next start`, in English and Arabic, for every heading selector on `/`. That's 12 of the 18: the doctor, blog and review selectors need data the fixture doesn't have, and they use the same rule.
+  - `--font-heading` goes from `""` to `"IBM Plex Sans Arabic","IBM Plex Sans Arabic Fallback",sans-serif`.
+  - Every heading's first family is `"IBM Plex Sans Arabic"` both before and after, so there's **no visible change**.
+  - The `<link rel=preload as=font>` count goes from 10 to 9.
+- The Outfit wordmark on `/login` and `/unauthorized` still computes to Outfit, with `--font-outfit` defined on `<html>` and the face loaded.
+- **TJ-053's "known leftover" is now permanently moot.** With no Bodoni in the stack, an Arabic review quote renders in the body face.
 
 ---
 
