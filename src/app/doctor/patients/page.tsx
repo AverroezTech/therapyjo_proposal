@@ -1,20 +1,16 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { useRouter } from "next/navigation";
 import Link from "next/link";
 
 interface Patient {
     id: number;
     name: string;
-    phone1: string;
-    phone2: string | null;
     lastVisitDate: string | null;
     createdAt: string;
 }
 
 export default function DoctorPatientsPage() {
-    const router = useRouter();
     const [patients, setPatients] = useState<Patient[]>([]);
     const [loading, setLoading] = useState(true);
     const [search, setSearch] = useState("");
@@ -45,7 +41,6 @@ export default function DoctorPatientsPage() {
         <div>
             <div className="page-header">
                 <h1>Patients <span className="count">({total})</span></h1>
-                <button className="btn-add" onClick={() => router.push("/doctor/patients/new")}>+ Add Patient</button>
             </div>
 
             <input
@@ -58,18 +53,17 @@ export default function DoctorPatientsPage() {
             <div className="table-container">
                 <table className="data-table">
                     <thead>
-                        <tr><th>ID</th><th>Name</th><th>Phone</th><th>Last Visit</th><th>Action</th></tr>
+                        <tr><th>ID</th><th>Name</th><th>Last Visit</th><th>Action</th></tr>
                     </thead>
                     <tbody>
                         {loading ? (
-                            <tr><td colSpan={5} style={{ textAlign: "center", color: "rgba(255,255,255,0.4)", padding: "2rem" }}>Loading…</td></tr>
+                            <tr><td colSpan={4} style={{ textAlign: "center", color: "rgba(255,255,255,0.4)", padding: "2rem" }}>Loading…</td></tr>
                         ) : patients.length === 0 ? (
-                            <tr><td colSpan={5} style={{ textAlign: "center", color: "rgba(255,255,255,0.4)", padding: "2rem" }}>No patients found</td></tr>
+                            <tr><td colSpan={4} style={{ textAlign: "center", color: "rgba(255,255,255,0.4)", padding: "2rem" }}>No patients found</td></tr>
                         ) : patients.map((p) => (
                             <tr key={p.id}>
                                 <td style={{ color: "rgba(255,255,255,0.3)" }}>{p.id}</td>
                                 <td>{p.name}</td>
-                                <td>{p.phone1}</td>
                                 <td>{formatDate(p.lastVisitDate)}</td>
                                 <td><Link href={`/doctor/patients/${p.id}`} className="btn-sm btn-view">View</Link></td>
                             </tr>
@@ -90,7 +84,6 @@ export default function DoctorPatientsPage() {
                 .page-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 1rem; }
                 .page-header h1 { font-size: 1.5rem; font-weight: 600; }
                 .count { color: rgba(255,255,255,0.35); font-weight: 400; font-size: 1.1rem; }
-                .btn-add { background: var(--primary, #4CAF93); color: #fff; border: none; padding: 0.45rem 1rem; border-radius: var(--radius-sm, 2px); font-size: 0.82rem; font-weight: 600; cursor: pointer; font-family: inherit; }
                 .search-input { width: 100%; max-width: 360px; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.08); border-radius: var(--radius-sm, 2px); padding: 0.5rem 0.75rem; color: #fff; font-size: 0.85rem; outline: none; font-family: inherit; margin-bottom: 1rem; }
                 .search-input:focus { border-color: var(--primary, #4CAF93); }
                 .table-container { background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.06); border-radius: var(--radius-md, 4px); overflow: hidden; }
