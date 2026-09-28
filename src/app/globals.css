@@ -60,7 +60,11 @@
   --transition-base: 0.3s ease;
   --transition-slow: 0.5s ease;
 
-  /* Fonts. Headings share the body face in both languages; the Bodoni Moda
+  /* Fonts. layout.tsx sets --font-body inline on <html> to put the
+     10%-larger Arabic-only face ahead of this one (TJ-057). This line is the
+     fallback if that ever goes missing: unscaled, but still IBM Plex. */
+  --font-body: var(--font-body-base);
+  /* Headings share the body face in both languages; the Bodoni Moda
      this once named never rendered (see layout.tsx) and was removed. (TJ-055) */
   --font-heading: var(--font-body), sans-serif;
 }

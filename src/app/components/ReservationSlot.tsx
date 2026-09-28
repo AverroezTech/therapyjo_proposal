@@ -249,7 +249,7 @@ export default function ReservationSlot({
                 <span className="status-dot" style={{ background: STATUS_COLORS[status] }} />
             )}
             <div className="slot-main">
-                <span className={`slot-name ${isVoided ? "strike" : ""}`}>{patientName}</span>
+                <span className={`slot-name ${isVoided ? "strike" : ""}`} dir="auto">{patientName}</span>
                 <span className="slot-sub">
                     {patientPhone && (
                         <>
@@ -321,9 +321,13 @@ export default function ReservationSlot({
                 .slot-main {
                     display: flex; flex-direction: column; gap: 0.05rem; min-width: 0; flex: 1;
                 }
+                /* dir="auto" on the name: an Arabic name in this LTR card was laid
+                   out left-to-right, so in a narrow column it clipped its FIRST
+                   word. As RTL it clips its last. text-align keeps every name at
+                   the same edge as before. (TJ-057) */
                 .slot-name {
                     font-weight: 700; font-size: 0.8rem; white-space: nowrap;
-                    overflow: hidden; text-overflow: ellipsis;
+                    overflow: hidden; text-overflow: ellipsis; text-align: left;
                 }
                 .slot-name.strike { text-decoration: line-through; }
                 /* The muted lines are MIXED toward the card colour, not faded with
