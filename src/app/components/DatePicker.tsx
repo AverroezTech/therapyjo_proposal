@@ -87,25 +87,29 @@ export default function DatePickerCalendar({ selectedDate, onDateSelect, doctorI
 
             <style jsx>{`
                 .datepicker {
-                    background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.06);
+                    /* Opaque: since TJ-043a this renders in a floating popover over
+                       the schedule, and at 3% white the cards showed through. The
+                       text colours below are tuned for this light surface. (TJ-052) */
+                    background: var(--bg-mist, #eef4f6); border: 1px solid rgba(26,46,53,0.12);
                     border-radius: var(--radius-md, 4px); padding: 0.75rem;
                     min-width: 240px;
+                    box-shadow: 0 8px 32px rgba(0,0,0,0.4);
                 }
                 .dp-header {
                     display: flex; align-items: center; justify-content: space-between;
                     margin-bottom: 0.6rem;
                 }
                 .dp-nav {
-                    background: none; border: none; color: rgba(255,255,255,0.5);
+                    background: none; border: none; color: var(--text-secondary, #4a6670);
                     font-size: 1.2rem; cursor: pointer; padding: 0.2rem 0.5rem;
                     border-radius: 4px;
                 }
-                .dp-nav:hover { background: rgba(255,255,255,0.06); color: #fff; }
-                .dp-month { font-size: 0.85rem; font-weight: 600; color: #fff; }
+                .dp-nav:hover { background: rgba(26,46,53,0.08); color: var(--text-primary, #1a2e35); }
+                .dp-month { font-size: 0.85rem; font-weight: 600; color: var(--text-primary, #1a2e35); }
                 .dp-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 2px; }
                 .dp-dayname {
                     font-size: 0.65rem; text-align: center; padding: 0.3rem 0;
-                    color: rgba(255,255,255,0.3); font-weight: 600; text-transform: uppercase;
+                    color: var(--text-secondary, #4a6670); font-weight: 600; text-transform: uppercase;
                 }
                 .dp-cell {
                     display: flex; flex-direction: column; align-items: center; justify-content: center;
@@ -113,14 +117,14 @@ export default function DatePickerCalendar({ selectedDate, onDateSelect, doctorI
                     cursor: pointer; background: none; transition: all 0.1s;
                 }
                 .dp-cell.empty { cursor: default; }
-                .dp-cell:not(.empty):hover { background: rgba(255,255,255,0.06); }
+                .dp-cell:not(.empty):hover { background: rgba(26,46,53,0.08); }
                 .dp-cell.selected { background: var(--primary, #4CAF93); }
                 .dp-cell.selected .dp-day { color: #fff; font-weight: 700; }
-                .dp-cell.today .dp-day { color: var(--primary, #4CAF93); font-weight: 700; }
+                .dp-cell.today .dp-day { color: var(--primary-dark, #3a8f77); font-weight: 700; }
                 .dp-cell.selected.today .dp-day { color: #fff; }
-                .dp-day { font-size: 0.78rem; color: rgba(255,255,255,0.7); }
+                .dp-day { font-size: 0.78rem; color: var(--text-primary, #1a2e35); }
                 .dp-count {
-                    font-size: 0.55rem; color: var(--primary, #4CAF93);
+                    font-size: 0.55rem; color: var(--primary-dark, #3a8f77);
                     font-weight: 700; margin-top: -1px;
                 }
                 .dp-cell.selected .dp-count { color: rgba(255,255,255,0.85); }
