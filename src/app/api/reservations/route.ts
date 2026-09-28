@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
+import { canViewPatientContact } from "@/lib/permissions";
 import { logPatientActivity } from "@/lib/audit";
 import { checkClinicWindow } from "@/lib/clinicHours";
 
@@ -17,6 +18,9 @@ export async function GET(req: NextRequest) {
     const patientId = searchParams.get("patientId");
     // For DatePicker: get counts for a full month
     const monthStr = searchParams.get("month"); // YYYY-MM format
+    // A doctor's schedule and session history carry the patient's name but
+    // not their numbers. (TJ-054)
+    const contact = canViewPatientContact(session.user);
 
     // Month counts mode: returns { "2026-02-01": 3, "2026-02-02": 1, ... }
     if (monthStr) {
@@ -46,7 +50,7 @@ export async function GET(req: NextRequest) {
         const reservations = await prisma.reservation.findMany({
             where: { patientId: parseInt(patientId, 10) },
             include: {
-                patient: { select: { id: true, name: true, phone1: true, phone2: true } },
+                patient: { select: { id: true, name: true, phone1: contact, phone2: contact } },
                 doctor: { select: { id: true, name: true, color: true } },
             },
             orderBy: { sessionDate: "desc" },
@@ -71,7 +75,7 @@ export async function GET(req: NextRequest) {
     const reservations = await prisma.reservation.findMany({
         where,
         include: {
-            patient: { select: { id: true, name: true, phone1: true, phone2: true } },
+            patient: { select: { id: true, name: true, phone1: contact, phone2: contact } },
             doctor: { select: { id: true, name: true, color: true } },
         },
         orderBy: { sessionTime: "asc" },
