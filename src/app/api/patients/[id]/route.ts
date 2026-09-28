@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
-import { canAccessClinical, canManagePatients } from "@/lib/permissions";
+import { canAccessClinical, canManagePatients, canViewPatientContact } from "@/lib/permissions";
 import { removeUpload } from "@/lib/uploads";
 import { logPatientActivity } from "@/lib/audit";
 
@@ -27,9 +27,12 @@ export async function GET(
     // boolean here, the same idiom `username: isAdmin` already uses in the
     // employee routes. (TJ-023)
     const clinical = canAccessClinical(session.user);
+    // Same idiom for the phones: omitted for a doctor, not refused. (TJ-054)
+    const contact = canViewPatientContact(session.user);
 
     const patient = await prisma.patient.findUnique({
         where: { id: patientId },
+        omit: { phone1: !contact, phone2: !contact },
         include: {
             intake: clinical,
             files: {

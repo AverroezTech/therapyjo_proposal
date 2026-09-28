@@ -69,3 +69,23 @@ export function canManagePatients(
     if (!user) return false;
     return user.role === "ADMIN" || user.role === "SECRETARY";
 }
+
+/**
+ * May this user be sent a patient's phone numbers?
+ *
+ * ADMIN and SECRETARY may; DOCTOR may not. The front desk books, confirms and
+ * chases patients by phone; a doctor treats the patient in the room and does
+ * not need to hold their number. User decision, 2026-09-28.
+ *
+ * Enforced where the data leaves the server, not in the UI, for the same
+ * reason as canAccessClinical: a number that reaches the browser is one
+ * devtools tab away whether or not a screen draws it. A doctor may still
+ * SEARCH by a number they already hold — the match returns the patient's
+ * name, never the number back. (TJ-054)
+ */
+export function canViewPatientContact(
+    user: Session["user"] | undefined | null
+): boolean {
+    if (!user) return false;
+    return user.role === "ADMIN" || user.role === "SECRETARY";
+}
