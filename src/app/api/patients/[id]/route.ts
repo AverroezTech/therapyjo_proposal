@@ -1,14 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
-import { canAccessClinical } from "@/lib/permissions";
+import { canAccessClinical, canManagePatients } from "@/lib/permissions";
 import { removeUpload } from "@/lib/uploads";
 import { logPatientActivity } from "@/lib/audit";
-
-// Staff roles allowed to write a patient record. All three roles that can
-// reach a patient page today — anyone else (should a 4th role ever exist)
-// is refused rather than implicitly allowed. (TJ-024)
-const WRITE_ROLES = ["ADMIN", "DOCTOR", "SECRETARY"];
 
 // GET /api/patients/[id] — single patient with intake + reservations
 export async function GET(
@@ -67,7 +62,9 @@ export async function PUT(
     if (!session) {
         return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
-    if (!WRITE_ROLES.includes(session.user.role)) {
+    // Admin and secretary only; a doctor's writes are the Clinical
+    // Assessment and attaching files. (TJ-054)
+    if (!canManagePatients(session.user)) {
         return NextResponse.json({ error: "Not permitted to edit patients" }, { status: 403 });
     }
 
@@ -134,7 +131,9 @@ export async function PATCH(
     if (!session) {
         return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
-    if (!WRITE_ROLES.includes(session.user.role)) {
+    // Admin and secretary only; a doctor's writes are the Clinical
+    // Assessment and attaching files. (TJ-054)
+    if (!canManagePatients(session.user)) {
         return NextResponse.json({ error: "Not permitted to edit patients" }, { status: 403 });
     }
 

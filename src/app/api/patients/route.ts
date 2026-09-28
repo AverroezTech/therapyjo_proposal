@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
+import { canManagePatients } from "@/lib/permissions";
 import { normalizePhone, phoneKeys } from "@/lib/phone";
 
 // GET /api/patients — list patients with search + pagination
@@ -63,6 +64,11 @@ export async function POST(req: NextRequest) {
     const session = await auth();
     if (!session) {
         return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+    // Registering a patient is front-desk work; doctors treat the patients
+    // the front desk registers. (TJ-054)
+    if (!canManagePatients(session.user)) {
+        return NextResponse.json({ error: "Not permitted to register patients" }, { status: 403 });
     }
 
     const body = await req.json();

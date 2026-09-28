@@ -51,3 +51,21 @@ export function canDeleteReservation(
     if (!user) return false;
     return user.role === "ADMIN" || user.role === "SECRETARY";
 }
+
+/**
+ * May this user change a patient's record — register a new patient, edit
+ * their details (name, phones, photo), archive or restore them, or remove a
+ * file from them?
+ *
+ * ADMIN and SECRETARY may; DOCTOR may not. A doctor's writes to a patient are
+ * the Clinical Assessment (see canAccessClinical) and attaching files, and
+ * nothing else. User decision, 2026-09-28. Like the WRITE_ROLES lists this
+ * replaces, it names the roles that may, so a role added later is refused
+ * until someone decides otherwise. (TJ-054)
+ */
+export function canManagePatients(
+    user: Session["user"] | undefined | null
+): boolean {
+    if (!user) return false;
+    return user.role === "ADMIN" || user.role === "SECRETARY";
+}
