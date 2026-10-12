@@ -122,9 +122,9 @@ Two things that bear repeating here, because this is the file both agents open:
 | TJ-059 | Ten more calendar colours for doctors | REVIEW — passed planner review and QA 2026-10-12; merged into `claude/exciting-einstein-krgpmv` as `aa47fca`; **not merged to `master`: merging deploys to production, awaiting the user** | `feat/more-doctor-colours` |
 | TJ-060 | Sign in with a username in any case | REVIEW — passed planner review and QA 2026-10-12; merged into `claude/exciting-einstein-krgpmv` as `72afb3e`; **not merged to `master`: merging deploys to production, awaiting the user** | `feat/username-any-case` |
 | TJ-061 | The doctor dashboard's Duplicate: broken, and the route behind it lets a doctor book | REVIEW — option A; passed planner review and QA 2026-10-12; merged into `claude/exciting-einstein-krgpmv`; **not merged to `master`: awaiting the user** | `bugfix/doctor-duplicate` |
-| TJ-062 | Limit doctors to their own sessions | SPLIT — passed 2026-10-12, all decisions taken (status blocked too; reading stays; intake shared); see TJ-062a, TJ-062b | — |
-| TJ-062a | Server: a doctor may change only their own sessions | READY — passed 2026-10-12; diff prototyped and runtime-proven (permission matrix); ships with TJ-062b | `feat/doctor-session-ownership` |
-| TJ-062b | Screens: a colleague's session is read-only to a doctor | READY — passed 2026-10-12; diff prototyped and browser-proven; cut from `claude/exciting-einstein-krgpmv` (needs TJ-061); ships with TJ-062a | `feat/doctor-readonly-sessions` |
+| TJ-062 | Limit doctors to their own sessions | SPLIT — **complete**: both halves passed planner review and QA 2026-10-12 and are merged into `claude/exciting-einstein-krgpmv`; **not merged to `master`: awaiting the user** | — |
+| TJ-062a | Server: a doctor may change only their own sessions | REVIEW — passed planner review and QA 2026-10-12; merged into `claude/exciting-einstein-krgpmv` as `3a23dd6`; **not merged to `master`: awaiting the user** | `feat/doctor-session-ownership` |
+| TJ-062b | Screens: a colleague's session is read-only to a doctor | REVIEW — passed planner review and QA 2026-10-12; merged into `claude/exciting-einstein-krgpmv` as `7024348`; **not merged to `master`: awaiting the user** | `feat/doctor-readonly-sessions` |
 
 ---
 
@@ -11195,8 +11195,8 @@ Runtime, against a local database with sessions today for two doctors. The first
 
 ### TJ-062 — Limit doctors to their own sessions
 
-- **Status:** SPLIT. Passed 2026-10-12, with every decision taken. See **TJ-062a** (server) and **TJ-062b** (screens); they touch different files, run in parallel and ship together. Nothing executes against this ID.
-- **Branch:** to be assigned at the split. The UI half edits `src/app/doctor/page.tsx`, so it is cut after TJ-058 and TJ-061.
+- **Status:** SPLIT, **complete**. Passed 2026-10-12, with every decision taken, and split into **TJ-062a** (server) and **TJ-062b** (screens). Both passed planner review and QA on 2026-10-12, tested together, and are merged into `claude/exciting-einstein-krgpmv` as `3a23dd6` and `7024348`. **Not merged to `master`: merging deploys to production, awaiting the user.** Nothing executes against this ID.
+- **Branch:** none of its own. TJ-062a is `feat/doctor-session-ownership` and TJ-062b is `feat/doctor-readonly-sessions`, both cut from `claude/exciting-einstein-krgpmv` at `3baee67`, after TJ-058 and TJ-061.
 - **Why:** User request, 2026-10-12: nothing on the server stops a doctor changing status on, or writing notes for, a colleague's session. TJ-058 made colleagues' cards the first thing a doctor sees.
 
 **Planning pass:** 2026-10-12. Files read:
@@ -11250,7 +11250,7 @@ Measured on `master`, signed in as `Dr.Ahmad`, acting on `dr_sami`'s reservation
 
 ### TJ-062a — Server: a doctor may change only their own sessions
 
-- **Status:** READY. Planning pass run 2026-10-12, with all of TJ-062's decisions taken. The diff was prototyped, gated and runtime-checked. Nothing is committed against this task.
+- **Status:** REVIEW. Passed planner review and QA on 2026-10-12. Task commit `30591ee` on `feat/doctor-session-ownership`, merged into `claude/exciting-einstein-krgpmv` with `--no-ff` as `3a23dd6`. **Not merged to `master`: merging deploys to production, awaiting the user.**
 - **Branch:** `feat/doctor-session-ownership`, cut from `claude/exciting-einstein-krgpmv` at `4651e24`.
 - **Why:** See TJ-062. Measured on `master`: a doctor's status, details and SOAP writes on a colleague's session all return 200. **User decisions, 2026-10-12:**
   - block all of them, status included;
@@ -11464,16 +11464,30 @@ Runtime, against a local database with sessions today for two doctors. Sign in a
 Reset the database afterwards.
 
 **Done when:**
-- [ ] A doctor's status, details and SOAP writes succeed on their own sessions and are refused on anyone else's
-- [ ] Reading stays allowed and the intake stays shared
-- [ ] Admin and secretary behave exactly as before
-- [ ] Only the three files changed; tsc and build pass; lint is 63
+- [x] A doctor's status, details and SOAP writes succeed on their own sessions and are refused on anyone else's
+- [x] Reading stays allowed and the intake stays shared
+- [x] Admin and secretary behave exactly as before
+- [x] Only the three files changed; tsc and build pass; lint is 63
+
+**Review, 2026-10-12.** Executed as `30591ee`.
+- **Planner review:** all three files are byte-identical to the planned diff, re-derived from the tested script. One commit on `3baee67`.
+- **Executor and QA, independently: every Verification bullet passes.** QA also ran each request against a build of `3baee67`, the code before this task.
+  - On a colleague's session, every doctor write QA tried returned 403 "Doctors can only change their own sessions". That covered status (check-in and cancel), injury place, payment type, the two-hour flag, the note and its calendar flag, the next-session note, `isNote`, an empty body, and SOAP. On `3baee67` every one returned 200 and really changed the row. Afterwards the colleague's row and SOAP note were byte-identical in SQL, `updatedAt` included.
+  - Reading a colleague's session and SOAP note returns 200, and the shared intake still saves.
+  - A session whose doctor was hard-deleted is refused to every doctor, the former owner included. Admin still changes it.
+  - Admin and secretary are unchanged. A secretary's SOAP write still gets "Secretaries cannot edit SOAP notes".
+  - `PUT` on a missing id now returns 404 for every role. On `3baee67` it returned 500.
+- **QA's probes:**
+  - Every write to a reservation or SOAP note in `src` that a doctor can reach is now guarded.
+  - A doctor taking a colleague's session by sending their own `doctorId`, or sending a status together with a `doctorId`, is refused.
+  - Ids such as `/2abc`, `/02` and `/%202` resolve to reservation 2 and are refused too, because the check parses the id exactly as the write does.
+  - A non-numeric id such as `/abc` returns 500 for every role, before and after this task. Not a regression; recorded in Notes.
 
 ---
 
 ### TJ-062b — Screens: a colleague's session is read-only to a doctor
 
-- **Status:** READY. Planning pass run 2026-10-12, with all of TJ-062's decisions taken. The diff was prototyped, gated and checked in a browser. Nothing is committed against this task.
+- **Status:** REVIEW. Passed planner review and QA on 2026-10-12. Task commit `faa8935` on `feat/doctor-readonly-sessions`, merged into `claude/exciting-einstein-krgpmv` with `--no-ff` as `7024348`. **Not merged to `master`: merging deploys to production, awaiting the user.**
 - **Branch:** `feat/doctor-readonly-sessions`, cut from `claude/exciting-einstein-krgpmv` at `4651e24`. It must carry TJ-061: the `Calendar`, `ReservationSlot` and doctor-page anchors below are post-TJ-061.
 - **Why:** See TJ-062. **Ships with TJ-062a**, which enforces the same rule on the server. Without this task, a doctor would see buttons on colleagues' sessions that now fail with 403.
 
@@ -11783,11 +11797,27 @@ Runtime, against a local database with sessions today for two doctors. Every bul
 - Take a screenshot of the doctor on a colleague's session.
 
 **Done when:**
-- [ ] A doctor's own cards and sessions are unchanged
-- [ ] A colleague's card has no menu, and a colleague's session opens read-only with a banner naming its doctor
-- [ ] The shared Clinical Assessment stays editable
-- [ ] Admin and secretary are unchanged, including an admin on `/doctor`
-- [ ] Only the four files changed; tsc and build pass; lint is 63
+- [x] A doctor's own cards and sessions are unchanged
+- [x] A colleague's card has no menu, and a colleague's session opens read-only with a banner naming its doctor
+- [x] The shared Clinical Assessment stays editable
+- [x] Admin and secretary are unchanged, including an admin on `/doctor`
+- [x] Only the four files changed; tsc and build pass; lint is 63
+
+**Review, 2026-10-12.** Executed as `faa8935`.
+- **Planner review:** all four files are byte-identical to the planned diff, re-derived from the tested script. One commit on `3baee67`. With TJ-062a merged too, the tree equals the combined prototype, and QA tested exactly that tree.
+- **Executor and QA, independently: every row of the planning pass's table reproduces.**
+  - `/doctor` opens on All Doctors. The doctor's own card has the ⋮ menu; dr_sami's two have none.
+  - The doctor's own session has full controls and no banner.
+  - dr_sami's session shows the "Read only" banner naming dr_sami, 0 status buttons, no Update Session and no Save SOAP Note. Injury Place and all four SOAP fields are read-only. The Clinical Assessment stays editable, and saving it returns 200.
+  - Admin, on `/doctor` and on every session page, keeps every menu and full controls, with no banner. `/admin` and `/secretary` are unchanged.
+  - 0 console errors.
+- **QA's probes:**
+  - **While the signed-in user loads:** with the session response delayed by 3 seconds, nothing was offered (0 menus, 0 status buttons, no banner). An owner never saw the banner, and a colleague never saw a status or save button.
+  - A hard-deleted doctor's session opens read-only to a doctor, and the banner names the snapshot.
+  - The dashboard still filters, date-picks and opens both kinds of session, and a status change on the doctor's own card still works.
+  - The doctor's patient page offers no session-level write, so nothing there now fails.
+  - **Layout:** at 320px the banner fits, and the existing overflow is unchanged from before (70px on the session page, 204px on `/doctor`, TJ-021). 1440 and 2560 have none. Forced RTL mirrors cleanly.
+  - **Cosmetic:** the read-only Injury Place field looks like an editable one, and the banner is the only cue. Recorded in Notes.
 
 ---
 
@@ -11795,6 +11825,8 @@ Runtime, against a local database with sessions today for two doctors. Every bul
 
 Findings reported by the executor, or surfaced during a pass, that fall outside the scope of the task that turned them up. The planner triages these into tasks. **The executor does not write here** — it reports in conversation and the planner records.
 
+- **A non-numeric reservation id returns 500.** `PUT`, `PATCH` and the SOAP `PUT` on `/api/reservations/abc` hand `parseInt`'s `NaN` to Prisma, which throws `PrismaClientValidationError`, for every role. QA measured the same on `3baee67`, before TJ-062, so it is not a regression, and no screen sends such an id. Returning 400 on `isNaN`, as the patient routes already do, would close it. (Found by the TJ-062a executor and confirmed by QA, 2026-10-12.)
+- **On a colleague's session, the read-only Injury Place field looks editable.** It is `readOnly`, so typing does nothing, but it keeps the editable style, and the "Read only" banner is the only cue. A muted style for read-only fields on that page would make it plain. (Found by QA during TJ-062b, 2026-10-12.)
 - **A role change takes effect only at the next sign-in.** The role lives in the JWT, and `auth.ts`'s `jwt` callback re-reads only `status`. QA demoted a signed-in SECRETARY to DOCTOR in the database, and that session could still duplicate (201) until it signed in again. No API can change a role, since neither employee `PUT` reads `role`, so this needs a direct database edit. It applies to every role check in the app. Re-reading `role` alongside `status` in that callback would close it. (Found by QA during TJ-061, 2026-10-12.)
 - **A secretary Duplicate made without a time writes a row whose two columns disagree.** `duplicate/route.ts` falls back to the original's `sessionTime`, which still carries the original *date*, while `sessionDate` is the new day. QA saw `sessionDate` 2026-10-14 with `sessionTime` 2026-10-12 09:00. This is the same class of bug TJ-047a fixed on `PUT`. It belongs with TJ-046, which already owns this route's missing clinic-window check. (Found by QA during TJ-061, 2026-10-12.)
 
