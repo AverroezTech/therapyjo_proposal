@@ -20,7 +20,8 @@ interface Reservation {
 interface CalendarProps {
     reservations: Reservation[];
     onStatusChange: (id: number, status: string) => void;
-    onDuplicate: (id: number) => void;
+    // Optional: passed by admin and secretary only; doctors do not duplicate (TJ-061).
+    onDuplicate?: (id: number) => void;
     onDelete: (id: number) => void;
     onSlotClick: (id: number) => void;
     // Fires when empty grid space is clicked, carrying the hour clicked (0-23).

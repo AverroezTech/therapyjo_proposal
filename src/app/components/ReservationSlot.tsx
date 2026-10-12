@@ -24,7 +24,9 @@ interface ReservationSlotProps {
     showNoteOnCalendar?: boolean;
     isTwoHours?: boolean;
     onStatusChange: (id: number, status: string) => void;
-    onDuplicate: (id: number) => void;
+    // Optional: admin and secretary pass it; the doctor dashboard does not,
+    // so doctors get no Duplicate item. (TJ-061)
+    onDuplicate?: (id: number) => void;
     onDelete: (id: number) => void;
     onClick: (id: number) => void;
     // Optional: the card body now opens the patient's file, so a dashboard that
@@ -189,7 +191,9 @@ export default function ReservationSlot({
     if (onEdit) {
         actions.push({ label: "Edit", icon: "✏️", onClick: () => onEdit(id) });
     }
-    actions.push({ label: "Duplicate", icon: "📋", onClick: () => onDuplicate(id) });
+    if (onDuplicate) {
+        actions.push({ label: "Duplicate", icon: "📋", onClick: () => onDuplicate(id) });
+    }
     const cancellable = ["SCHEDULED", "WAITING", "CHECKED_IN"].includes(status);
     if (cancellable) {
         actions.push({ label: "Cancel", icon: "🚫", onClick: () => onStatusChange(id, "CANCELLED"), danger: true });
