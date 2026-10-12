@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
-import { canAccessClinical, canDeleteReservation, canViewPatientContact } from "@/lib/permissions";
+import { canAccessClinical, canDeleteReservation, canViewPatientContact, canWriteSession } from "@/lib/permissions";
 import { logPatientActivity } from "@/lib/audit";
 import { checkClinicWindow } from "@/lib/clinicHours";
 
@@ -76,6 +76,18 @@ export async function PUT(
 
     const { id } = await params;
     const body = await req.json();
+
+    // A doctor may change only a session booked under them. (TJ-062)
+    const target = await prisma.reservation.findUnique({
+        where: { id: parseInt(id, 10) },
+        select: { doctorId: true },
+    });
+    if (!target) {
+        return NextResponse.json({ error: "Reservation not found" }, { status: 404 });
+    }
+    if (!canWriteSession(session.user, target.doctorId)) {
+        return NextResponse.json({ error: "Doctors can only change their own sessions" }, { status: 403 });
+    }
 
     // Doctors can update everything else about a session (injury place, note,
     // payment) but not when it happens or who it belongs to — only admin and
@@ -185,11 +197,16 @@ export async function PATCH(
 
     const reservation = await prisma.reservation.findUnique({
         where: { id: parseInt(id, 10) },
-        select: { id: true, status: true, patientId: true },
+        select: { id: true, status: true, patientId: true, doctorId: true },
     });
 
     if (!reservation) {
         return NextResponse.json({ error: "Reservation not found" }, { status: 404 });
+    }
+
+    // A doctor may move only a session booked under them. (TJ-062)
+    if (!canWriteSession(session.user, reservation.doctorId)) {
+        return NextResponse.json({ error: "Doctors can only change their own sessions" }, { status: 403 });
     }
 
     const allowedNext = VALID_TRANSITIONS[reservation.status] || [];
