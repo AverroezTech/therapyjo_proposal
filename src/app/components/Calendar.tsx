@@ -20,7 +20,8 @@ interface Reservation {
 interface CalendarProps {
     reservations: Reservation[];
     onStatusChange: (id: number, status: string) => void;
-    onDuplicate: (id: number) => void;
+    // Optional: passed by admin and secretary only; doctors do not duplicate (TJ-061).
+    onDuplicate?: (id: number) => void;
     onDelete: (id: number) => void;
     onSlotClick: (id: number) => void;
     // Fires when empty grid space is clicked, carrying the hour clicked (0-23).
@@ -31,6 +32,9 @@ interface CalendarProps {
     // Optional: passed only by dashboards that have an edit screen (TJ-047b/c).
     onEdit?: (id: number) => void;
     canDelete?: boolean;
+    // When set (the doctor dashboard), only reservations booked under this
+    // doctor offer actions; every other card is read-only. (TJ-062)
+    ownerId?: string;
 }
 
 // Layout constants for the hour-row packing engine.
@@ -170,6 +174,7 @@ export default function Calendar({
     onViewDetails,
     onEdit,
     canDelete = false,
+    ownerId,
 }: CalendarProps) {
     // Measure the pane so a day that will not fit at MIN_COL_WIDTH can be drawn
     // smaller rather than pushed off the right edge. Layout constants are
@@ -327,6 +332,7 @@ export default function Calendar({
                                                     onViewDetails={onViewDetails}
                                                     onEdit={onEdit}
                                                     canDelete={canDelete}
+                                                    readOnly={ownerId !== undefined && r.doctor?.id !== ownerId}
                                                 />
                                             </div>
                                         );

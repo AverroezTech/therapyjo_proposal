@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
+import { findUserIdsByUsername } from "@/lib/username";
 import bcrypt from "bcryptjs";
 
 // GET /api/employees/doctors — list all doctors
@@ -55,8 +56,9 @@ export async function POST(req: NextRequest) {
         );
     }
 
-    // Check if username is taken
-    const existing = await prisma.user.findUnique({ where: { username } });
+    // Taken in any case: sign-in ignores case, so "Dr.Ahmad" beside an
+    // existing "dr.ahmad" would be two accounts behind one login. (TJ-060)
+    const existing = (await findUserIdsByUsername(username)).length > 0;
     if (existing) {
         return NextResponse.json(
             { error: "Username already taken" },

@@ -69,7 +69,7 @@ Two things that bear repeating here, because this is the file both agents open:
 | TJ-017 | Let a proxy fall-through fail cleanly | DONE — task commit `33cb466`, merged to `master` as `68cc31d` with `--no-ff`; runtime-proven against a measured master baseline | `chore/clinic-path-public` |
 | TJ-018 | Document the production environment variables | DONE — task commit `8bb70df`, merged to `master` as `cd3d4cf` with `--no-ff`; all seven deployment variables now documented, `.env` still ignored | `docs/env-example` |
 | TJ-019 | Migrate the `middleware` file convention to `proxy` | BACKLOG — deferred until after the cutover; see `Production_Cutover.md` | — |
-| TJ-020 | `.form-grid` in the employee modals has never fitted 320px | BACKLOG — no planning pass | — |
+| TJ-020 | Employee forms overflow sideways: their inputs never shrink below the browser's default width | REVIEW — passed planner review and QA 2026-10-12; merged into `claude/exciting-einstein-krgpmv` as `ba23881`; **not merged to `master`: merging deploys to production, awaiting the user** | `bugfix/employee-form-overflow` |
 | TJ-021 | Every admin page overflows horizontally at 320px | BACKLOG — no planning pass | — |
 | TJ-022 | Warn before unsaved clinical text is discarded | DONE — merged `6467b39` with `--no-ff`; runtime-proven and visually reviewed | `feat/unsaved-changes-warning` |
 | TJ-023 | Stop serving clinical data to secretaries | DONE — merged `c86985b` with `--no-ff`; runtime-proven and visually reviewed | `feat/clinical-read-boundary` |
@@ -117,7 +117,14 @@ Two things that bear repeating here, because this is the file both agents open:
 | TJ-054d | Server: stop sending phone numbers to doctors (reservation routes and the schedule card) | DONE — task commit `c8ee974`, merged as `d9a53ee` | `feat/doctor-phone-boundary-reservations` |
 | TJ-055 | `--font-heading` has never resolved: headings render in the body font, not Bodoni Moda | DONE — task commit `32bd05c`, merged as `d9a53ee` on 2026-09-28; option 2 (keep the body face), chosen by the planner at the user's request; no visible change measured | `bugfix/heading-font-variable` |
 | TJ-056 | Card text reads blurry on Windows: unhinted font files and faded muted lines | DONE — task commit `2079d78`, merged to `master` as `220ed3e` with `--no-ff` on 2026-09-28 at the user's request; **a look on a Windows machine is owed** | `bugfix/windows-text-rendering` |
-| TJ-057 | Draw Arabic 10% larger; clip long Arabic names at their end | REVIEW — implemented as `e60699e` on `claude/festive-brown-n77ft7`, 2026-09-28; build, local runtime and all-roles check passed; **not merged: merging deploys to production, awaiting the user** | `feat/arabic-size-adjust` |
+| TJ-057 | Draw Arabic 10% larger; clip long Arabic names at their end | DONE — task commit `e60699e`, merged to `master` as `01cfb82` with `--no-ff` on 2026-09-28 at the user's request; **a look on a Windows machine is owed** | `feat/arabic-size-adjust` |
+| TJ-058 | Open the doctor dashboard on All Doctors | REVIEW — passed planner review and QA 2026-10-12; merged into `claude/exciting-einstein-krgpmv` as `031b184`; **not merged to `master`: merging deploys to production, awaiting the user** | `feat/doctor-calendar-all-default` |
+| TJ-059 | Ten more calendar colours for doctors | REVIEW — passed planner review and QA 2026-10-12; merged into `claude/exciting-einstein-krgpmv` as `aa47fca`; **not merged to `master`: merging deploys to production, awaiting the user** | `feat/more-doctor-colours` |
+| TJ-060 | Sign in with a username in any case | REVIEW — passed planner review and QA 2026-10-12; merged into `claude/exciting-einstein-krgpmv` as `72afb3e`; **not merged to `master`: merging deploys to production, awaiting the user** | `feat/username-any-case` |
+| TJ-061 | The doctor dashboard's Duplicate: broken, and the route behind it lets a doctor book | REVIEW — option A; passed planner review and QA 2026-10-12; merged into `claude/exciting-einstein-krgpmv`; **not merged to `master`: awaiting the user** | `bugfix/doctor-duplicate` |
+| TJ-062 | Limit doctors to their own sessions | SPLIT — **complete**: both halves passed planner review and QA 2026-10-12 and are merged into `claude/exciting-einstein-krgpmv`; **not merged to `master`: awaiting the user** | — |
+| TJ-062a | Server: a doctor may change only their own sessions | REVIEW — passed planner review and QA 2026-10-12; merged into `claude/exciting-einstein-krgpmv` as `3a23dd6`; **not merged to `master`: awaiting the user** | `feat/doctor-session-ownership` |
+| TJ-062b | Screens: a colleague's session is read-only to a doctor | REVIEW — passed planner review and QA 2026-10-12; merged into `claude/exciting-einstein-krgpmv` as `7024348`; **not merged to `master`: awaiting the user** | `feat/doctor-readonly-sessions` |
 
 ---
 
@@ -1325,12 +1332,327 @@ The diff was read in full: exactly the six files in Scope, symmetric across the 
 
 ---
 
-### TJ-020 — `.form-grid` in the employee modals has never fitted 320px
+### TJ-020 — Employee forms overflow sideways: their inputs never shrink below the browser's default width
 
-- **Status:** BACKLOG — no planning pass. Do not execute against this ID.
-- **Why:** Confirmed during the TJ-005b2a pass, and previously only a standing planner note. `.form-grid` is declared `grid-template-columns: 1fr 1fr` with **no media query** in either employee modal (`src/app/admin/employees/doctors/page.tsx:688`, `src/app/admin/employees/secretaries/page.tsx:621`). `.modal-card` is `width: 100%; max-width: 560px; padding: 2rem`, so at a 320px viewport each column is roughly 120px — narrower than a `type="time"` input's intrinsic width, and the Working Hours field puts **two** of them plus a "to" separator in one column. The Definition of Done requires 320px not to be broken; this predates the requirement and has never been met.
+- **Status:** REVIEW. Passed planner review and QA on 2026-10-12. Task commit `6a7270e` on `bugfix/employee-form-overflow`, merged into `claude/exciting-einstein-krgpmv` as `ba23881` with `--no-ff`. **Not merged to `master`: merging deploys to production, awaiting the user.**
+- **Branch:** `bugfix/employee-form-overflow`
+- **Why:** The doctor and secretary **edit modals** overflow sideways at every desktop width, not only on phones. Their right-hand column is cut off at the modal's edge: Phone, the second time input, and Repeat Password. The two `/new` pages overflow at tablet and phone widths. Measured on `master`, as `scrollWidth − clientWidth` of the modal card (modals) or of the page (`/new`):
 
-**What its planning pass owes:** whether a single `@media` collapsing the grid to one column is enough, or whether `.hours-row` needs to wrap independently; and whether the same declaration exists in any other modal (the patients and blog screens were not checked).
+  | Surface | 1440 | 1024 | 768 | 600 | 560 | 375 | 320 |
+  |---|---|---|---|---|---|---|---|
+  | Doctor and secretary edit modals | **115** | **115** | **115** | **115** | 0 | 0 | **47** |
+  | Doctor and secretary `/new` pages | 0 | 0 | **177** | 0 | 0 | **5** | **60** |
+
+**Planning pass:** 2026-10-12. Files read:
+- The modal markup and `<style jsx>` of `src/app/admin/employees/doctors/page.tsx` and `src/app/admin/employees/secretaries/page.tsx`.
+- The form markup and styles of `src/app/admin/employees/doctors/new/page.tsx` and `src/app/admin/employees/secretaries/new/page.tsx`.
+- The global `box-sizing` rule in `src/app/globals.css`, and every other `.form-grid` in `src/app`.
+
+Findings:
+- **Corrected: the original Why was stale, and its theory was not the mechanism.** It said `.form-grid` had "no media query". It has had one since `f32d337` ("Make the admin area mobile-responsive"), which collapses the grid to one column at 560px and below. That is why the modal already fits from 375px to 560px.
+- **The mechanism, measured.** Neither the modals' `.form-group input` nor the `/new` pages' `.field input` sets a width, so each input keeps the browser's default intrinsic width: about **314px** for a text input at this font size, and **125px** for a time input. A `1fr` grid track never shrinks below its widest item's minimum, so:
+  - **In the modals**, the Working Hours row (two time inputs and "to") holds its column at 313px. `1fr 1fr` then makes *both* columns 313px, which is 641px inside a 494px modal. That is the 115px overflow at every width above 560px.
+  - **On `/new` at 768px**, the Phone|Email row needs 2 × 314px inside a 460px column.
+  - **On `/new` at 320–375px**, a single 314px input plus the card's padding makes a 364px card.
+- **Three candidates were measured by injecting CSS into the live page:**
+  - **A:** inputs `width: 100%; min-width: 0`, and `minmax(0, 1fr)` tracks. Overflow went to 0 almost everywhere, **but the modal's time inputs shrank to 106px and clipped their value to "09:00 A"** (seen in a screenshot). Rejected.
+  - **B:** A, plus Working Hours and Email spanning both modal columns. Desktop times then show in full at 233px each, but phones still clip, at 109px.
+  - **C: B, plus an hours row that wraps, with a 9.5rem floor for each time input.** This gave **0px overflow on all four surfaces at all seven widths**, and no time input ever went below 152px. On phones the second time input wraps onto its own line. **Chosen.**
+- **Why Email spans too:** if only Working Hours spanned, Email would sit alone next to an empty cell. Emails are also the longest values in the form, so a full-width field suits them.
+- **Checked and unaffected:**
+  - The "Content management" checkbox stays 16px. Its `.grant-row input[type="checkbox"]` rule is more specific than `.form-group input`.
+  - The Documents file input was already full width, 494px before and after.
+- **Other `.form-grid`s:** the only other one is in `src/app/doctor/session/[id]/page.tsx`. That is a page, not an employee form, and it has its own 640px media query. Not measured; not in scope.
+- **Prototyped.** The steps below were applied by script, each anchor matching exactly once.
+  - `tsc` exits 0, `npm run build` exits 0, and `npm run lint` is unchanged at 64. The four files carry only their two existing `<img>` warnings.
+  - On the built app: **0px overflow on all 28 surface × width combinations**, both modals and both `/new` pages at 1440, 1024, 768, 600, 560, 375 and 320px.
+  - Time input widths after the change:
+
+    | | 1440 | 768 | 600 | 375 | 320 |
+    |---|---|---|---|---|---|
+    | Modal | 233 / 233 | 233 / 233 | 233 / 233 | 281 / 301, wrapped | 226 / 246, wrapped |
+    | `/new` | 269 / 269 | 191 / 191 | 156 / 156 | 273 / 293, wrapped | 218 / 238, wrapped |
+
+  - Screenshots at 1440px and 320px show "09:00 AM" and "05:30 PM" in full.
+  - The diff applies cleanly on top of TJ-059, which edits two of the same files in a different place (the `COLORS` block).
+
+**Scope — touch only these:**
+- `src/app/admin/employees/doctors/page.tsx`: the `<style jsx>` rules named below, and the `className` of the Email and Working Hours form groups.
+- `src/app/admin/employees/secretaries/page.tsx`: the same.
+- `src/app/admin/employees/doctors/new/page.tsx`: the `<style jsx>` rules named below.
+- `src/app/admin/employees/secretaries/new/page.tsx`: the same.
+
+**Do not touch:**
+- The `COLORS` blocks, which belong to TJ-059.
+- Any other JSX in these files, and the avatar and colour cards on the `/new` pages.
+- The admin shell, `src/app/admin/layout.tsx`, which belongs to TJ-021.
+- `src/app/doctor/session/[id]/page.tsx`.
+- The modals' width and padding, and the existing 560px and 640px breakpoints, except that their `1fr` becomes `minmax(0, 1fr)`.
+
+**Instructions.** All four files are LF. Every anchor below occurs exactly once in its file (machine-checked 2026-10-12). Fenced blocks show each file's own indentation. The two modal pages take identical edits, and so do the two `/new` pages; each is still listed in full so nothing has to be inferred.
+
+**Step 1.** In `src/app/admin/employees/doctors/page.tsx`, replace:
+```tsx
+        .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-bottom: 1rem; }
+```
+with:
+```tsx
+        /* minmax(0, 1fr), not 1fr: a 1fr track never shrinks below its widest
+           field, and the working-hours row pushed both columns past the modal. (TJ-020) */
+        .form-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1rem; margin-bottom: 1rem; }
+        .form-grid > .wide { grid-column: 1 / -1; }
+```
+
+**Step 2.** In `src/app/admin/employees/doctors/page.tsx`, replace:
+```tsx
+        .form-group input {
+```
+with:
+```tsx
+        .form-group input {
+          width: 100%; min-width: 0;
+```
+
+**Step 3.** In `src/app/admin/employees/doctors/page.tsx`, replace:
+```tsx
+          .form-grid { grid-template-columns: 1fr; }
+```
+with:
+```tsx
+          .form-grid { grid-template-columns: minmax(0, 1fr); }
+```
+
+**Step 4.** In `src/app/admin/employees/doctors/page.tsx`, replace:
+```tsx
+                            <div className="form-group">
+                                <label>Email</label>
+```
+with:
+```tsx
+                            <div className="form-group wide">
+                                <label>Email</label>
+```
+
+**Step 5.** In `src/app/admin/employees/doctors/page.tsx`, replace:
+```tsx
+                            <div className="form-group">
+                                <label>Working Hours</label>
+```
+with:
+```tsx
+                            <div className="form-group wide">
+                                <label>Working Hours</label>
+```
+
+**Step 6.** In `src/app/admin/employees/doctors/page.tsx`, replace:
+```tsx
+        .hours-row { display: flex; align-items: center; gap: 0.5rem; }
+        .hours-row input { flex: 1; min-width: 0; }
+```
+with:
+```tsx
+        .hours-row { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; }
+        /* A time input needs about 125px to show "09:00 AM" and its clock
+           icon (measured). 9.5rem leaves room for that; below it the row
+           wraps rather than clipping the time. (TJ-020) */
+        .hours-row input { flex: 1 1 9.5rem; min-width: 0; }
+```
+
+**Step 7.** In `src/app/admin/employees/secretaries/page.tsx`, replace:
+```tsx
+        .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-bottom: 1rem; }
+```
+with:
+```tsx
+        /* minmax(0, 1fr), not 1fr: a 1fr track never shrinks below its widest
+           field, and the working-hours row pushed both columns past the modal. (TJ-020) */
+        .form-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1rem; margin-bottom: 1rem; }
+        .form-grid > .wide { grid-column: 1 / -1; }
+```
+
+**Step 8.** In `src/app/admin/employees/secretaries/page.tsx`, replace:
+```tsx
+        .form-group input {
+```
+with:
+```tsx
+        .form-group input {
+          width: 100%; min-width: 0;
+```
+
+**Step 9.** In `src/app/admin/employees/secretaries/page.tsx`, replace:
+```tsx
+          .form-grid { grid-template-columns: 1fr; }
+```
+with:
+```tsx
+          .form-grid { grid-template-columns: minmax(0, 1fr); }
+```
+
+**Step 10.** In `src/app/admin/employees/secretaries/page.tsx`, replace:
+```tsx
+                            <div className="form-group">
+                                <label>Email</label>
+```
+with:
+```tsx
+                            <div className="form-group wide">
+                                <label>Email</label>
+```
+
+**Step 11.** In `src/app/admin/employees/secretaries/page.tsx`, replace:
+```tsx
+                            <div className="form-group">
+                                <label>Working Hours</label>
+```
+with:
+```tsx
+                            <div className="form-group wide">
+                                <label>Working Hours</label>
+```
+
+**Step 12.** In `src/app/admin/employees/secretaries/page.tsx`, replace:
+```tsx
+        .hours-row { display: flex; align-items: center; gap: 0.5rem; }
+        .hours-row input { flex: 1; min-width: 0; }
+```
+with:
+```tsx
+        .hours-row { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; }
+        /* A time input needs about 125px to show "09:00 AM" and its clock
+           icon (measured). 9.5rem leaves room for that; below it the row
+           wraps rather than clipping the time. (TJ-020) */
+        .hours-row input { flex: 1 1 9.5rem; min-width: 0; }
+```
+
+**Step 13.** In `src/app/admin/employees/doctors/new/page.tsx`, replace:
+```tsx
+                .field input {
+```
+with:
+```tsx
+                .field input {
+                    width: 100%; min-width: 0;
+```
+
+**Step 14.** In `src/app/admin/employees/doctors/new/page.tsx`, replace:
+```tsx
+                .field-row { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
+```
+with:
+```tsx
+                .field-row { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1rem; }
+```
+
+**Step 15.** In `src/app/admin/employees/doctors/new/page.tsx`, replace:
+```tsx
+                    .field-row { grid-template-columns: 1fr; }
+```
+with:
+```tsx
+                    .field-row { grid-template-columns: minmax(0, 1fr); }
+```
+
+**Step 16.** In `src/app/admin/employees/doctors/new/page.tsx`, replace:
+```tsx
+                .hours-row { display: flex; align-items: center; gap: 0.5rem; }
+                .hours-row input { flex: 1; min-width: 0; }
+```
+with:
+```tsx
+                .hours-row { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; }
+                /* A time input needs about 125px to show "09:00 AM" and its clock
+                   icon (measured). 9.5rem leaves room for that; below it the row
+                   wraps rather than clipping the time. (TJ-020) */
+                .hours-row input { flex: 1 1 9.5rem; min-width: 0; }
+```
+
+**Step 17.** In `src/app/admin/employees/secretaries/new/page.tsx`, replace:
+```tsx
+                .field input {
+```
+with:
+```tsx
+                .field input {
+                    width: 100%; min-width: 0;
+```
+
+**Step 18.** In `src/app/admin/employees/secretaries/new/page.tsx`, replace:
+```tsx
+                .field-row { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
+```
+with:
+```tsx
+                .field-row { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1rem; }
+```
+
+**Step 19.** In `src/app/admin/employees/secretaries/new/page.tsx`, replace:
+```tsx
+                    .field-row { grid-template-columns: 1fr; }
+```
+with:
+```tsx
+                    .field-row { grid-template-columns: minmax(0, 1fr); }
+```
+
+**Step 20.** In `src/app/admin/employees/secretaries/new/page.tsx`, replace:
+```tsx
+                .hours-row { display: flex; align-items: center; gap: 0.5rem; }
+                .hours-row input { flex: 1; min-width: 0; }
+```
+with:
+```tsx
+                .hours-row { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; }
+                /* A time input needs about 125px to show "09:00 AM" and its clock
+                   icon (measured). 9.5rem leaves room for that; below it the row
+                   wraps rather than clipping the time. (TJ-020) */
+                .hours-row input { flex: 1 1 9.5rem; min-width: 0; }
+```
+
+**Verification:**
+
+Static:
+- `npx tsc --noEmit` exits 0, and `npm run build` exits 0.
+- `npm run lint` reports `64 problems (50 errors, 14 warnings)`, unchanged.
+- In **each modal page**:
+  - `grep -c 'className="form-group wide"'` returns `2`.
+  - `grep -c 'minmax(0, 1fr)'` returns `3` (the comment, the rule and the media query).
+- In **each `/new` page**, `grep -c 'minmax(0, 1fr)'` returns `2`.
+- In **all four files**:
+  - `grep -c 'flex: 1 1 9.5rem'` returns `1`.
+  - `grep -c 'width: 100%; min-width: 0;'` returns `1`.
+  - `grep -c 'grid-template-columns: 1fr 1fr'` returns `0`.
+- `git diff --stat master` lists exactly the four files: 42 insertions, 20 deletions.
+
+Runtime, signed in as admin against a local database. Every bullet but the last is read-only.
+- Overflow is **0px** at 1440, 1024, 768, 600, 560, 375 and 320px on all four surfaces:
+  - the doctor edit modal and the secretary edit modal, measured on `.modal-card`;
+  - `/admin/employees/doctors/new` and `/admin/employees/secretaries/new`, measured on the page.
+- No `type="time"` input is narrower than 152px at any of those widths.
+- The hours row wraps at 375px and 320px, and stays on one line from 560px up.
+- In both modals, Email and Working Hours span the full grid width.
+- The "Content management" checkbox is 16px wide.
+- With the time inputs set to 09:00 and 17:30, a screenshot at 1440px and at 320px shows "09:00 AM" and "05:30 PM" unclipped.
+- **Write:** in the doctor edit modal and in the secretary edit modal, set working hours to 09:00–17:30 and save. The table's working-hours column shows the new value, so the change is purely visual.
+
+**Done when:**
+- [x] Neither edit modal nor either `/new` page overflows sideways at any of the seven widths
+- [x] Times are never clipped; on phones the hours row wraps instead
+- [x] The forms still save
+- [x] Only the four files changed; tsc and build pass; lint is 64
+
+**Review, 2026-10-12.** Executed as `6a7270e` right after TJ-058/059/060, as the user asked. QA then checked it on all four branches merged together, against a "before" build of the same tree.
+- **Planner review:** all four files are byte-identical to the prototype. One commit on `master`, Scope only.
+- **Executor and QA, independently: every Verification bullet passes.**
+  - Overflow is 0px at all 28 surface × width combinations. QA's "before" numbers reproduce the master table exactly.
+  - The narrowest time input is 156px. The row wraps only at 375px and 320px.
+  - Both write paths save.
+- **QA's extra widths and probes:**
+  - At 2560, 700, 640 and 480px, overflow is 0. That includes `/new` at 700px, which was 245px before.
+  - A 124-character legacy-hours hint, very long unbroken emails and names, a 150% default font size, and the hard-delete confirm input all fit without overflow.
+  - On `/new` at desktop widths, the Personal Information card had been overflowing *internally* by 54px (the Email input stuck out of the card). That was fixed as a side effect.
+  - The list pages are box-for-box identical, and TJ-059's swatch layout is unchanged.
+- **Cosmetic, by design:** Email and Working Hours now take a full row each, so the edit modals are about 87px taller. In a window about 900px tall, the secretary modal now scrolls by 3px (811px of content in an 808px box); Save stays reachable.
 
 ---
 
@@ -10177,7 +10499,7 @@ Option 1 remains available later as a deliberate redesign.
 
 ### TJ-057 — Draw Arabic 10% larger; clip long Arabic names at their end
 
-- **Status:** REVIEW — implemented as `e60699e` on `claude/festive-brown-n77ft7`, 2026-09-28. **Not merged:** merging to `master` deploys to production, so the merge waits on the user.
+- **Status:** DONE — task commit `e60699e`, merged to `master` as `01cfb82` with `--no-ff` on 2026-09-28 at the user's request. **Owed:** a look at the live site and dashboard on a Windows machine.
 - **Branch:** `feat/arabic-size-adjust`
 - **Why:** User request, 2026-09-28, taking up the option offered in TJ-056. IBM Plex sets its Arabic small for its size: the same name is 137px where Noto Kufi drew 154px, which costs legibility on 11–13px schedule cards.
 
@@ -10211,9 +10533,1339 @@ Option 1 remains available later as a deliberate redesign.
 
 ---
 
+### TJ-058 — Open the doctor dashboard on All Doctors
+
+- **Status:** REVIEW. Passed planner review and QA on 2026-10-12. Task commit `455f662` on `feat/doctor-calendar-all-default`, merged into `claude/exciting-einstein-krgpmv` as `031b184` with `--no-ff`. **not merged to `master`: merging deploys to production, awaiting the user**.
+- **Branch:** `feat/doctor-calendar-all-default`
+- **Why:** User request, 2026-10-12: the calendar a doctor sees by default should be the all-doctors calendar, not the doctor's own. Today `/doctor` opens filtered to the signed-in doctor, and "All Doctors" is the second option in the select. Admin and secretary already open on "All Doctors" (`useState("all")` in `admin/page.tsx` and `secretary/page.tsx`). This brings the third dashboard in line.
+
+**Planning pass:** 2026-10-12. Read `src/app/doctor/page.tsx` in full and `src/app/doctor/layout.tsx`. Read the filter state and select of `src/app/admin/page.tsx` and `src/app/secretary/page.tsx`. Read `src/app/components/DatePickerPopover.tsx`, `src/app/components/DatePicker.tsx` and the props of `src/app/components/Calendar.tsx`. On the server, read the `GET` of `src/app/api/reservations/route.ts`, plus `src/app/api/reservations/[id]/route.ts`, `src/app/api/reservations/[id]/duplicate/route.ts` and `src/lib/permissions.ts`.
+- **Confirmed: the default is one initial value and one effect.** `doctorFilter` starts as `""`. An effect copies the doctor's id into it once the session loads. `fetchReservations` returns early while the filter is empty, which is all that guard is for. Nothing else depends on the own-schedule default.
+- **Confirmed: `"all"` is already handled everywhere it goes.** The page leaves out `doctorId` when the filter is `"all"`. The API's day view ignores `doctorId=all`. `DatePicker` drops the parameter for `"all"`, so the month dots count the whole clinic, as they do on admin and secretary.
+- **Confirmed: nothing a doctor may do changes.** The API applies the phone boundary (TJ-054) by role, whatever the filter. `canDeleteReservation` still refuses doctors. Every action on a colleague's card is already reachable through the existing "All Doctors" option. This task changes which view is on screen first, not what a doctor is allowed to do. The ownership question this raises is recorded under Notes for the planner.
+- **Corrected:** the comment being replaced cites `(TJ-024)`. In this file TJ-024 is "The session page claims 'Saved!' on a failed request", so the citation is one of the contested ones TJ-026 exists to reconcile. The new comment cites TJ-058.
+- **Decided here, so the executor has nothing to choose:**
+  - The page's `<h1>My Schedule</h1>` and the nav link with the same name stay as they are. They name the doctor's page, not the filter, and the select already says "All Doctors".
+  - "All Doctors" moves above "My Schedule" in the select, matching the other two dashboards.
+- **Found, out of scope:** Duplicate on this page has never worked. It posts `{ date, time }`, the route requires `sessionDate`, and the page never reads the 400. Recorded under Notes for the planner and **not** fixed here.
+- **Prototyped:** the three steps below were applied by script, with each anchor asserted to match exactly once.
+  - `tsc` exits 0 and `npm run build` exits 0.
+  - `npm run lint` drops from **64 to 63** (49 errors, 14 warnings). Removing the effect clears the `react-hooks/set-state-in-effect` error at `doctor/page.tsx:49`.
+  - In Chromium, against a local database with two doctors and three sessions today (one of them the signed-in doctor's), `/doctor` opened with the select on "All Doctors", the first option, and showed "3 sessions".
+  - The first `/api/reservations?` request was `?date=2026-10-12`, with no `doctorId`. Choosing "My Schedule" narrowed the view to "1 session".
+
+**Scope — touch only these:**
+- `src/app/doctor/page.tsx`
+
+**Do not touch:** these all stay as they are:
+- `src/app/doctor/layout.tsx` and the page's `<h1>` (decided above).
+- The Duplicate modal and `confirmDuplicate`. They are broken, but filed separately.
+- `admin/page.tsx`, `secretary/page.tsx`, `Calendar.tsx`, `DatePicker*.tsx` and every API route.
+- The `useEffect` import, which the two data-loading effects still use.
+
+**Instructions.** The file is LF. Each anchor below occurs exactly once (machine-checked 2026-10-12), and the fenced blocks show the file's own indentation.
+
+**Step 1.** Replace:
+```tsx
+    // Defaults to "my schedule only" — the toggle below lets a doctor opt
+    // into seeing the whole clinic's schedule, same as admin/secretary. (TJ-024)
+    const [doctorFilter, setDoctorFilter] = useState("");
+    useEffect(() => { if (doctorId) setDoctorFilter(doctorId); }, [doctorId]);
+```
+with:
+```tsx
+    // Opens on the whole clinic's schedule, the same as admin and secretary.
+    // The select below narrows it to the doctor's own, or to one colleague's.
+    // (TJ-058)
+    const [doctorFilter, setDoctorFilter] = useState("all");
+```
+
+**Step 2.** Delete the guard that only waited for the session. Replace:
+```tsx
+    const fetchReservations = useCallback(async () => {
+        if (!doctorFilter) return;
+        setLoading(true);
+```
+with:
+```tsx
+    const fetchReservations = useCallback(async () => {
+        setLoading(true);
+```
+
+**Step 3.** Swap the select's first two options. Replace:
+```tsx
+                    {doctorId && <option value={doctorId}>My Schedule</option>}
+                    <option value="all">All Doctors</option>
+```
+with:
+```tsx
+                    <option value="all">All Doctors</option>
+                    {doctorId && <option value={doctorId}>My Schedule</option>}
+```
+
+**Verification:**
+
+Static:
+- `npx tsc --noEmit` exits 0, and `npm run build` exits 0.
+- `npm run lint` reports `63 problems (49 errors, 14 warnings)`, down from 64. Measure in a checkout with no nested worktrees (TJ-050).
+- `grep -c 'useState("all")' src/app/doctor/page.tsx` returns `1`.
+- `grep -c 'setDoctorFilter(doctorId)' src/app/doctor/page.tsx` returns `0`.
+- `grep -c 'if (!doctorFilter) return;' src/app/doctor/page.tsx` returns `0`.
+- `git diff --stat master` lists only `src/app/doctor/page.tsx`.
+
+Runtime, signed in as a doctor, against a database with sessions today for at least two doctors. All of these are read-only:
+- `/doctor` opens with the select reading "All Doctors", and it is the first option. "My Schedule" is second, then the other doctors.
+- The session count equals the clinic-wide total for the day.
+- The first `/api/reservations?` request has no `doctorId` parameter.
+- Choosing "My Schedule" narrows the view to the doctor's own sessions. Choosing "All Doctors" again restores the full day.
+- The date picker's month dots count every doctor's sessions.
+- The `/api/reservations?date=…` response still carries no `phone1` or `phone2` for a doctor (TJ-054).
+- Admin and secretary dashboards still open on "All Doctors". Their files are untouched, so this is a sanity look.
+
+**Done when:**
+- [x] A doctor's dashboard opens on the whole clinic's schedule
+- [x] "My Schedule" and each colleague can still be chosen
+- [x] Only `src/app/doctor/page.tsx` changed
+- [x] tsc and build pass; lint is 63
+
+**Review, 2026-10-12.** Executed as `455f662` on `feat/doctor-calendar-all-default` by one of three executors running in parallel, then checked by an independent QA agent on all three branches merged together, the combination that will ship.
+- **Planner review:** `src/app/doctor/page.tsx` is byte-identical to the prototype the pass measured. The branch is one commit on `master`, Scope only.
+- **Executor and QA, independently: every Verification bullet passes.**
+  - `tsc` exits 0, build exits 0, lint is 63.
+  - `/doctor` opens on All Doctors with "3 sessions", and the first fetch carries no `doctorId`.
+  - The month dots count the whole clinic (`12:3`), and "My Schedule" narrows them to `12:1`.
+  - A doctor receives no phone fields. Admin and secretary are unchanged.
+  - QA also delayed the session by 3 seconds: no request ever went out with an empty `doctorId`.
+- **Visual review (QA):** `/doctor`, `/admin` and `/secretary` at 1440, 320 and 2560px showed no console errors and no broken images. `/doctor` overflows by 204px at 320px, identically with either filter selected, so the cause is not this change; see Notes.
+
+---
+
+### TJ-059 — Ten more calendar colours for doctors
+
+- **Status:** REVIEW. Passed planner review and QA on 2026-10-12. Task commit `34270bf` on `feat/more-doctor-colours`, merged into `claude/exciting-einstein-krgpmv` as `aa47fca` with `--no-ff`. **not merged to `master`: merging deploys to production, awaiting the user**.
+- **Branch:** `feat/more-doctor-colours`
+- **Why:** User request, 2026-10-12: "add more color options to assign to doctors, add about 10 more." There are 12 colours, and TJ-009d made each one exclusive to a single ACTIVE doctor, so the 13th active doctor already has to share one ("Every colour is in use — this one will be shared"). Ten more makes 22.
+
+**Planning pass:** 2026-10-12. Files read:
+- `src/app/admin/employees/doctors/page.tsx`: `COLORS`, `takenColors`, `paletteExhausted`, the edit modal's picker and its CSS.
+- `src/app/admin/employees/doctors/new/page.tsx`: `COLORS`, TJ-009h's first-free default, the picker and its CSS.
+- The colour handling in `src/app/api/employees/doctors/route.ts` and `.../doctors/[id]/route.ts`.
+- `src/app/components/ReservationSlot.tsx`: `readableTextColor`, `STATUS_COLORS`, the checked-out opacity.
+- The `User.color` and `Reservation.doctorColorSnapshot` columns in `prisma/schema.prisma`, and `prisma/seed.ts`.
+
+Findings:
+- **Confirmed: the palette is two identical literal arrays and nothing else.** A `diff` of the two `COLORS` blocks is empty, and no other file lists colours. The server keeps no whitelist. It only refuses a colour that another ACTIVE doctor holds, by exact string. The schema stores any string. Every consumer treats the value as opaque: the calendar card, the snapshot and the table dot. Adding values needs no change to the server, the schema or the data.
+- **Confirmed: the picker logic scales on its own.** `paletteExhausted` and the "every colour is in use" fallbacks compare against `COLORS.length`. TJ-009h's default takes the first free colour in array order. The new values are **appended**, so:
+  - the first 12 keep their positions;
+  - `COLORS[0]` stays `#6ee7b7`;
+  - every doctor's saved colour still matches a swatch, which the edit modal needs to show it selected.
+- **How the ten were chosen.** A card is filled with the doctor's colour, and `readableTextColor` gives it either white or `#1a2e35` text, whichever contrasts more. Candidates were Tailwind's 200–500 shades, the family the existing 12 come from (all 300/400). A candidate had to pass three tests:
+  - text contrast of at least 4.5:1 under that rule (the existing palette's floor is 5.11);
+  - contrast against the dashboard background of at least 3:1;
+  - CIELAB chroma of at least 35, so it reads as a colour.
+
+  Greys were excluded. A grey card reads as "inactive", it collapses into the background at the checked-out 50% opacity, and `#666` is already the deleted-doctor fallback. From what was left, each next pick was the candidate farthest, by CIEDE2000, from everything already in the palette:
+
+  | Added, in array order | Tailwind | Card text | Text contrast | Nearest colour, ΔE₀₀ |
+  |---|---|---|---|---|
+  | `#fda4af` | rose-300 | dark | 7.47 | 10.5 (pink-300) |
+  | `#fdba74` | orange-300 | dark | 8.38 | 10.8 (orange-400) |
+  | `#fef08a` | yellow-200 | dark | 12.14 | 11.3 (lime-200) |
+  | `#d9f99d` | lime-200 | dark | 12.10 | 11.3 (lime-400) |
+  | `#a3e635` | lime-400 | dark | 9.37 | 11.3 (lime-200) |
+  | `#14b8a6` | teal-500 | dark | 5.68 | 12.3 (emerald-400) |
+  | `#67e8f9` | cyan-300 | dark | 9.75 | 15.9 (sky-400) |
+  | `#c4b5fd` | violet-300 | dark | 7.65 | 11.0 (fuchsia-300) |
+  | `#f0abfc` | fuchsia-300 | dark | 8.03 | 9.8 (pink-300) |
+  | `#f9a8d4` | pink-300 | dark | 7.79 | 9.8 (fuchsia-300) |
+
+  Every new colour sits **at least ΔE₀₀ 9.8** from its nearest neighbour in the 22. That is wider than the existing palette's own closest pairs: amber-400/yellow-400 at 5.1, violet-400/purple-400 at 5.5, emerald-300/emerald-400 at 6.3. None of the ten is a status-dot colour.
+- **Why ten and not twelve:** twelve would fill the 4-column grid evenly, but the 11th and 12th candidates (green-500 and amber-500) land within ΔE₀₀ 9.4–9.6 of existing colours. The user asked for "about 10", and ten is where the measurement is cleanest.
+- **Prototyped:** the steps below were applied by script, with each anchor asserted to match exactly once.
+  - `tsc` exits 0 and `npm run build` exits 0. Lint is unchanged at 64. The one existing warning in `new/page.tsx` (`@next/next/no-img-element`) moves from line 133 to line 138.
+  - In Chromium against a local database, `/admin/employees/doctors/new` drew **22 swatches in 6 rows of 4** at both 1440px and 320px. The colour card did not overflow.
+  - With `#6ee7b7` held by a doctor, the new-doctor default moved to `#93c5fd`, so TJ-009h still holds.
+  - The edit modal drew **22 swatches in 2 rows of 12** at 1440px, and 4 rows of 6 at 320px. The doctor's saved colour was selected, and the colour another doctor held was disabled.
+  - A reservation card for a doctor holding the new `#14b8a6` drew its text in `rgb(26, 46, 53)`.
+  - The edit modal does overflow sideways, by 115px at 1440px. The cause is the working-hours row, not the picker; see Notes.
+
+**Scope — touch only these:**
+- `src/app/admin/employees/doctors/page.tsx` (the `COLORS` block only)
+- `src/app/admin/employees/doctors/new/page.tsx` (the `COLORS` block only)
+
+**Do not touch:**
+- The first twelve values and their order. Saved colours and the `COLORS[0]` default depend on both.
+- The swatch CSS in both files. It was measured above and fits as is.
+- The server routes: there is no whitelist to update.
+- `ReservationSlot.tsx` (`readableTextColor`, `STATUS_COLORS`).
+- The schema and the seed.
+
+**Instructions.** Both files are LF. The anchor below occurs exactly once in each file (machine-checked 2026-10-12).
+
+**Step 1.** In `src/app/admin/employees/doctors/page.tsx`, replace:
+```tsx
+const COLORS = [
+    "#6ee7b7", "#93c5fd", "#fbbf24", "#f87171",
+    "#a78bfa", "#fb923c", "#34d399", "#60a5fa",
+    "#f472b6", "#38bdf8", "#facc15", "#c084fc",
+];
+```
+with:
+```tsx
+// The same list, in the same order, as admin/employees/doctors/new/page.tsx — keep the two identical.
+// The ten after the first twelve were added by TJ-059.
+const COLORS = [
+    "#6ee7b7", "#93c5fd", "#fbbf24", "#f87171",
+    "#a78bfa", "#fb923c", "#34d399", "#60a5fa",
+    "#f472b6", "#38bdf8", "#facc15", "#c084fc",
+    "#fda4af", "#fdba74", "#fef08a", "#d9f99d",
+    "#a3e635", "#14b8a6", "#67e8f9", "#c4b5fd",
+    "#f0abfc", "#f9a8d4",
+];
+```
+
+**Step 2.** In `src/app/admin/employees/doctors/new/page.tsx`, replace the same anchor with the same block. Only the first comment line differs, because it names the other file:
+```tsx
+// The same list, in the same order, as admin/employees/doctors/page.tsx — keep the two identical.
+```
+
+**Verification:**
+
+Static:
+- `npx tsc --noEmit` exits 0, and `npm run build` exits 0.
+- `npm run lint` reports `64 problems (50 errors, 14 warnings)`, unchanged.
+- This prints nothing: `diff <(sed -n '/^const COLORS = \[/,/^\];/p' src/app/admin/employees/doctors/new/page.tsx) <(sed -n '/^const COLORS = \[/,/^\];/p' src/app/admin/employees/doctors/page.tsx)`
+- For each file, `sed -n '/^const COLORS = \[/,/^\];/p' <file> | grep -o '"#[0-9a-f]\{6\}"' | wc -l` returns `22`.
+- The same pipeline ending in `sort | uniq -d | wc -l` instead returns `0`.
+- `git diff --stat master` lists exactly the two files.
+
+Runtime, against a local database. Every bullet but the last is read-only.
+- `/admin/employees/doctors/new` at 1440px and at 320px:
+  - It draws 22 `.color-swatch` elements across 6 distinct `offsetTop` values. Count rows by `offsetTop`, not `getBoundingClientRect`: the selected swatch is `scale(1.12)` and reads as an extra row.
+  - `.color-card` has `scrollWidth <= clientWidth`.
+- With `#6ee7b7` held by an ACTIVE doctor, the new-doctor form's selected swatch is `#93c5fd` (TJ-009h).
+- The edit modal on `/admin/employees/doctors` draws 22 swatches, with the doctor's own colour selected and other ACTIVE doctors' colours disabled.
+  - `.color-picker` has `scrollWidth <= clientWidth`.
+  - The modal's own sideways overflow already exists, from the working-hours row. Do not fail the task on it.
+- **Write:** give a doctor one of the new colours and save.
+  - That doctor's cards on `/admin` draw in it, with text `rgb(26, 46, 53)`.
+  - A second doctor offered the same colour gets a 409, "That colour is already used by …".
+
+**Done when:**
+- [x] Both pickers offer 22 colours, the first twelve unchanged and in order
+- [x] The two arrays are identical
+- [x] A new colour can be assigned, draws legibly on a card, and stays exclusive
+- [x] tsc and build pass; lint is 64
+
+**Review, 2026-10-12.** Executed as `34270bf` on `feat/more-doctor-colours` by one of three executors running in parallel, then checked by an independent QA agent on all three branches merged together, the combination that will ship.
+- **Planner review:** both files are byte-identical to the prototype.
+- **Executor and QA, independently: every Verification bullet passes.**
+  - 22 swatches: 6 rows of 4 on `/new`; 2 rows of 12 in the modal, or 4 rows of 6 at 320px.
+  - The default is `#93c5fd` while `#6ee7b7` and `#fbbf24` are held.
+  - A doctor given `#14b8a6` draws `rgb(20, 184, 166)` cards with `rgb(26, 46, 53)` text, on `/admin` and on `/doctor`.
+  - A second doctor is refused the same colour with a 409, by `PUT` and by `POST`.
+- **QA's extra checks:**
+  - It recomputed the ten contrasts with the app's own formula; they match the table.
+  - Palette exhaustion scales: with 21 colours held, the default is the one free colour; with 22 held, the "every colour is in use" hint shows.
+
+---
+
+### TJ-060 — Sign in with a username in any case
+
+- **Status:** REVIEW. Passed planner review and QA on 2026-10-12. Task commit `61b10e3` on `feat/username-any-case`, merged into `claude/exciting-einstein-krgpmv` as `72afb3e` with `--no-ff`. **not merged to `master`: merging deploys to production, awaiting the user**.
+- **Branch:** `feat/username-any-case`
+- **Why:** User request, 2026-10-12: "make the username not case sensitive at sign in." `authorize()` finds the account with `prisma.user.findUnique({ where: { username } })`, which is an exact, case-sensitive match. So `dr.ahmad` typed for an account stored as `Dr.Ahmad` is refused as a wrong password. The usual cause is a phone capitalising the first letter. Once this lands, a username signs in in any case, and the password check stays exactly as strict as it is.
+
+**Planning pass:** 2026-10-12. Files read:
+- `src/lib/auth.ts` in full, `src/lib/auth.config.ts`, the imports of `src/middleware.ts`, and `src/lib/prisma.ts`.
+- The `User` model in `prisma/schema.prisma`, and `prisma/seed.ts`.
+- The `POST` and `PUT` handlers of `src/app/api/employees/doctors/route.ts`, `.../doctors/[id]/route.ts`, `.../secretaries/route.ts` and `.../secretaries/[id]/route.ts`.
+- The username fields of the four employee pages, and `src/app/login/page.tsx`.
+
+Findings:
+- **Confirmed: usernames are written in two places only, the two `POST` routes.** Both `PUT` handlers destructure the body without `username`, so a username cannot change after creation. The edit modals hide the field outside the Add mode nobody can reach. Each `POST` guards with an exact `findUnique` and answers 409 "Username already taken". The seed creates the first admin from `ADMIN_USERNAME`.
+- **Confirmed: `username` is `@unique` and case-sensitive.** It is a Postgres `text` column, with no `citext` and no functional index. Two accounts that differ only by case can exist today, so a case-blind lookup can return more than one row. The design below says what happens then.
+- **Corrected, by measurement: the obvious fix turns `%` into a wildcard at the login box.** Prisma's `equals` with `mode: "insensitive"` was run against a local Postgres 16 with Prisma 7.4.1, with query logging on. It compiles to `WHERE "username" ILIKE $1` and **escapes nothing**:
+  - Input `fif%` matched the account `fifty%`.
+  - Input `%` matched **every** account.
+  - Inside `authorize()`, `%` would therefore try the password against whichever account the database returned first. Every wrong guess would add to a random colleague's lockout counter.
+  - It also fails the other way. `\` is `ILIKE`'s escape character, so an account whose username contains one could never sign in.
+  - Filtering the `ILIKE` rows in JavaScript fixes the wildcard but not the backslash.
+- **Chosen instead: `SELECT id FROM "User" WHERE lower(username) = lower(${input})`.** It goes through Prisma's tagged `$queryRaw`, in one small helper shared by all three call sites.
+  - Run against the same inputs, it gives the exact answer every time, backslash included.
+  - The tag binds the input as `$1`. `x' OR '1'='1` and `'; DROP TABLE "User"; --` both returned 0 rows, and the query log showed `lower($1)` with the text passed as a parameter.
+  - The table is `"User"`, since the schema has no `@@map`.
+  - This is the repo's first raw query, which is why the helper's comment explains the choice.
+- **Decided: a case collision never guesses.**
+  - When exactly one account matches ignoring case, it signs in.
+  - When several match, only the exact spelling signs in, which is exactly how those accounts behave today.
+  - No new collisions can be created: both `POST` routes refuse a username that matches an existing one in any case, across roles.
+- **Left out on purpose:**
+  - Trimming whitespace: `"dr.ahmad "` is still refused, as today.
+  - `autoCapitalize="none"` on the login input.
+  - Rewriting stored usernames to lower case, which would need a write to production rows and could collide on the unique index.
+  - The seed's exact `findUnique`, which an operator runs once.
+- **Prototyped and runtime-proven.** In a throwaway worktree, `tsc` exits 0 and `npm run build` exits 0. Lint is unchanged at 64: the new file and the three edited ones have no findings.
+
+  The test ran against a local Postgres seeded with `Admin`, `Dr.Ahmad`, `dr_sami` and a deliberate collision pair, `secA` / `SECA`. Sign-in went through the real `POST /api/auth/callback/credentials`, and the result was read back from `/api/auth/session`:
+
+  | Typed | Password | Signed in as |
+  |---|---|---|
+  | `Dr.Ahmad` | right | Dr.Ahmad (the exact-case control) |
+  | `dr.ahmad` | right | Dr.Ahmad |
+  | `DR.AHMAD` | right | Dr.Ahmad |
+  | `dr_sami` | right | dr_sami |
+  | `DR_SAMI` | right | dr_sami |
+  | `dr.ahmad` | wrong | refused |
+  | `%` | Dr.Ahmad's | refused |
+  | `%` | wrong | refused |
+  | `dr%` | Dr.Ahmad's | refused |
+  | `secA` | secA's | secA |
+  | `SECA` | SECA's | SECA |
+  | `seca` | secA's | refused (collision, neither spelling exact) |
+  | `Seca` | SECA's | refused (collision, neither spelling exact) |
+  | `dr.ahmad ` (trailing space) | right | refused (not trimmed, as today) |
+
+  Failed-attempt counters afterwards: `Dr.Ahmad=1`, from the one wrong password, on the right account. Every other account was at `0`, so **the two `%` attempts moved no one's counter.**
+
+  Creating accounts as `admin` (itself signed in in lower case):
+
+  | Route | Username | Result |
+  |---|---|---|
+  | `POST /api/employees/doctors` | `DR.AHMAD` | 409 "Username already taken" |
+  | `POST /api/employees/secretaries` | `dr.ahmad` | 409 (across roles) |
+  | `POST /api/employees/secretaries` | `seca` | 409 |
+  | `POST /api/employees/doctors` | `Dr.Ahmad` | 409 (exact duplicate, as today) |
+  | `POST /api/employees/doctors` | `new_doc%` | 201 |
+  | `POST /api/employees/doctors` | `NEW_DOC%` | 409 |
+
+  `New_Doc%` then signed in as the account created as `new_doc%`.
+- **A harness trap, recorded so the executor does not chase it.** `src/lib/prisma.ts` always connects with SSL. A local Postgres therefore has to run with `ssl=on`; a self-signed certificate is enough. Without it, every sign-in fails with `CallbackRouteError … The server does not support SSL connections`, which looks exactly like the feature not working. The exact-case control row above is what tells the two apart.
+
+**Scope — touch only these:**
+- `src/lib/username.ts` (new; `src/lib` exists)
+- `src/lib/auth.ts`
+- `src/app/api/employees/doctors/route.ts` (`POST` only)
+- `src/app/api/employees/secretaries/route.ts` (`POST` only)
+
+**Do not touch:**
+- `src/lib/auth.config.ts` and `src/middleware.ts`. They run on the Edge and must stay free of Prisma, so the helper is imported only from `auth.ts` and the route handlers.
+- The `[id]` `PUT` routes, since usernames cannot change.
+- `prisma/schema.prisma`. There is no migration and no `db push`. Stored usernames keep the case they were created with, and the admin tables keep showing it.
+- `prisma/seed.ts` and `src/app/login/page.tsx`.
+- The rest of `authorize()`. The status check, the lockout and its counters stay exactly as they are, applied to whichever account the lookup resolves.
+
+**Instructions.** All files are LF. Each anchor below occurs exactly once in its file (machine-checked 2026-10-12).
+
+**Step 1.** Create `src/lib/username.ts` with exactly:
+```ts
+import "server-only";
+import { prisma } from "@/lib/prisma";
+
+/**
+ * The ids of every account whose username equals `input`, ignoring case.
+ *
+ * Raw SQL on purpose. Prisma's `mode: "insensitive"` compiles to a bare
+ * `ILIKE $1` with nothing escaped (measured on Prisma 7.4.1), so a `%` or
+ * `_` typed at the login box acts as a wildcard — `%` alone matches every
+ * account — and a username containing `\` can never match itself.
+ * `lower() = lower()` is plain equality with none of that. The template tag
+ * binds `input` as a parameter; it is never spliced into the SQL. (TJ-060)
+ */
+export async function findUserIdsByUsername(input: string): Promise<string[]> {
+    const rows = await prisma.$queryRaw<{ id: string }[]>`
+        SELECT id FROM "User" WHERE lower(username) = lower(${input})
+    `;
+    return rows.map((r) => r.id);
+}
+```
+
+**Step 2.** In `src/lib/auth.ts`, replace:
+```ts
+import { authConfig } from "@/lib/auth.config";
+```
+with:
+```ts
+import { authConfig } from "@/lib/auth.config";
+import { findUserIdsByUsername } from "@/lib/username";
+```
+
+**Step 3.** In `src/lib/auth.ts`, replace:
+```ts
+                const user = await prisma.user.findUnique({
+                    where: { username: credentials.username as string },
+                });
+```
+with:
+```ts
+                // A username signs in in any case: a phone that capitalises
+                // the first letter must not shut anyone out. Should two
+                // accounts ever differ only by case, only the exact spelling
+                // signs in — never a guess between two people. (TJ-060)
+                const typed = credentials.username as string;
+                const ids = await findUserIdsByUsername(typed);
+                const user = ids.length === 1
+                    ? await prisma.user.findUnique({ where: { id: ids[0] } })
+                    : await prisma.user.findUnique({ where: { username: typed } });
+```
+The second branch covers both zero matches and a collision. With zero matches the exact lookup finds nothing either. With a collision it finds only the exact spelling. Keep it as a ternary rather than `let user = null` plus an `if`: under this repo's `"strict": false`, `let user = null` widens to `any` and drops the typing of every check below it.
+
+**Step 4.** In `src/app/api/employees/doctors/route.ts`, replace `import { auth } from "@/lib/auth";` with that line followed by `import { findUserIdsByUsername } from "@/lib/username";`. Then replace:
+```ts
+    // Check if username is taken
+    const existing = await prisma.user.findUnique({ where: { username } });
+```
+with:
+```ts
+    // Taken in any case: sign-in ignores case, so "Dr.Ahmad" beside an
+    // existing "dr.ahmad" would be two accounts behind one login. (TJ-060)
+    const existing = (await findUserIdsByUsername(username)).length > 0;
+```
+
+**Step 5.** In `src/app/api/employees/secretaries/route.ts`, add the same import line in the same way. Then replace:
+```ts
+    const existing = await prisma.user.findUnique({ where: { username } });
+```
+with:
+```ts
+    // Taken in any case: sign-in ignores case, so "Sec.Rana" beside an
+    // existing "sec.rana" would be two accounts behind one login. (TJ-060)
+    const existing = (await findUserIdsByUsername(username)).length > 0;
+```
+In both routes, the `if (existing) {` line that follows stays as it is. `existing` is now a boolean.
+
+**Verification:**
+
+Static:
+- `npx tsc --noEmit` exits 0, and `npm run build` exits 0.
+- `npm run lint` reports `64 problems (50 errors, 14 warnings)`, unchanged.
+- `grep -c findUserIdsByUsername` returns `2` in `src/lib/auth.ts`, `2` in each of the two routes, and `1` in `src/lib/username.ts`.
+- `grep -rn "insensitive" src/lib/auth.ts src/app/api/employees | wc -l` returns `0`. The phrase does appear in `username.ts`'s comment on purpose, so grepping that file returns `1`.
+- `grep -c 'lower(username) = lower(${input})' src/lib/username.ts` returns `1`.
+- `grep -c 'findUnique({ where: { username } })'` returns `0` in both routes.
+- `git diff --stat master` lists exactly the four files. `auth.config.ts` and `middleware.ts` are unchanged.
+
+Runtime, against a local Postgres running with `ssl=on` and seeded as above:
+- Every row of both tables in the planning pass gives the result shown.
+- After the sign-in table, only the account that took the wrong password has a non-zero counter.
+
+Optional and read-only, for the user rather than the executor: on production, `SELECT lower(username), array_agg(username) FROM "User" GROUP BY 1 HAVING count(*) > 1;` lists any existing case-collision pairs. By design, each such account keeps signing in with its exact spelling only.
+
+**Done when:**
+- [x] A username signs in in any case, and the password stays case-sensitive
+- [x] `%`, `_` and `\` in a username are literal characters, at sign-in and at creation
+- [x] A case collision signs in only by exact spelling, and no new collision can be created
+- [x] Lockout still counts against the account that was actually tried
+- [x] tsc and build pass; lint is 64
+
+**Review, 2026-10-12.** Executed as `61b10e3` on `feat/username-any-case` by one of three executors running in parallel, then checked by an independent QA agent on all three branches merged together, the combination that will ship.
+- **Planner review:** all four files are byte-identical to the prototype, and `username.ts` matches Step 1 exactly.
+- **Executor and QA, independently: both tables pass row for row.** Counters end at `Dr.Ahmad=1` and 0 for everyone else, and the log has 0 `CallbackRouteError`.
+- **QA's own probes all held:**
+  - `_`, `%`, `\` and `'` are literal at sign-in and at creation.
+  - Injection strings are refused, with the table intact.
+  - Empty, whitespace-only and 20,000-character usernames are refused cleanly.
+  - A RESIGNED account is refused in every case.
+  - Lockout trips after five wrong passwords typed in five different cases, counted against the right account.
+- **Corrected by QA: "no new collision can be created" holds for requests sent one at a time, not for concurrent ones.**
+  - Six simultaneous `POST`s of case variants all returned 201, because the lookup runs before a ~250 ms bcrypt hash.
+  - Not a regression: `master` allowed case variants at any time. Negligible in practice. Recorded in Notes.
+  - The Done-when box is ticked with that qualification.
+- **Still the user's to run before merging to `master`:** the optional read-only production query for existing case-collision pairs.
+
+---
+
+### TJ-061 — The doctor dashboard's Duplicate: broken, and the route behind it lets a doctor book
+
+- **Status:** REVIEW. Passed planner review and QA on 2026-10-12. Task commit `41da75c` on `bugfix/doctor-duplicate`, merged into `claude/exciting-einstein-krgpmv` with `--no-ff`. **Not merged to `master`: merging deploys to production, awaiting the user.**
+- **Branch:** `bugfix/doctor-duplicate`, cut from `claude/exciting-einstein-krgpmv`. It must carry TJ-058, because TJ-058 also edits `src/app/doctor/page.tsx` and the anchors below were taken from its result. **Not from `master`.**
+- **Why:** User request, 2026-10-12, following the TJ-058 pass. Duplicate on the doctor dashboard has never worked. The route behind it is the one way a doctor can create a booking, for any doctor and at any hour, although `POST /api/reservations` refuses doctors.
+
+**Planning pass:** 2026-10-12. Files read:
+- `src/app/doctor/page.tsx` as it stands after TJ-058: the Duplicate state, `handleDuplicate`, `confirmDuplicate`, the modal and its CSS, and every `className` still in use.
+- `src/app/api/reservations/[id]/duplicate/route.ts` in full, and the `POST` of `src/app/api/reservations/route.ts`.
+- The props and action menu of `src/app/components/ReservationSlot.tsx`, and the props of `src/app/components/Calendar.tsx`.
+- The Duplicate callers in `src/app/admin/page.tsx` and `src/app/secretary/page.tsx`, and TJ-046.
+
+Measured on `master`, signed in as the doctor `Dr.Ahmad`:
+
+| Request | Result |
+|---|---|
+| `POST …/<own id>/duplicate` with `{ date, time }`, which is what the doctor page sends | **400** "sessionDate is required" |
+| `POST /api/reservations`, the main booking route | **403** "Doctors cannot create reservations" |
+| `POST …/<colleague's id>/duplicate` with `{ sessionDate: "2026-10-13", sessionTime: "03:00" }` | **201**: a SCHEDULED booking for the colleague, at 03:00 |
+
+- **Confirmed: the doctor's Duplicate fails silently.** `confirmDuplicate` posts `{ date, time }`, the route reads `sessionDate` / `sessionTime`, and the page never reads the response. Admin's and secretary's requests are correct.
+- **Confirmed: the route has no role, ownership or clinic-window check.**
+- **Confirmed: every role sees "Duplicate" on every card**, because `ReservationSlot` adds it unconditionally and `Calendar` requires `onDuplicate`.
+- **Design, option A:**
+  - `onDuplicate` becomes optional in both components, the same pattern `onEdit` and `onViewDetails` use. The card shows the item only when the prop is passed.
+  - The doctor page stops passing it, and its Duplicate modal is deleted together with its four state variables, two handlers and the 13 CSS rules only the modal used. The rules still in use (`controls`, `date-nav`, `btn-nav`, `btn-today`, `doctor-select`, `date-trigger-row`, `session-count`, `main-layout`, `calendar-col`) stay.
+  - The route refuses doctors with the same 403 message `POST /api/reservations` uses.
+  - Admin and secretary keep passing `onDuplicate`, so their menus are unchanged.
+- **Left for TJ-046:** the route still has no clinic-window check for the admin and secretary who can still duplicate. That remains TJ-046's job, a separate concern, and it is not widened into this task.
+- **Prototyped** on `claude/exciting-einstein-krgpmv` at `04b8045`. The steps were applied by script, each anchor matching exactly once.
+  - `tsc` exits 0, `npm run build` exits 0, and lint is unchanged at 63. The doctor page keeps only its two existing data-loading findings.
+  - In Chromium against a local database, the doctor's card menus on `/doctor` read "Check In | Waiting | Cancel" on his own card and on both of dr_sami's, with no Duplicate and 0 console errors.
+  - Admin's menu still reads "Session Details | Check In | Waiting | Edit | Duplicate | Cancel | Delete", and secretary's "Check In | Waiting | Edit | Duplicate | Cancel | Delete".
+  - Admin's Duplicate through its modal created a booking (3 → 4), and so did secretary's through its prompt (4 → 5).
+  - A doctor's `POST …/duplicate`, on his own reservation and on a colleague's, returned **403** "Doctors cannot create reservations", and the count did not move. Admin's `POST` still returned 201.
+
+**Scope — touch only these:**
+- `src/app/components/ReservationSlot.tsx`: the `onDuplicate` prop and the Duplicate menu item.
+- `src/app/components/Calendar.tsx`: the `onDuplicate` prop.
+- `src/app/doctor/page.tsx`: the Duplicate state, handlers, prop, modal and modal-only CSS.
+- `src/app/api/reservations/[id]/duplicate/route.ts`: the role check.
+
+**Do not touch:**
+- `src/app/admin/page.tsx` and `src/app/secretary/page.tsx`. Their Duplicate must keep working.
+- The rest of the card menu. Status actions on a colleague's card are TJ-062.
+- The clinic-window check, which is TJ-046.
+- Everything else in these files.
+
+**Instructions.** All four files are LF. Every anchor below occurs exactly once in its file, checked by machine on 2026-10-12 against `claude/exciting-einstein-krgpmv`, which carries TJ-058. Fenced blocks show each file's own indentation.
+
+**Step 1.** In `src/app/components/ReservationSlot.tsx`, replace:
+```tsx
+    onDuplicate: (id: number) => void;
+```
+with:
+```tsx
+    // Optional: admin and secretary pass it; the doctor dashboard does not,
+    // so doctors get no Duplicate item. (TJ-061)
+    onDuplicate?: (id: number) => void;
+```
+
+**Step 2.** In `src/app/components/ReservationSlot.tsx`, replace:
+```tsx
+    actions.push({ label: "Duplicate", icon: "📋", onClick: () => onDuplicate(id) });
+```
+with:
+```tsx
+    if (onDuplicate) {
+        actions.push({ label: "Duplicate", icon: "📋", onClick: () => onDuplicate(id) });
+    }
+```
+
+**Step 3.** In `src/app/components/Calendar.tsx`, replace:
+```tsx
+    onDuplicate: (id: number) => void;
+```
+with:
+```tsx
+    // Optional: passed by admin and secretary only; doctors do not duplicate (TJ-061).
+    onDuplicate?: (id: number) => void;
+```
+
+**Step 4.** In `src/app/doctor/page.tsx`, delete these lines, together with the one blank line that follows them:
+```tsx
+    // Duplicate modal
+    const [dupeId, setDupeId] = useState<number | null>(null);
+    const [dupeDate, setDupeDate] = useState(today());
+    const [dupeTime, setDupeTime] = useState("09:00");
+    const [duping, setDuping] = useState(false);
+```
+
+**Step 5.** In `src/app/doctor/page.tsx`, delete these lines, together with the one blank line that follows them:
+```tsx
+    const handleDuplicate = (id: number) => {
+        setDupeId(id);
+        setDupeDate(today());
+        setDupeTime("09:00");
+    };
+
+    const confirmDuplicate = async () => {
+        if (!dupeId) return;
+        setDuping(true);
+        await fetch(`/api/reservations/${dupeId}/duplicate`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ date: dupeDate, time: dupeTime }),
+        });
+        setDuping(false);
+        setDupeId(null);
+        fetchReservations();
+    };
+```
+
+**Step 6.** In `src/app/doctor/page.tsx`, delete these lines:
+```tsx
+                            onDuplicate={handleDuplicate}
+```
+
+**Step 7.** In `src/app/doctor/page.tsx`, delete these lines, together with the one blank line that follows them:
+```tsx
+            {/* Duplicate Modal */}
+            {dupeId !== null && (
+                <div className="modal-overlay" onClick={() => setDupeId(null)}>
+                    <div className="modal-card" onClick={(e) => e.stopPropagation()}>
+                        <h2>Duplicate Session</h2>
+                        <div className="form-row">
+                            <div className="form-group"><label>New Date</label><input type="date" value={dupeDate} onChange={(e) => setDupeDate(e.target.value)} /></div>
+                            <div className="form-group"><label>New Time</label><input type="time" value={dupeTime} onChange={(e) => setDupeTime(e.target.value)} /></div>
+                        </div>
+                        <div className="modal-actions">
+                            <button className="btn-cancel" onClick={() => setDupeId(null)}>Cancel</button>
+                            <button className="btn-save" onClick={confirmDuplicate} disabled={duping}>{duping ? "Duplicating…" : "Duplicate"}</button>
+                        </div>
+                    </div>
+                </div>
+            )}
+```
+
+**Step 8.** In `src/app/doctor/page.tsx`, delete these lines:
+```tsx
+                .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.6); display: flex; align-items: center; justify-content: center; z-index: 1000; backdrop-filter: blur(4px); }
+                .modal-card { background: var(--bg-dark-secondary, #243b44); border: 1px solid rgba(255,255,255,0.08); border-radius: var(--radius-md, 4px); padding: 2rem; width: 100%; max-width: 400px; }
+                .modal-card h2 { font-size: 1.1rem; margin-bottom: 1rem; font-weight: 600; }
+                .form-row { display: flex; gap: 0.75rem; }
+                .form-row .form-group { flex: 1; }
+                .form-group { display: flex; flex-direction: column; gap: 0.25rem; }
+                .form-group label { font-size: 0.76rem; color: rgba(255,255,255,0.5); font-weight: 500; }
+                .form-group input { background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.08); border-radius: var(--radius-sm, 2px); padding: 0.5rem 0.7rem; color: #fff; font-size: 0.85rem; outline: none; font-family: inherit; }
+                .form-group input:focus { border-color: var(--primary, #4CAF93); }
+                .modal-actions { display: flex; justify-content: flex-end; gap: 0.6rem; margin-top: 1.25rem; }
+                .btn-cancel { background: rgba(255,255,255,0.06); color: rgba(255,255,255,0.6); border: 1px solid rgba(255,255,255,0.1); border-radius: var(--radius-sm, 2px); padding: 0.5rem 1rem; font-size: 0.85rem; cursor: pointer; font-family: inherit; }
+                .btn-save { background: var(--primary, #4CAF93); color: #fff; border: none; border-radius: var(--radius-sm, 2px); padding: 0.5rem 1.2rem; font-size: 0.85rem; font-weight: 600; cursor: pointer; font-family: inherit; }
+                .btn-save:disabled { opacity: 0.5; cursor: not-allowed; }
+```
+
+**Step 9.** In `src/app/api/reservations/[id]/duplicate/route.ts`, replace:
+```tsx
+    if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+```
+with:
+```tsx
+    if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+    // A duplicate is a new booking, and doctors do not book: the same rule
+    // POST /api/reservations enforces, with the same message. (TJ-061)
+    if (session.user.role === "DOCTOR") {
+        return NextResponse.json({ error: "Doctors cannot create reservations" }, { status: 403 });
+    }
+```
+
+**Verification:**
+
+Static:
+- `npx tsc --noEmit` exits 0, and `npm run build` exits 0.
+- `npm run lint` reports `63 problems (49 errors, 14 warnings)`, unchanged from `claude/exciting-einstein-krgpmv`.
+- In `src/app/doctor/page.tsx`:
+  - `grep -ci 'dupe\|duplicat'` returns `0`.
+  - `grep -c 'modal-'` returns `0`.
+- In `src/app/components/ReservationSlot.tsx`:
+  - `grep -c 'if (onDuplicate)'` returns `1`.
+  - `grep -c 'onDuplicate?:'` returns `1`.
+- In `src/app/components/Calendar.tsx`, `grep -c 'onDuplicate?:'` returns `1`.
+- In the route:
+  - `grep -c 'session.user.role === "DOCTOR"'` returns `1`.
+  - `grep -c 'Doctors cannot create reservations'` returns `1`.
+- `grep -c 'onDuplicate={handleDuplicate}'` still returns `1` in `src/app/admin/page.tsx` and `1` in `src/app/secretary/page.tsx`.
+- `git diff --stat claude/exciting-einstein-krgpmv` lists exactly the four files: 14 insertions, 59 deletions.
+
+Runtime, against a local database with sessions today for two doctors. The first three bullets are read-only.
+- As a doctor on `/doctor`, every card's menu, his own and colleagues', has no "Duplicate". The other items are unchanged, and there are no console errors.
+- As admin on `/admin`, the menu still has "Duplicate".
+- As secretary on `/secretary`, the menu still has "Duplicate".
+- **Write:**
+  - Admin duplicates through its modal, and the count of bookings rises by one.
+  - Secretary duplicates through its prompt, and the count rises by one.
+  - A doctor's `POST /api/reservations/<id>/duplicate`, on his own reservation and on a colleague's, returns **403** `{"error":"Doctors cannot create reservations"}`, and the count does not change.
+  - Admin's `POST` to the same route returns 201.
+
+**Done when:**
+- [x] Doctors see no Duplicate, and the route refuses them
+- [x] Admin's and secretary's Duplicate still work
+- [x] The doctor page carries no dead Duplicate code or CSS
+- [x] Only the four files changed; tsc and build pass; lint is 63
+
+**Review, 2026-10-12.** Executed as `41da75c`.
+- **Planner review:** all four files are byte-identical to the planned diff, re-derived from the tested script. One commit on `claude/exciting-einstein-krgpmv`.
+- **Executor and QA, independently: every Verification bullet passes.**
+  - The doctor's menus on his own card and on both colleague cards read "Check In | Waiting | Cancel", with 0 console errors.
+  - Admin's and secretary's menus keep Duplicate, and their UI duplicates each add a booking.
+  - A doctor's `POST …/duplicate` returns 403 "Doctors cannot create reservations" on his own reservation and on a colleague's, and the count does not move. Admin still gets 201.
+- **QA's probes:**
+  - The role check runs before the body or the id is read: the old `{date,time}` payload, an empty body, invalid JSON, a missing id and a non-numeric id are all refused with 403.
+  - The only two places in `src` that create reservations both now refuse doctors.
+  - A doctor's menu is never empty: QA checked all 7 statuses.
+  - The doctor page still filters, date-picks and opens sessions.
+
+---
+
+### TJ-062 — Limit doctors to their own sessions
+
+- **Status:** SPLIT, **complete**. Passed 2026-10-12, with every decision taken, and split into **TJ-062a** (server) and **TJ-062b** (screens). Both passed planner review and QA on 2026-10-12, tested together, and are merged into `claude/exciting-einstein-krgpmv` as `3a23dd6` and `7024348`. **Not merged to `master`: merging deploys to production, awaiting the user.** Nothing executes against this ID.
+- **Branch:** none of its own. TJ-062a is `feat/doctor-session-ownership` and TJ-062b is `feat/doctor-readonly-sessions`, both cut from `claude/exciting-einstein-krgpmv` at `3baee67`, after TJ-058 and TJ-061.
+- **Why:** User request, 2026-10-12: nothing on the server stops a doctor changing status on, or writing notes for, a colleague's session. TJ-058 made colleagues' cards the first thing a doctor sees.
+
+**Planning pass:** 2026-10-12. Files read:
+- `src/app/api/reservations/[id]/route.ts` (`GET`, `PUT`, `PATCH`, `DELETE`), `.../soap/route.ts` and `.../duplicate/route.ts`.
+- `src/app/api/patients/[id]/intake` (its call sites) and `src/lib/permissions.ts`.
+- `src/app/doctor/session/[id]/page.tsx`: data loading and every save handler.
+- The writes on `src/app/doctor/patients/[id]/page.tsx`.
+- `src/app/api/notes/route.ts` and `.../notes/[id]/route.ts`, and the `Note` model.
+
+Measured on `master`, signed in as `Dr.Ahmad`, acting on `dr_sami`'s reservation:
+
+| Request | Result |
+|---|---|
+| `GET …/soap` (read the colleague's SOAP note) | 200 |
+| `PUT …/soap` (write it) | **200** |
+| `PATCH /api/reservations/<id>` `{ status: "CHECKED_IN" }` | **200**, and the status really changed |
+| `PUT /api/reservations/<id>` `{ injuryPlace, paymentType }` | **200**, and the stored value changed |
+| `PUT /api/patients/<id>/intake` (patient-level) | 200 |
+
+- **Confirmed: no doctor-facing write checks ownership.**
+  - `PATCH` (status) checks only that a session exists.
+  - `PUT` refuses a doctor only for date, time and reassignment. Notes, injury, payment and the two-hour flag are open.
+  - The SOAP `PUT` checks `canAccessClinical`, which is role-only.
+  - Duplicate is TJ-061.
+  - `DELETE` already refuses doctors.
+- **Confirmed: ownership is checkable.** A reservation carries `doctorId`, and the session carries `session.user.id`. A reservation whose doctor was hard-deleted has `doctorId = null`, so no doctor owns it; admin can still act on it.
+- **Confirmed: the intake is patient-level, not session-level.** One record per patient, shared by every doctor who treats them. Restricting it is a separate question from restricting sessions.
+- **Adjacent, found during the pass:** `PUT /api/notes/[id]` lets any signed-in user, doctors included, edit any note, including reassigning its `doctorId`. Only `DELETE` refuses doctors. Not part of this request; listed as question 4.
+
+**Decisions, 2026-10-12 (user):**
+- **Q2: doctors may still read a colleague's sessions and SOAP notes** (the recommended option).
+- **Q3: the patient-level intake stays shared** by every doctor (the recommended option).
+- **Q1, answered later on 2026-10-12: status changes are blocked too.** A doctor changes nothing on a colleague's session: status, details and SOAP are all refused. Before that answer, Q1 had been narrowed as follows. The user asked what "details" meant. It means the non-clinical fields of one booked session that `PUT /api/reservations/[id]` lets a doctor change:
+  - **on the doctor's screen**, injury place (the session page's "Save details");
+  - **through the API only**, the calendar note and whether it shows on the card, the next-session note, the payment type, the two-hour flag and `isNote`.
+
+  Date, time and reassignment are already refused to doctors. SOAP and details are blocked under either answer. **The open choice is only status:** may a doctor check in, mark waiting, move to "with doctor", check out or cancel a colleague's patient?
+- **Q4, Notes editing,** has no recommendation on record yet. It is put to the user separately, and is not part of this task either way.
+
+**Recommended design, pending the user's answers:**
+- **Server:** a `canWriteSession(user, reservationDoctorId)` helper in `permissions.ts`. Admin and secretary keep exactly what they have. A doctor is allowed only when `reservationDoctorId === user.id`. It is applied to `PATCH` and `PUT /api/reservations/[id]` and to the SOAP `PUT`, and to Duplicate if TJ-061 chooses option B. A refusal is a 403 naming the rule.
+- **UI:** on the doctor dashboard, a colleague's card shows no status actions. The session page opens a colleague's session read-only: a banner naming the doctor, and no save or status buttons. Without this the server change alone would leave buttons that fail.
+
+**The decisions, for the user:**
+1. **Which writes on a colleague's session are blocked?** Recommended: all of them (status, details, SOAP). The alternative is clinical writes only (SOAP and details), so any doctor can still move a colleague's patient through check-in and check-out.
+2. **May a doctor still *read* a colleague's session and SOAP notes?** Recommended: yes, for continuity of care. TJ-058 already shows the cards.
+3. **The patient-level intake:** keep it shared by every doctor (recommended), or restrict it to doctors who have a session with that patient?
+4. **Should doctors' editing of Notes be limited too?** That would be a separate task.
+
+---
+
+### TJ-062a — Server: a doctor may change only their own sessions
+
+- **Status:** REVIEW. Passed planner review and QA on 2026-10-12. Task commit `30591ee` on `feat/doctor-session-ownership`, merged into `claude/exciting-einstein-krgpmv` with `--no-ff` as `3a23dd6`. **Not merged to `master`: merging deploys to production, awaiting the user.**
+- **Branch:** `feat/doctor-session-ownership`, cut from `claude/exciting-einstein-krgpmv` at `4651e24`.
+- **Why:** See TJ-062. Measured on `master`: a doctor's status, details and SOAP writes on a colleague's session all return 200. **User decisions, 2026-10-12:**
+  - block all of them, status included;
+  - keep reading allowed;
+  - keep the intake shared.
+- **Ships with TJ-062b.** That task touches different files, so the two can run in parallel. On its own this task would leave buttons on colleagues' sessions that now fail. TJ-062b alone would hide the buttons and leave the routes open.
+
+**Planning pass:** 2026-10-12. Files read:
+- `src/lib/permissions.ts` in full.
+- `src/app/api/reservations/[id]/route.ts`: `GET`, `PUT`, `PATCH` and `DELETE`.
+- `src/app/api/reservations/[id]/soap/route.ts` in full.
+- `src/types/next-auth.d.ts`, for the types of `session.user.id` and `role`.
+- `src/lib/auth.config.ts`, the `/doctor` guard: ADMIN may open the doctor pages too.
+
+Findings:
+- **The rule:** `canWriteSession(user, sessionDoctorId)` in `permissions.ts`, beside the other per-role helpers.
+  - ADMIN and SECRETARY get `true`, exactly what they have today.
+  - A DOCTOR gets `true` only when `sessionDoctorId === user.id`. A reservation whose doctor was hard-deleted has `doctorId = null`, so it is read-only to every doctor.
+  - Like the helpers beside it, it names the roles that may, so a role added later is refused.
+- **Where it applies:**
+  - **`PUT /api/reservations/[id]`** gains a `doctorId` lookup before anything else. As a side effect, a missing id now gets a clean 404 for every role; before, the final `update` threw.
+  - **`PATCH`** adds `doctorId` to the select it already makes and checks it before the transition rules.
+  - **The SOAP `PUT`** adds `doctorId` to its select and checks it after the 404.
+  - Every refusal is a 403 with "Doctors can only change their own sessions".
+- **Unchanged, confirmed:**
+  - Every `GET`, so reading stays allowed (decision Q2).
+  - `DELETE`, which already refuses doctors (`canDeleteReservation`).
+  - Duplicate, which already refuses doctors (TJ-061).
+  - The intake route, which stays shared (decision Q3).
+  - **A secretary on a SOAP note still gets "Secretaries cannot edit SOAP notes".** `canAccessClinical` runs first.
+- **Prototyped** on `4651e24`, applied by script with every anchor matching exactly once.
+  - This half alone: `tsc` exits 0, lint is unchanged at 63, and it is 3 files, +45/−4.
+  - With TJ-062b: `npm run build` exits 0.
+  - Measured against a local database:
+
+  | Who | Request | Result |
+  |---|---|---|
+  | Doctor | Own session: status, details, SOAP | 200, 200, 200 |
+  | Doctor | Colleague's session: status, details (`injuryPlace`, `paymentType`, `isTwoHours`), note, SOAP | **403** "Doctors can only change their own sessions" each time; the row and its SOAP are unchanged afterwards |
+  | Doctor | Colleague's session: `GET`, `GET …/soap` | 200, 200 (reading stays) |
+  | Doctor | Colleague's patient's intake | 200 (shared) |
+  | Doctor | A session whose doctor was hard-deleted | **403** |
+  | Admin | A colleague's status and SOAP; the deleted doctor's session | 200 |
+  | Secretary | Status on any session; SOAP | 200; 403 "Secretaries cannot edit SOAP notes" (as before) |
+  | Admin, doctor | `PUT` or `PATCH` on id 99999 | 404 "Reservation not found" |
+
+**Scope — touch only these:**
+- `src/lib/permissions.ts`: add `canWriteSession` after `canViewPatientContact`.
+- `src/app/api/reservations/[id]/route.ts`: the import and the `PUT` and `PATCH` checks.
+- `src/app/api/reservations/[id]/soap/route.ts`: the import and the `PUT` check.
+
+**Do not touch:**
+- Every `GET` handler, `DELETE`, the duplicate route, the intake route and the notes routes.
+- All UI, which is TJ-062b.
+
+**Instructions.** All three files are LF. Every anchor below occurs exactly once in its file, checked by machine on 2026-10-12 against `claude/exciting-einstein-krgpmv` at `4651e24`. Fenced blocks show each file's own indentation.
+
+**Step 1.** In `src/lib/permissions.ts`, replace:
+```tsx
+export function canViewPatientContact(
+    user: Session["user"] | undefined | null
+): boolean {
+    if (!user) return false;
+    return user.role === "ADMIN" || user.role === "SECRETARY";
+}
+```
+with:
+```tsx
+export function canViewPatientContact(
+    user: Session["user"] | undefined | null
+): boolean {
+    if (!user) return false;
+    return user.role === "ADMIN" || user.role === "SECRETARY";
+}
+
+/**
+ * May this user change this session — its status, its details, or its SOAP
+ * note?
+ *
+ * ADMIN and SECRETARY may change any session, as before. A DOCTOR may change
+ * only a session booked under them: a colleague's session, and one whose
+ * doctor was hard-deleted (doctorId null), are read-only to every doctor.
+ * Reading is not restricted here — a doctor may still read a colleague's
+ * session and SOAP note — and a secretary still may not touch a SOAP note
+ * (canAccessClinical, checked separately). User decision, 2026-10-12. (TJ-062)
+ */
+export function canWriteSession(
+    user: Session["user"] | undefined | null,
+    sessionDoctorId: string | null
+): boolean {
+    if (!user) return false;
+    if (user.role === "ADMIN" || user.role === "SECRETARY") return true;
+    return user.role === "DOCTOR" && sessionDoctorId !== null && sessionDoctorId === user.id;
+}
+```
+
+**Step 2.** In `src/app/api/reservations/[id]/route.ts`, replace:
+```tsx
+import { canAccessClinical, canDeleteReservation, canViewPatientContact } from "@/lib/permissions";
+```
+with:
+```tsx
+import { canAccessClinical, canDeleteReservation, canViewPatientContact, canWriteSession } from "@/lib/permissions";
+```
+
+**Step 3.** In `src/app/api/reservations/[id]/route.ts`, replace:
+```tsx
+    const body = await req.json();
+
+    // Doctors can update everything else about a session (injury place, note,
+```
+with:
+```tsx
+    const body = await req.json();
+
+    // A doctor may change only a session booked under them. (TJ-062)
+    const target = await prisma.reservation.findUnique({
+        where: { id: parseInt(id, 10) },
+        select: { doctorId: true },
+    });
+    if (!target) {
+        return NextResponse.json({ error: "Reservation not found" }, { status: 404 });
+    }
+    if (!canWriteSession(session.user, target.doctorId)) {
+        return NextResponse.json({ error: "Doctors can only change their own sessions" }, { status: 403 });
+    }
+
+    // Doctors can update everything else about a session (injury place, note,
+```
+
+**Step 4.** In `src/app/api/reservations/[id]/route.ts`, replace:
+```tsx
+        select: { id: true, status: true, patientId: true },
+```
+with:
+```tsx
+        select: { id: true, status: true, patientId: true, doctorId: true },
+```
+
+**Step 5.** In `src/app/api/reservations/[id]/route.ts`, replace:
+```tsx
+    const allowedNext = VALID_TRANSITIONS[reservation.status] || [];
+```
+with:
+```tsx
+    // A doctor may move only a session booked under them. (TJ-062)
+    if (!canWriteSession(session.user, reservation.doctorId)) {
+        return NextResponse.json({ error: "Doctors can only change their own sessions" }, { status: 403 });
+    }
+
+    const allowedNext = VALID_TRANSITIONS[reservation.status] || [];
+```
+
+**Step 6.** In `src/app/api/reservations/[id]/soap/route.ts`, replace:
+```tsx
+import { canAccessClinical } from "@/lib/permissions";
+```
+with:
+```tsx
+import { canAccessClinical, canWriteSession } from "@/lib/permissions";
+```
+
+**Step 7.** In `src/app/api/reservations/[id]/soap/route.ts`, replace:
+```tsx
+        select: { patientId: true },
+```
+with:
+```tsx
+        select: { patientId: true, doctorId: true },
+```
+
+**Step 8.** In `src/app/api/reservations/[id]/soap/route.ts`, replace:
+```tsx
+    if (!reservation) {
+        return NextResponse.json({ error: "Reservation not found" }, { status: 404 });
+    }
+
+    const data = {
+```
+with:
+```tsx
+    if (!reservation) {
+        return NextResponse.json({ error: "Reservation not found" }, { status: 404 });
+    }
+    // A doctor may read a colleague's SOAP note but not write it. (TJ-062)
+    if (!canWriteSession(session.user, reservation.doctorId)) {
+        return NextResponse.json({ error: "Doctors can only change their own sessions" }, { status: 403 });
+    }
+
+    const data = {
+```
+
+**Verification:**
+
+Static:
+- `npx tsc --noEmit` exits 0, and `npm run build` exits 0.
+- `npm run lint` reports `63 problems (49 errors, 14 warnings)`, unchanged.
+- `grep -c 'export function canWriteSession' src/lib/permissions.ts` returns `1`.
+- In `src/app/api/reservations/[id]/route.ts`:
+  - `grep -c canWriteSession` returns `3` (the import and two calls).
+  - `grep -c 'Doctors can only change their own sessions'` returns `2`.
+- In `src/app/api/reservations/[id]/soap/route.ts`:
+  - `grep -c canWriteSession` returns `2`.
+  - `grep -c 'Doctors can only change their own sessions'` returns `1`.
+- `git diff --stat claude/exciting-einstein-krgpmv` lists exactly the three files: 45 insertions, 4 deletions.
+
+Runtime, against a local database with sessions today for two doctors. Sign in as the doctor, as admin and as a secretary, and reproduce every row of the planning pass's table, including:
+- the hard-deleted doctor's session (set its `doctorId` to null with SQL);
+- the check afterwards that the colleague's row and SOAP note did not change.
+
+Reset the database afterwards.
+
+**Done when:**
+- [x] A doctor's status, details and SOAP writes succeed on their own sessions and are refused on anyone else's
+- [x] Reading stays allowed and the intake stays shared
+- [x] Admin and secretary behave exactly as before
+- [x] Only the three files changed; tsc and build pass; lint is 63
+
+**Review, 2026-10-12.** Executed as `30591ee`.
+- **Planner review:** all three files are byte-identical to the planned diff, re-derived from the tested script. One commit on `3baee67`.
+- **Executor and QA, independently: every Verification bullet passes.** QA also ran each request against a build of `3baee67`, the code before this task.
+  - On a colleague's session, every doctor write QA tried returned 403 "Doctors can only change their own sessions". That covered status (check-in and cancel), injury place, payment type, the two-hour flag, the note and its calendar flag, the next-session note, `isNote`, an empty body, and SOAP. On `3baee67` every one returned 200 and really changed the row. Afterwards the colleague's row and SOAP note were byte-identical in SQL, `updatedAt` included.
+  - Reading a colleague's session and SOAP note returns 200, and the shared intake still saves.
+  - A session whose doctor was hard-deleted is refused to every doctor, the former owner included. Admin still changes it.
+  - Admin and secretary are unchanged. A secretary's SOAP write still gets "Secretaries cannot edit SOAP notes".
+  - `PUT` on a missing id now returns 404 for every role. On `3baee67` it returned 500.
+- **QA's probes:**
+  - Every write to a reservation or SOAP note in `src` that a doctor can reach is now guarded.
+  - A doctor taking a colleague's session by sending their own `doctorId`, or sending a status together with a `doctorId`, is refused.
+  - Ids such as `/2abc`, `/02` and `/%202` resolve to reservation 2 and are refused too, because the check parses the id exactly as the write does.
+  - A non-numeric id such as `/abc` returns 500 for every role, before and after this task. Not a regression; recorded in Notes.
+
+---
+
+### TJ-062b — Screens: a colleague's session is read-only to a doctor
+
+- **Status:** REVIEW. Passed planner review and QA on 2026-10-12. Task commit `faa8935` on `feat/doctor-readonly-sessions`, merged into `claude/exciting-einstein-krgpmv` with `--no-ff` as `7024348`. **Not merged to `master`: merging deploys to production, awaiting the user.**
+- **Branch:** `feat/doctor-readonly-sessions`, cut from `claude/exciting-einstein-krgpmv` at `4651e24`. It must carry TJ-061: the `Calendar`, `ReservationSlot` and doctor-page anchors below are post-TJ-061.
+- **Why:** See TJ-062. **Ships with TJ-062a**, which enforces the same rule on the server. Without this task, a doctor would see buttons on colleagues' sessions that now fail with 403.
+
+**Planning pass:** 2026-10-12. Files read:
+- `src/app/components/ReservationSlot.tsx`: props, the action menu, the menu trigger and the render.
+- `src/app/components/Calendar.tsx`: props, and the props passed to each slot.
+- `src/app/doctor/page.tsx` after TJ-061.
+- `src/app/doctor/session/[id]/page.tsx`: state, handlers, the header's status buttons, and the Details, SOAP and Clinical Assessment tabs.
+- `src/lib/auth.config.ts`: **ADMIN may open `/doctor` pages**, so the rule keys on the DOCTOR role and an admin keeps every action there.
+- `src/types/next-auth.d.ts`.
+
+Design:
+- **Card:** `ReservationSlot` takes `readOnly`. A read-only card has **no ⋮ trigger**, so no menu at all. With TJ-061 a doctor has no Duplicate, Edit or Delete, so nothing useful is lost. A click on the card still opens the session, to read.
+- **Calendar:** takes `ownerId`. When it is set, a card is read-only unless the reservation is booked under that id. Admin and secretary don't pass it, so they are unchanged.
+- **Doctor dashboard:** `ownerId` is `undefined` for an admin, and otherwise the doctor's id, or `""` until the session loads. **That fails closed:** no card offers anything until the signed-in user is known.
+- **Session page:** `readOnly = !me || (me.role === "DOCTOR" && reservation.doctor?.id !== me.id)`.
+  - The header's status buttons, "Update Session" and "Save SOAP Note" are hidden.
+  - Injury Place and the four SOAP fields become `readOnly`.
+  - A "Read only" banner names the owner. It shows only once the user is known (`isColleagues`), so an owner never sees it flash during load. It reuses the previous-session-note banner's existing style.
+  - **The Clinical Assessment tab stays editable** (decision Q3, the intake is shared). History is already read-only.
+
+Prototyped on `4651e24`, applied by script with every anchor matching exactly once:
+- This half alone: `tsc` exits 0, lint is unchanged at 63, and it is 4 files, +61/−21.
+- With TJ-062a: `npm run build` exits 0.
+- In Chromium against a local database (Dr.Ahmad has one session today, dr_sami two):
+
+| Who and where | Result |
+|---|---|
+| Doctor, `/doctor` | Patient One (own) has the ⋮ menu; **Patient Two and Three (dr_sami's) have none** |
+| Doctor, own session | No banner; 2 status buttons; "Update Session"; Injury and SOAP editable; "Save SOAP Note"; Clinical Assessment editable with its Save |
+| Doctor, dr_sami's session | Banner "**Read only.** This session belongs to dr_sami. Only they, an admin or the front desk can change it."; 0 status buttons; no "Update Session"; Injury and SOAP `readOnly`; no "Save SOAP Note"; **Clinical Assessment still editable** with its Save |
+| Admin on `/doctor`, and on dr_sami's session page | Every card keeps its menu; full controls, no banner |
+| Admin `/admin`, secretary `/secretary` | Every card keeps its menu (unchanged) |
+| Console errors, all of the above | 0 |
+
+A screenshot of the doctor on dr_sami's session shows the banner above the tabs and no action buttons.
+
+**Scope — touch only these:**
+- `src/app/components/ReservationSlot.tsx`: the `readOnly` prop and the trigger.
+- `src/app/components/Calendar.tsx`: the `ownerId` prop, passed through to each slot.
+- `src/app/doctor/page.tsx`: `ownerId` and its use on `<Calendar>`.
+- `src/app/doctor/session/[id]/page.tsx`: `useSession`, `readOnly`, the banner, and the read-only and hidden controls.
+
+**Do not touch:**
+- The admin and secretary pages.
+- The Clinical Assessment and History tabs.
+- Every server route, which is TJ-062a.
+- The existing banner CSS, which is reused as is.
+
+**Instructions.** All four files are LF. Every anchor below occurs exactly once in its file, checked by machine on 2026-10-12 against `claude/exciting-einstein-krgpmv` at `4651e24`, which carries TJ-061. Fenced blocks show each file's own indentation. Step 14 quotes only part of a line, the `<input …/>` element; replace it within that line.
+
+**Step 1.** In `src/app/components/ReservationSlot.tsx`, replace:
+```tsx
+    canDelete?: boolean;
+}
+```
+with:
+```tsx
+    canDelete?: boolean;
+    // A colleague's session on the doctor dashboard: no actions, and no menu
+    // trigger. The card still opens the session to read. (TJ-062)
+    readOnly?: boolean;
+}
+```
+
+**Step 2.** In `src/app/components/ReservationSlot.tsx`, replace:
+```tsx
+    canDelete = false,
+}: ReservationSlotProps) {
+```
+with:
+```tsx
+    canDelete = false,
+    readOnly = false,
+}: ReservationSlotProps) {
+```
+
+**Step 3.** In `src/app/components/ReservationSlot.tsx`, replace:
+```tsx
+                    <button
+                        ref={triggerRef}
+                        className="menu-trigger"
+                        onClick={(e) => {
+                            e.stopPropagation();
+                            if (!menuOpen) openMenu();
+                            setMenuOpen(!menuOpen);
+                        }}
+                    >
+                        ⋮
+                    </button>
+```
+with:
+```tsx
+                    {!readOnly && (
+                        <button
+                            ref={triggerRef}
+                            className="menu-trigger"
+                            onClick={(e) => {
+                                e.stopPropagation();
+                                if (!menuOpen) openMenu();
+                                setMenuOpen(!menuOpen);
+                            }}
+                        >
+                            ⋮
+                        </button>
+                    )}
+```
+
+**Step 4.** In `src/app/components/Calendar.tsx`, replace:
+```tsx
+    canDelete?: boolean;
+}
+```
+with:
+```tsx
+    canDelete?: boolean;
+    // When set (the doctor dashboard), only reservations booked under this
+    // doctor offer actions; every other card is read-only. (TJ-062)
+    ownerId?: string;
+}
+```
+
+**Step 5.** In `src/app/components/Calendar.tsx`, replace:
+```tsx
+    canDelete = false,
+}: CalendarProps) {
+```
+with:
+```tsx
+    canDelete = false,
+    ownerId,
+}: CalendarProps) {
+```
+
+**Step 6.** In `src/app/components/Calendar.tsx`, replace:
+```tsx
+                                                    canDelete={canDelete}
+```
+with:
+```tsx
+                                                    canDelete={canDelete}
+                                                    readOnly={ownerId !== undefined && r.doctor?.id !== ownerId}
+```
+
+**Step 7.** In `src/app/doctor/page.tsx`, replace:
+```tsx
+    const doctorId = (session?.user as { id?: string })?.id;
+```
+with:
+```tsx
+    const doctorId = (session?.user as { id?: string })?.id;
+    // Only this doctor's own cards offer actions; a colleague's are read-only.
+    // An admin may open this page too and keeps every action. Until the
+    // session loads, no card offers anything. (TJ-062)
+    const ownerId = session?.user?.role === "ADMIN" ? undefined : (doctorId ?? "");
+```
+
+**Step 8.** In `src/app/doctor/page.tsx`, replace:
+```tsx
+                            onSlotClick={handleSlotClick}
+                        />
+```
+with:
+```tsx
+                            onSlotClick={handleSlotClick}
+                            ownerId={ownerId}
+                        />
+```
+
+**Step 9.** In `src/app/doctor/session/[id]/page.tsx`, replace:
+```tsx
+import { useRouter } from "next/navigation";
+```
+with:
+```tsx
+import { useRouter } from "next/navigation";
+import { useSession } from "next-auth/react";
+```
+
+**Step 10.** In `src/app/doctor/session/[id]/page.tsx`, replace:
+```tsx
+    const router = useRouter();
+```
+with:
+```tsx
+    const router = useRouter();
+    const { data: authSession } = useSession();
+```
+
+**Step 11.** In `src/app/doctor/session/[id]/page.tsx`, replace:
+```tsx
+    const [saving, setSaving] = useState(false);
+```
+with:
+```tsx
+    const [saving, setSaving] = useState(false);
+
+    // A doctor may change only a session booked under them; a colleague's
+    // opens read-only. An admin may open this page too and keeps every
+    // action. Until the signed-in user is known, nothing is offered. (TJ-062)
+    const me = authSession?.user;
+    const isColleagues = !!me && me.role === "DOCTOR" && reservation?.doctor?.id !== me.id;
+    const readOnly = !me || isColleagues;
+    const ownerName = reservation?.doctor?.name ?? reservation?.doctorNameSnapshot ?? "another doctor";
+```
+
+**Step 12.** In `src/app/doctor/session/[id]/page.tsx`, replace:
+```tsx
+                    {reservation.status !== "CHECKED_OUT" && (
+```
+with:
+```tsx
+                    {!readOnly && reservation.status !== "CHECKED_OUT" && (
+```
+
+**Step 13.** In `src/app/doctor/session/[id]/page.tsx`, replace:
+```tsx
+            {/* Previous session note */}
+```
+with:
+```tsx
+            {/* A colleague's session: readable, not changeable. Reuses the
+                previous-note banner's style. (TJ-062) */}
+            {isColleagues && (
+                <div className="prev-note-banner">
+                    <span className="prev-label">Read only</span>
+                    <span>This session belongs to {ownerName}. Only they, an admin or the front desk can change it.</span>
+                </div>
+            )}
+
+            {/* Previous session note */}
+```
+
+**Step 14.** In `src/app/doctor/session/[id]/page.tsx`, replace:
+```tsx
+<input value={editInjury} onChange={(e) => setEditInjury(e.target.value)} placeholder="e.g. Lower back, Knee…" />
+```
+with:
+```tsx
+<input value={editInjury} onChange={(e) => setEditInjury(e.target.value)} placeholder="e.g. Lower back, Knee…" readOnly={readOnly} />
+```
+
+**Step 15.** In `src/app/doctor/session/[id]/page.tsx`, replace:
+```tsx
+                    <div className="card-actions">
+                        <button className="btn-save" onClick={handleSaveDetails} disabled={saving}>{saving ? "Saving…" : "Update Session"}</button>
+                    </div>
+```
+with:
+```tsx
+                    {!readOnly && (
+                        <div className="card-actions">
+                            <button className="btn-save" onClick={handleSaveDetails} disabled={saving}>{saving ? "Saving…" : "Update Session"}</button>
+                        </div>
+                    )}
+```
+
+**Step 16.** In `src/app/doctor/session/[id]/page.tsx`, replace:
+```tsx
+                                    rows={3}
+                                    value={soapForm[field]}
+```
+with:
+```tsx
+                                    rows={3}
+                                    value={soapForm[field]}
+                                    readOnly={readOnly}
+```
+
+**Step 17.** In `src/app/doctor/session/[id]/page.tsx`, replace:
+```tsx
+                    <div className="card-actions">
+                        <button className="btn-save" onClick={handleSaveSoap} disabled={savingSoap}>
+                            {savingSoap ? "Saving…" : soapSaved ? "✓ Saved" : "Save SOAP Note"}
+                        </button>
+                    </div>
+```
+with:
+```tsx
+                    {!readOnly && (
+                        <div className="card-actions">
+                            <button className="btn-save" onClick={handleSaveSoap} disabled={savingSoap}>
+                                {savingSoap ? "Saving…" : soapSaved ? "✓ Saved" : "Save SOAP Note"}
+                            </button>
+                        </div>
+                    )}
+```
+
+**Verification:**
+
+Static:
+- `npx tsc --noEmit` exits 0, and `npm run build` exits 0.
+- `npm run lint` reports `63 problems (49 errors, 14 warnings)`, unchanged.
+- `grep -c readOnly src/app/components/ReservationSlot.tsx` returns `3`.
+- `grep -c ownerId` returns `3` in `src/app/components/Calendar.tsx` and `2` in `src/app/doctor/page.tsx`.
+- In `src/app/doctor/session/[id]/page.tsx`:
+  - `grep -c readOnly` returns `6`.
+  - `grep -c isColleagues` returns `3`.
+  - `grep -c useSession` returns `2`.
+  - `grep -c 'This session belongs to {ownerName}'` returns `1`.
+- `git diff --stat claude/exciting-einstein-krgpmv` lists exactly the four files: 61 insertions, 21 deletions.
+
+Runtime, against a local database with sessions today for two doctors. Every bullet is read-only.
+- Reproduce every row of the planning pass's table, signed in as the doctor, as admin and as a secretary.
+- Check the admin rows on `/doctor` as well as on `/admin`. An admin may open the doctor pages and must keep every action there.
+- Record console errors; there should be none.
+- Take a screenshot of the doctor on a colleague's session.
+
+**Done when:**
+- [x] A doctor's own cards and sessions are unchanged
+- [x] A colleague's card has no menu, and a colleague's session opens read-only with a banner naming its doctor
+- [x] The shared Clinical Assessment stays editable
+- [x] Admin and secretary are unchanged, including an admin on `/doctor`
+- [x] Only the four files changed; tsc and build pass; lint is 63
+
+**Review, 2026-10-12.** Executed as `faa8935`.
+- **Planner review:** all four files are byte-identical to the planned diff, re-derived from the tested script. One commit on `3baee67`. With TJ-062a merged too, the tree equals the combined prototype, and QA tested exactly that tree.
+- **Executor and QA, independently: every row of the planning pass's table reproduces.**
+  - `/doctor` opens on All Doctors. The doctor's own card has the ⋮ menu; dr_sami's two have none.
+  - The doctor's own session has full controls and no banner.
+  - dr_sami's session shows the "Read only" banner naming dr_sami, 0 status buttons, no Update Session and no Save SOAP Note. Injury Place and all four SOAP fields are read-only. The Clinical Assessment stays editable, and saving it returns 200.
+  - Admin, on `/doctor` and on every session page, keeps every menu and full controls, with no banner. `/admin` and `/secretary` are unchanged.
+  - 0 console errors.
+- **QA's probes:**
+  - **While the signed-in user loads:** with the session response delayed by 3 seconds, nothing was offered (0 menus, 0 status buttons, no banner). An owner never saw the banner, and a colleague never saw a status or save button.
+  - A hard-deleted doctor's session opens read-only to a doctor, and the banner names the snapshot.
+  - The dashboard still filters, date-picks and opens both kinds of session, and a status change on the doctor's own card still works.
+  - The doctor's patient page offers no session-level write, so nothing there now fails.
+  - **Layout:** at 320px the banner fits, and the existing overflow is unchanged from before (70px on the session page, 204px on `/doctor`, TJ-021). 1440 and 2560 have none. Forced RTL mirrors cleanly.
+  - **Cosmetic:** the read-only Injury Place field looks like an editable one, and the banner is the only cue. Recorded in Notes.
+
+---
+
 ## Notes for the planner
 
 Findings reported by the executor, or surfaced during a pass, that fall outside the scope of the task that turned them up. The planner triages these into tasks. **The executor does not write here** — it reports in conversation and the planner records.
+
+- **A non-numeric reservation id returns 500.** `PUT`, `PATCH` and the SOAP `PUT` on `/api/reservations/abc` hand `parseInt`'s `NaN` to Prisma, which throws `PrismaClientValidationError`, for every role. QA measured the same on `3baee67`, before TJ-062, so it is not a regression, and no screen sends such an id. Returning 400 on `isNaN`, as the patient routes already do, would close it. (Found by the TJ-062a executor and confirmed by QA, 2026-10-12.)
+- **On a colleague's session, the read-only Injury Place field looks editable.** It is `readOnly`, so typing does nothing, but it keeps the editable style, and the "Read only" banner is the only cue. A muted style for read-only fields on that page would make it plain. (Found by QA during TJ-062b, 2026-10-12.)
+- **A role change takes effect only at the next sign-in.** The role lives in the JWT, and `auth.ts`'s `jwt` callback re-reads only `status`. QA demoted a signed-in SECRETARY to DOCTOR in the database, and that session could still duplicate (201) until it signed in again. No API can change a role, since neither employee `PUT` reads `role`, so this needs a direct database edit. It applies to every role check in the app. Re-reading `role` alongside `status` in that callback would close it. (Found by QA during TJ-061, 2026-10-12.)
+- **A secretary Duplicate made without a time writes a row whose two columns disagree.** `duplicate/route.ts` falls back to the original's `sessionTime`, which still carries the original *date*, while `sessionDate` is the new day. QA saw `sessionDate` 2026-10-14 with `sessionTime` 2026-10-12 09:00. This is the same class of bug TJ-047a fixed on `PUT`. It belongs with TJ-046, which already owns this route's missing clinic-window check. (Found by QA during TJ-061, 2026-10-12.)
+
+- **A hub-and-spoke run of three executors and a QA agent worked cleanly, and how it was set up is reusable.** On 2026-10-12, TJ-058/059/060 were executed in parallel and TJ-020 straight after. The setup:
+  - One worktree per task branch, built **outside** the repo so nothing nests (TJ-050), with a hard-linked `node_modules` and a gitignored `.env` each.
+  - One SSL-enabled local Postgres with a database per executor, a separate port each, and a shared fixture seeder.
+  - A separate QA worktree with every task branch merged in, so QA tests the combination that will ship.
+
+  All four branches came back byte-identical to the planner's prototype, and the merges did not conflict. **One harness fact to put in every future brief: `ss` is not installed here.** Find a server with `fuser -n tcp <port>`, and confirm `/proc/<pid>/cwd` before killing it. Every executor rediscovered this. (Recorded after the TJ-058/059/060/020 run, 2026-10-12.)
+- **TJ-060's case-insensitive collision check is not atomic.** QA's six simultaneous `POST`s of `rc2ab`, `Rc2ab`, `rC2ab` and so on all returned 201, because each lookup runs before a ~250 ms bcrypt hash. Not a regression, since `master` allowed case variants at any time, and the exact-spelling unique index still holds. The real fix would be a unique index on `lower(username)`, which needs a migration this project does not run (it uses `db push`, and Prisma cannot declare functional indexes). File it only if concurrent admin account creation ever becomes plausible. Also pre-existing and unchanged: a non-string `username` in an employee `POST` body returns a 500 (`PrismaClientValidationError`), exactly as on `master`. (Found by QA, 2026-10-12.)
+- **`/doctor` overflows by 204px at 320px.** The cause is the controls row (`.btn-nav` to 383px, the select to 524px) and the layout's `.user-btn`. It is identical with either filter selected, so TJ-058 did not cause it. It belongs with TJ-021's 320px work, though TJ-021 is filed against the admin shell only, so its pass should take in the doctor shell too. (Found by QA, 2026-10-12.)
+- **On the `/new` employee pages at phone width, the gap between Phone and Email (~42px) is far larger than between Email and Working Hours (~11px).** The cause is `.field { margin-bottom: 1rem }` plus the grid gap, with `.field:last-child { margin-bottom: 0 }` zeroing Email's margin. It predates TJ-020, which touched none of those rules. Cosmetic. (Found by the TJ-020 executor, 2026-10-12.)
+
+- **Prisma's `mode: "insensitive"` is an unescaped `ILIKE`, so never route user input through it where equality is meant.** Measured on Prisma 7.4.1 against Postgres 16 during the TJ-060 pass:
+  - `{ username: { equals: input, mode: "insensitive" } }` compiles to `WHERE "username" ILIKE $1` and escapes nothing.
+  - So `%` matches every row, `fif%` matches `fifty%`, and a stored value containing `\` can never match itself.
+  - It reads like equality, it passes `tsc`, and on an all-letters fixture it behaves exactly like equality. Only a probe with a wildcard in it shows the difference.
+  - At a login box it hands anyone a "match every account" username.
+
+  TJ-060 uses a parameterised `lower(col) = lower(${input})` through the tagged `$queryRaw` instead. **Rule: any future case-insensitive match on user input — a patient-name search, an email lookup — is either a deliberate `contains` search, where wildcards are harmless, or goes through `lower() = lower()`.** It is never `equals` plus `mode: "insensitive"`. (Found during the TJ-060 pass, 2026-10-12.)
+- **The doctor dashboard's Duplicate has never worked.**
+  - `confirmDuplicate` in `src/app/doctor/page.tsx` posts `{ date: dupeDate, time: dupeTime }`.
+  - `POST /api/reservations/[id]/duplicate` reads `sessionDate` / `sessionTime` and answers 400 "sessionDate is required".
+  - The page never reads the response, so the modal closes as though the duplicate worked.
+  - Admin sends `{ sessionDate, sessionTime }` and secretary sends `{ sessionDate }`, so only the doctor's copy is wrong.
+
+  Fixing the body alone would be a mistake. The duplicate route has **no role check**, while `POST /api/reservations` refuses doctors ("Doctors cannot create reservations"), so a working doctor Duplicate would be a way round that rule. This needs the user's decision before it becomes a task: either fix the body and accept doctors creating bookings this way, or remove Duplicate from the doctor's menu and refuse doctors at the route. TJ-046, the duplicate route's missing clinic-window check, is the natural place to file it. (Found during the TJ-058 pass, 2026-10-12.)
+- **After TJ-058, a doctor's first view is every colleague's cards, and nothing on the server limits a doctor to their own reservations.**
+  - `PATCH /api/reservations/[id]` (status) checks the role, never ownership.
+  - So do the doctor's session page and its SOAP `PUT`: `canAccessClinical` admits any doctor to any session.
+  - All of this was already true behind the "All Doctors" option. TJ-058 changes how exposed it is, not what a doctor is permitted to do.
+
+  Whether a doctor may check in, cancel or write notes on a colleague's patient is the user's call. Worth asking once TJ-058 is live, before anyone treats the default view as a permission boundary. (Found during the TJ-058 pass, 2026-10-12.)
+- **The employee edit modal overflows sideways at desktop width too, not only at 320px.** Measured in the TJ-059 prototype: the edit modal on `/admin/employees/doctors` has `scrollWidth` 673 against `clientWidth` 558 at 1440px, and 333 against 286 at 320px. The cause is the working-hours `.form-group` / `.hours-row` inputs, not the colour picker, which fits at both widths. TJ-020 is filed as a 320px problem; its pass should measure at desktop width as well. (Found during the TJ-059 pass, 2026-10-12.)
+- **A planning pass can prototype its own diff, and in this repo that is cheap. Two snags cost one failed build each:**
+  - `npm run build` in a bare checkout fails with `supabaseUrl is required` unless `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_ANON_KEY` are set. Any value will do.
+  - Turbopack refuses a `node_modules` symlinked from outside the project root ("Symlink node_modules is invalid"). Hard-link it instead with `cp -al`, which uses no extra disk on the same filesystem.
+
+  Build the throwaway worktree **outside** the repo, so it cannot become a TJ-050 nested worktree. Add `ssl=on` to any local Postgres (see TJ-060). With that, TJ-058/059/060 were each applied by script with exact-once anchors, gated, and browser- or runtime-checked before being written down. That process caught one false Verification number before it shipped: a `grep -c 'mode: "insensitive"'` that returns 1, not 0, because the new helper's own comment names the phrase. (Recorded during the TJ-058/059/060 passes, 2026-10-12.)
 
 - **A waived runtime review is recoverable, and most of it does not need write access.** TJ-047b/c, TJ-048, TJ-049a and TJ-049b all merged with their runtime bullets waived because no agent can sign in. When the user signed in themselves on 2026-09-15 and handed over the browser, **almost every bullet turned out to be answerable read-only** — navigation, menu contents, form field values, computed styles, card geometry, and the presence or absence of a clinical field. The only genuinely unavailable checks were the ones that *write*: saving an edit, the out-of-window refusal path, and a status transition. **Two habits follow.** When writing a task's Verification block, **separate the read-only bullets from the write bullets explicitly** — the read-only ones can be honoured later without touching the clinic's database, and a block that mixes them reads as entirely blocked when it is mostly not. And **prefer an assertion over an eye**: the strongest evidence in this pass was not a screenshot but `getComputedStyle`, `scrollWidth === clientWidth`, and a form's `input.value` compared against the same record fetched from the API. A screenshot would have flattered every one of those. (Recorded after the live verification pass, 2026-09-15.)
 - **Driving a browser by screenshot coordinates is unsafe when the screenshot is scaled, and the failure looks exactly like an application bug.** During the live pass the screenshot frame was **1568×698** while the page viewport was **1920×855** — a 0.816 factor. Clicks issued in screenshot coordinates landed roughly 22% off and hit neighbouring cards, which produced a convincing false positive: a card click appeared to open **the wrong patient's file**. It was very nearly written up as a TJ-048 defect. Clicking by **element reference** instead resolved it immediately and the behaviour was correct. **Rule: click by element ref; if coordinates are unavoidable, read `innerWidth`/`innerHeight` and compare them against the reported screenshot frame before trusting a single click.** A corollary worth keeping: when a UI test "fails" in a way that implies a deep logic bug in code that reads like a simple id lookup, suspect the harness before the code. (Found during the live verification pass, 2026-09-15.)

@@ -24,7 +24,9 @@ interface ReservationSlotProps {
     showNoteOnCalendar?: boolean;
     isTwoHours?: boolean;
     onStatusChange: (id: number, status: string) => void;
-    onDuplicate: (id: number) => void;
+    // Optional: admin and secretary pass it; the doctor dashboard does not,
+    // so doctors get no Duplicate item. (TJ-061)
+    onDuplicate?: (id: number) => void;
     onDelete: (id: number) => void;
     onClick: (id: number) => void;
     // Optional: the card body now opens the patient's file, so a dashboard that
@@ -34,6 +36,9 @@ interface ReservationSlotProps {
     // doctor dashboard grows no Edit item.
     onEdit?: (id: number) => void;
     canDelete?: boolean;
+    // A colleague's session on the doctor dashboard: no actions, and no menu
+    // trigger. The card still opens the session to read. (TJ-062)
+    readOnly?: boolean;
 }
 
 const STATUS_LABELS: Record<string, string> = {
@@ -125,6 +130,7 @@ export default function ReservationSlot({
     onViewDetails,
     onEdit,
     canDelete = false,
+    readOnly = false,
 }: ReservationSlotProps) {
     const [menuOpen, setMenuOpen] = useState(false);
     const [menuPos, setMenuPos] = useState({ top: 0, left: 0 });
@@ -189,7 +195,9 @@ export default function ReservationSlot({
     if (onEdit) {
         actions.push({ label: "Edit", icon: "✏️", onClick: () => onEdit(id) });
     }
-    actions.push({ label: "Duplicate", icon: "📋", onClick: () => onDuplicate(id) });
+    if (onDuplicate) {
+        actions.push({ label: "Duplicate", icon: "📋", onClick: () => onDuplicate(id) });
+    }
     const cancellable = ["SCHEDULED", "WAITING", "CHECKED_IN"].includes(status);
     if (cancellable) {
         actions.push({ label: "Cancel", icon: "🚫", onClick: () => onStatusChange(id, "CANCELLED"), danger: true });
@@ -265,17 +273,19 @@ export default function ReservationSlot({
             </div>
             <div className="slot-right">
                 <div className="menu-wrap" ref={menuRef}>
-                    <button
-                        ref={triggerRef}
-                        className="menu-trigger"
-                        onClick={(e) => {
-                            e.stopPropagation();
-                            if (!menuOpen) openMenu();
-                            setMenuOpen(!menuOpen);
-                        }}
-                    >
-                        ⋮
-                    </button>
+                    {!readOnly && (
+                        <button
+                            ref={triggerRef}
+                            className="menu-trigger"
+                            onClick={(e) => {
+                                e.stopPropagation();
+                                if (!menuOpen) openMenu();
+                                setMenuOpen(!menuOpen);
+                            }}
+                        >
+                            ⋮
+                        </button>
+                    )}
                     {menuOpen && createPortal(
                         <div
                             ref={menuPanelRef}
