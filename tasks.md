@@ -69,7 +69,7 @@ Two things that bear repeating here, because this is the file both agents open:
 | TJ-017 | Let a proxy fall-through fail cleanly | DONE — task commit `33cb466`, merged to `master` as `68cc31d` with `--no-ff`; runtime-proven against a measured master baseline | `chore/clinic-path-public` |
 | TJ-018 | Document the production environment variables | DONE — task commit `8bb70df`, merged to `master` as `cd3d4cf` with `--no-ff`; all seven deployment variables now documented, `.env` still ignored | `docs/env-example` |
 | TJ-019 | Migrate the `middleware` file convention to `proxy` | BACKLOG — deferred until after the cutover; see `Production_Cutover.md` | — |
-| TJ-020 | Employee forms overflow sideways: their inputs never shrink below the browser's default width | REVIEW — passed planner review and QA 2026-10-12; merged into `claude/exciting-einstein-krgpmv` as `ba23881`; **not merged to `master`: merging deploys to production, awaiting the user** | `bugfix/employee-form-overflow` |
+| TJ-020 | Employee forms overflow sideways: their inputs never shrink below the browser's default width | DONE — task commit `6a7270e`, merged into `claude/exciting-einstein-krgpmv` as `ba23881`, then to `master` as `7622d50` with `--no-ff` on 2026-10-12 at the user's request; planner-reviewed and QA-verified locally; **live check owed** | `bugfix/employee-form-overflow` |
 | TJ-021 | Every admin page overflows horizontally at 320px | BACKLOG — no planning pass | — |
 | TJ-022 | Warn before unsaved clinical text is discarded | DONE — merged `6467b39` with `--no-ff`; runtime-proven and visually reviewed | `feat/unsaved-changes-warning` |
 | TJ-023 | Stop serving clinical data to secretaries | DONE — merged `c86985b` with `--no-ff`; runtime-proven and visually reviewed | `feat/clinical-read-boundary` |
@@ -118,13 +118,13 @@ Two things that bear repeating here, because this is the file both agents open:
 | TJ-055 | `--font-heading` has never resolved: headings render in the body font, not Bodoni Moda | DONE — task commit `32bd05c`, merged as `d9a53ee` on 2026-09-28; option 2 (keep the body face), chosen by the planner at the user's request; no visible change measured | `bugfix/heading-font-variable` |
 | TJ-056 | Card text reads blurry on Windows: unhinted font files and faded muted lines | DONE — task commit `2079d78`, merged to `master` as `220ed3e` with `--no-ff` on 2026-09-28 at the user's request; **a look on a Windows machine is owed** | `bugfix/windows-text-rendering` |
 | TJ-057 | Draw Arabic 10% larger; clip long Arabic names at their end | DONE — task commit `e60699e`, merged to `master` as `01cfb82` with `--no-ff` on 2026-09-28 at the user's request; **a look on a Windows machine is owed** | `feat/arabic-size-adjust` |
-| TJ-058 | Open the doctor dashboard on All Doctors | REVIEW — passed planner review and QA 2026-10-12; merged into `claude/exciting-einstein-krgpmv` as `031b184`; **not merged to `master`: merging deploys to production, awaiting the user** | `feat/doctor-calendar-all-default` |
-| TJ-059 | Ten more calendar colours for doctors | REVIEW — passed planner review and QA 2026-10-12; merged into `claude/exciting-einstein-krgpmv` as `aa47fca`; **not merged to `master`: merging deploys to production, awaiting the user** | `feat/more-doctor-colours` |
-| TJ-060 | Sign in with a username in any case | REVIEW — passed planner review and QA 2026-10-12; merged into `claude/exciting-einstein-krgpmv` as `72afb3e`; **not merged to `master`: merging deploys to production, awaiting the user** | `feat/username-any-case` |
-| TJ-061 | The doctor dashboard's Duplicate: broken, and the route behind it lets a doctor book | REVIEW — option A; passed planner review and QA 2026-10-12; merged into `claude/exciting-einstein-krgpmv`; **not merged to `master`: awaiting the user** | `bugfix/doctor-duplicate` |
-| TJ-062 | Limit doctors to their own sessions | SPLIT — **complete**: both halves passed planner review and QA 2026-10-12 and are merged into `claude/exciting-einstein-krgpmv`; **not merged to `master`: awaiting the user** | — |
-| TJ-062a | Server: a doctor may change only their own sessions | REVIEW — passed planner review and QA 2026-10-12; merged into `claude/exciting-einstein-krgpmv` as `3a23dd6`; **not merged to `master`: awaiting the user** | `feat/doctor-session-ownership` |
-| TJ-062b | Screens: a colleague's session is read-only to a doctor | REVIEW — passed planner review and QA 2026-10-12; merged into `claude/exciting-einstein-krgpmv` as `7024348`; **not merged to `master`: awaiting the user** | `feat/doctor-readonly-sessions` |
+| TJ-058 | Open the doctor dashboard on All Doctors | DONE — task commit `455f662`, merged into `claude/exciting-einstein-krgpmv` as `031b184`, then to `master` as `7622d50` with `--no-ff` on 2026-10-12 at the user's request; planner-reviewed and QA-verified locally; **live check owed** | `feat/doctor-calendar-all-default` |
+| TJ-059 | Ten more calendar colours for doctors | DONE — task commit `34270bf`, merged into `claude/exciting-einstein-krgpmv` as `aa47fca`, then to `master` as `7622d50` with `--no-ff` on 2026-10-12 at the user's request; planner-reviewed and QA-verified locally; **live check owed** | `feat/more-doctor-colours` |
+| TJ-060 | Sign in with a username in any case | DONE — task commit `61b10e3`, merged into `claude/exciting-einstein-krgpmv` as `72afb3e`, then to `master` as `7622d50` with `--no-ff` on 2026-10-12 at the user's request; planner-reviewed and QA-verified locally; **live check owed** | `feat/username-any-case` |
+| TJ-061 | The doctor dashboard's Duplicate: broken, and the route behind it lets a doctor book | DONE — task commit `41da75c`, merged into `claude/exciting-einstein-krgpmv` as `21d8079`, then to `master` as `7622d50` with `--no-ff` on 2026-10-12 at the user's request; planner-reviewed and QA-verified locally; **live check owed** | `bugfix/doctor-duplicate` |
+| TJ-062 | Limit doctors to their own sessions | SPLIT — **complete**: both halves merged to `master` as `7622d50` on 2026-10-12 at the user's request; **live check owed** | — |
+| TJ-062a | Server: a doctor may change only their own sessions | DONE — task commit `30591ee`, merged into `claude/exciting-einstein-krgpmv` as `3a23dd6`, then to `master` as `7622d50` with `--no-ff` on 2026-10-12 at the user's request; planner-reviewed and QA-verified locally; **live check owed** | `feat/doctor-session-ownership` |
+| TJ-062b | Screens: a colleague's session is read-only to a doctor | DONE — task commit `faa8935`, merged into `claude/exciting-einstein-krgpmv` as `7024348`, then to `master` as `7622d50` with `--no-ff` on 2026-10-12 at the user's request; planner-reviewed and QA-verified locally; **live check owed** | `feat/doctor-readonly-sessions` |
 
 ---
 
@@ -1334,7 +1334,7 @@ The diff was read in full: exactly the six files in Scope, symmetric across the 
 
 ### TJ-020 — Employee forms overflow sideways: their inputs never shrink below the browser's default width
 
-- **Status:** REVIEW. Passed planner review and QA on 2026-10-12. Task commit `6a7270e` on `bugfix/employee-form-overflow`, merged into `claude/exciting-einstein-krgpmv` as `ba23881` with `--no-ff`. **Not merged to `master`: merging deploys to production, awaiting the user.**
+- **Status:** DONE. Passed planner review and QA on 2026-10-12. Task commit `6a7270e` on `bugfix/employee-form-overflow`, merged into `claude/exciting-einstein-krgpmv` as `ba23881` with `--no-ff`. Merged to `master` with `--no-ff` as `7622d50` on 2026-10-12, at the user's request. **Live check owed:** no agent can reach or sign in to production.
 - **Branch:** `bugfix/employee-form-overflow`
 - **Why:** The doctor and secretary **edit modals** overflow sideways at every desktop width, not only on phones. Their right-hand column is cut off at the modal's edge: Phone, the second time input, and Repeat Password. The two `/new` pages overflow at tablet and phone widths. Measured on `master`, as `scrollWidth − clientWidth` of the modal card (modals) or of the page (`/new`):
 
@@ -10535,7 +10535,7 @@ Option 1 remains available later as a deliberate redesign.
 
 ### TJ-058 — Open the doctor dashboard on All Doctors
 
-- **Status:** REVIEW. Passed planner review and QA on 2026-10-12. Task commit `455f662` on `feat/doctor-calendar-all-default`, merged into `claude/exciting-einstein-krgpmv` as `031b184` with `--no-ff`. **not merged to `master`: merging deploys to production, awaiting the user**.
+- **Status:** DONE. Passed planner review and QA on 2026-10-12. Task commit `455f662` on `feat/doctor-calendar-all-default`, merged into `claude/exciting-einstein-krgpmv` as `031b184` with `--no-ff`. Merged to `master` with `--no-ff` as `7622d50` on 2026-10-12, at the user's request. **Live check owed:** no agent can reach or sign in to production.
 - **Branch:** `feat/doctor-calendar-all-default`
 - **Why:** User request, 2026-10-12: the calendar a doctor sees by default should be the all-doctors calendar, not the doctor's own. Today `/doctor` opens filtered to the signed-in doctor, and "All Doctors" is the second option in the select. Admin and secretary already open on "All Doctors" (`useState("all")` in `admin/page.tsx` and `secretary/page.tsx`). This brings the third dashboard in line.
 
@@ -10642,7 +10642,7 @@ Runtime, signed in as a doctor, against a database with sessions today for at le
 
 ### TJ-059 — Ten more calendar colours for doctors
 
-- **Status:** REVIEW. Passed planner review and QA on 2026-10-12. Task commit `34270bf` on `feat/more-doctor-colours`, merged into `claude/exciting-einstein-krgpmv` as `aa47fca` with `--no-ff`. **not merged to `master`: merging deploys to production, awaiting the user**.
+- **Status:** DONE. Passed planner review and QA on 2026-10-12. Task commit `34270bf` on `feat/more-doctor-colours`, merged into `claude/exciting-einstein-krgpmv` as `aa47fca` with `--no-ff`. Merged to `master` with `--no-ff` as `7622d50` on 2026-10-12, at the user's request. **Live check owed:** no agent can reach or sign in to production.
 - **Branch:** `feat/more-doctor-colours`
 - **Why:** User request, 2026-10-12: "add more color options to assign to doctors, add about 10 more." There are 12 colours, and TJ-009d made each one exclusive to a single ACTIVE doctor, so the 13th active doctor already has to share one ("Every colour is in use — this one will be shared"). Ten more makes 22.
 
@@ -10772,7 +10772,7 @@ Runtime, against a local database. Every bullet but the last is read-only.
 
 ### TJ-060 — Sign in with a username in any case
 
-- **Status:** REVIEW. Passed planner review and QA on 2026-10-12. Task commit `61b10e3` on `feat/username-any-case`, merged into `claude/exciting-einstein-krgpmv` as `72afb3e` with `--no-ff`. **not merged to `master`: merging deploys to production, awaiting the user**.
+- **Status:** DONE. Passed planner review and QA on 2026-10-12. Task commit `61b10e3` on `feat/username-any-case`, merged into `claude/exciting-einstein-krgpmv` as `72afb3e` with `--no-ff`. Merged to `master` with `--no-ff` as `7622d50` on 2026-10-12, at the user's request. **Live check owed:** no agent can reach or sign in to production.
 - **Branch:** `feat/username-any-case`
 - **Why:** User request, 2026-10-12: "make the username not case sensitive at sign in." `authorize()` finds the account with `prisma.user.findUnique({ where: { username } })`, which is an exact, case-sensitive match. So `dr.ahmad` typed for an account stored as `Dr.Ahmad` is refused as a wrong password. The usual cause is a phone capitalising the first letter. Once this lands, a username signs in in any case, and the password check stays exactly as strict as it is.
 
@@ -10971,13 +10971,13 @@ Optional and read-only, for the user rather than the executor: on production, `S
   - Six simultaneous `POST`s of case variants all returned 201, because the lookup runs before a ~250 ms bcrypt hash.
   - Not a regression: `master` allowed case variants at any time. Negligible in practice. Recorded in Notes.
   - The Done-when box is ticked with that qualification.
-- **Still the user's to run before merging to `master`:** the optional read-only production query for existing case-collision pairs.
+- **Still the user's to run, now that it is on `master`:** the optional read-only production query for existing case-collision pairs. It changes nothing: each such account keeps signing in with its exact spelling only.
 
 ---
 
 ### TJ-061 — The doctor dashboard's Duplicate: broken, and the route behind it lets a doctor book
 
-- **Status:** REVIEW. Passed planner review and QA on 2026-10-12. Task commit `41da75c` on `bugfix/doctor-duplicate`, merged into `claude/exciting-einstein-krgpmv` with `--no-ff`. **Not merged to `master`: merging deploys to production, awaiting the user.**
+- **Status:** DONE. Passed planner review and QA on 2026-10-12. Task commit `41da75c` on `bugfix/doctor-duplicate`, merged into `claude/exciting-einstein-krgpmv` with `--no-ff`. Merged to `master` with `--no-ff` as `7622d50` on 2026-10-12, at the user's request. **Live check owed:** no agent can reach or sign in to production.
 - **Branch:** `bugfix/doctor-duplicate`, cut from `claude/exciting-einstein-krgpmv`. It must carry TJ-058, because TJ-058 also edits `src/app/doctor/page.tsx` and the anchors below were taken from its result. **Not from `master`.**
 - **Why:** User request, 2026-10-12, following the TJ-058 pass. Duplicate on the doctor dashboard has never worked. The route behind it is the one way a doctor can create a booking, for any doctor and at any hour, although `POST /api/reservations` refuses doctors.
 
@@ -11195,7 +11195,7 @@ Runtime, against a local database with sessions today for two doctors. The first
 
 ### TJ-062 — Limit doctors to their own sessions
 
-- **Status:** SPLIT, **complete**. Passed 2026-10-12, with every decision taken, and split into **TJ-062a** (server) and **TJ-062b** (screens). Both passed planner review and QA on 2026-10-12, tested together, and are merged into `claude/exciting-einstein-krgpmv` as `3a23dd6` and `7024348`. **Not merged to `master`: merging deploys to production, awaiting the user.** Nothing executes against this ID.
+- **Status:** SPLIT, **complete**. Passed 2026-10-12, with every decision taken, and split into **TJ-062a** (server) and **TJ-062b** (screens). Both passed planner review and QA on 2026-10-12, tested together, and are merged into `claude/exciting-einstein-krgpmv` as `3a23dd6` and `7024348`, then to `master` as `7622d50` on 2026-10-12 at the user's request. **Live check owed.** Nothing executes against this ID.
 - **Branch:** none of its own. TJ-062a is `feat/doctor-session-ownership` and TJ-062b is `feat/doctor-readonly-sessions`, both cut from `claude/exciting-einstein-krgpmv` at `3baee67`, after TJ-058 and TJ-061.
 - **Why:** User request, 2026-10-12: nothing on the server stops a doctor changing status on, or writing notes for, a colleague's session. TJ-058 made colleagues' cards the first thing a doctor sees.
 
@@ -11250,7 +11250,7 @@ Measured on `master`, signed in as `Dr.Ahmad`, acting on `dr_sami`'s reservation
 
 ### TJ-062a — Server: a doctor may change only their own sessions
 
-- **Status:** REVIEW. Passed planner review and QA on 2026-10-12. Task commit `30591ee` on `feat/doctor-session-ownership`, merged into `claude/exciting-einstein-krgpmv` with `--no-ff` as `3a23dd6`. **Not merged to `master`: merging deploys to production, awaiting the user.**
+- **Status:** DONE. Passed planner review and QA on 2026-10-12. Task commit `30591ee` on `feat/doctor-session-ownership`, merged into `claude/exciting-einstein-krgpmv` with `--no-ff` as `3a23dd6`. Merged to `master` with `--no-ff` as `7622d50` on 2026-10-12, at the user's request. **Live check owed:** no agent can reach or sign in to production.
 - **Branch:** `feat/doctor-session-ownership`, cut from `claude/exciting-einstein-krgpmv` at `4651e24`.
 - **Why:** See TJ-062. Measured on `master`: a doctor's status, details and SOAP writes on a colleague's session all return 200. **User decisions, 2026-10-12:**
   - block all of them, status included;
@@ -11487,7 +11487,7 @@ Reset the database afterwards.
 
 ### TJ-062b — Screens: a colleague's session is read-only to a doctor
 
-- **Status:** REVIEW. Passed planner review and QA on 2026-10-12. Task commit `faa8935` on `feat/doctor-readonly-sessions`, merged into `claude/exciting-einstein-krgpmv` with `--no-ff` as `7024348`. **Not merged to `master`: merging deploys to production, awaiting the user.**
+- **Status:** DONE. Passed planner review and QA on 2026-10-12. Task commit `faa8935` on `feat/doctor-readonly-sessions`, merged into `claude/exciting-einstein-krgpmv` with `--no-ff` as `7024348`. Merged to `master` with `--no-ff` as `7622d50` on 2026-10-12, at the user's request. **Live check owed:** no agent can reach or sign in to production.
 - **Branch:** `feat/doctor-readonly-sessions`, cut from `claude/exciting-einstein-krgpmv` at `4651e24`. It must carry TJ-061: the `Calendar`, `ReservationSlot` and doctor-page anchors below are post-TJ-061.
 - **Why:** See TJ-062. **Ships with TJ-062a**, which enforces the same rule on the server. Without this task, a doctor would see buttons on colleagues' sessions that now fail with 403.
 
@@ -11825,6 +11825,10 @@ Runtime, against a local database with sessions today for two doctors. Every bul
 
 Findings reported by the executor, or surfaced during a pass, that fall outside the scope of the task that turned them up. The planner triages these into tasks. **The executor does not write here** — it reports in conversation and the planner records.
 
+- **The 2026-10-12 batch is on `master` as `7622d50`, and its live check is owed.** It holds TJ-058, TJ-059, TJ-060, TJ-020, TJ-061, TJ-062a and TJ-062b. Each passed planner review and QA against a local build. No agent could look at production: this session's network policy denies `therapyjo.com`, and no agent can sign in there. A signed-in look by the user covers it:
+  - **As a doctor:** `/doctor` opens on All Doctors; a colleague's card has no ⋮ menu; a colleague's session shows the "Read only" banner and no save or status buttons; the doctor's own sessions work as before.
+  - **At sign-in:** the username in different case signs in.
+  - **As admin:** the doctor colour picker shows the ten new colours, and the employee edit popup no longer runs off the side, on a phone and on a desktop.
 - **A non-numeric reservation id returns 500.** `PUT`, `PATCH` and the SOAP `PUT` on `/api/reservations/abc` hand `parseInt`'s `NaN` to Prisma, which throws `PrismaClientValidationError`, for every role. QA measured the same on `3baee67`, before TJ-062, so it is not a regression, and no screen sends such an id. Returning 400 on `isNaN`, as the patient routes already do, would close it. (Found by the TJ-062a executor and confirmed by QA, 2026-10-12.)
 - **On a colleague's session, the read-only Injury Place field looks editable.** It is `readOnly`, so typing does nothing, but it keeps the editable style, and the "Read only" banner is the only cue. A muted style for read-only fields on that page would make it plain. (Found by QA during TJ-062b, 2026-10-12.)
 - **A role change takes effect only at the next sign-in.** The role lives in the JWT, and `auth.ts`'s `jwt` callback re-reads only `status`. QA demoted a signed-in SECRETARY to DOCTOR in the database, and that session could still duplicate (201) until it signed in again. No API can change a role, since neither employee `PUT` reads `role`, so this needs a direct database edit. It applies to every role check in the app. Re-reading `role` alongside `status` in that callback would close it. (Found by QA during TJ-061, 2026-10-12.)
