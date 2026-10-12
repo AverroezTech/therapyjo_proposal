@@ -121,6 +121,8 @@ Two things that bear repeating here, because this is the file both agents open:
 | TJ-058 | Open the doctor dashboard on All Doctors | READY — passed 2026-10-12; diff prototyped, gated and browser-checked | `feat/doctor-calendar-all-default` |
 | TJ-059 | Ten more calendar colours for doctors | READY — passed 2026-10-12; colours chosen by measurement; diff prototyped, gated and browser-checked | `feat/more-doctor-colours` |
 | TJ-060 | Sign in with a username in any case | READY — passed 2026-10-12; **the obvious Prisma one-liner is a login wildcard**, so the plan uses `lower() = lower()`; diff prototyped and runtime-proven | `feat/username-any-case` |
+| TJ-061 | The doctor dashboard's Duplicate: broken, and the route behind it lets a doctor book | BLOCKED — passed 2026-10-12; measured; **awaiting the user's choice: doctors don't duplicate (A, recommended) or duplicate their own sessions (B)** | — |
+| TJ-062 | Limit doctors to their own sessions | BLOCKED — passed 2026-10-12; measured (a doctor can write a colleague's status, details and SOAP); **awaiting the user's scope decisions**; splits into server + UI once decided | — |
 
 ---
 
@@ -10919,6 +10921,91 @@ Optional and read-only, for the user rather than the executor: on production, `S
 - [ ] A case collision signs in only by exact spelling, and no new collision can be created
 - [ ] Lockout still counts against the account that was actually tried
 - [ ] tsc and build pass; lint is 64
+
+---
+
+### TJ-061 — The doctor dashboard's Duplicate: broken, and the route behind it lets a doctor book
+
+- **Status:** BLOCKED. Planning pass run 2026-10-12. **It needs the user's decision between options A and B below.** Every finding is measured. The instructions are written once the option is chosen.
+- **Branch:** `bugfix/doctor-duplicate`, cut from wherever TJ-058 has landed. Both tasks edit `src/app/doctor/page.tsx`, and TJ-058's step 1 sits three lines below the Duplicate state this task removes or rewrites.
+- **Why:** User request, 2026-10-12, following the TJ-058 pass. Duplicate on the doctor dashboard has never worked, and fixing only the request would open a booking path that the rest of the app refuses to doctors.
+
+**Planning pass:** 2026-10-12. Files read:
+- `src/app/doctor/page.tsx`: the Duplicate state, `handleDuplicate`, `confirmDuplicate`, and the modal.
+- `src/app/api/reservations/[id]/duplicate/route.ts` in full, and the `POST` of `src/app/api/reservations/route.ts`.
+- The action menu in `src/app/components/ReservationSlot.tsx` and the props of `src/app/components/Calendar.tsx`.
+- The Duplicate callers in `src/app/admin/page.tsx` and `src/app/secretary/page.tsx`, and TJ-046.
+
+Measured on `master` against a local database, signed in as the doctor `Dr.Ahmad`:
+
+| Request | Result |
+|---|---|
+| `POST …/<own id>/duplicate` with `{ date, time }`, which is what the doctor page sends | **400** "sessionDate is required" |
+| `POST /api/reservations`, the main booking route | **403** "Doctors cannot create reservations" |
+| `POST …/<colleague's id>/duplicate` with `{ sessionDate: "2026-10-13", sessionTime: "03:00" }` | **201**: a SCHEDULED booking for the colleague, at 03:00 |
+
+- **Confirmed: the doctor's Duplicate never works and fails silently.** `confirmDuplicate` posts `{ date: dupeDate, time: dupeTime }`. The route reads `sessionDate` / `sessionTime`. The page never reads the response, so the modal closes as though it worked. Admin sends `{ sessionDate, sessionTime }` and secretary sends `{ sessionDate }`; only the doctor's copy is wrong.
+- **Confirmed: the route has no role check, no ownership check and no clinic-window check.** A doctor can create bookings through it, for any doctor, at any hour. The missing window check is TJ-046, so whichever option is chosen should close that hole at the same time.
+- **Confirmed: every role sees "Duplicate" on every card.** `ReservationSlot` adds it unconditionally, and `Calendar` requires `onDuplicate`.
+
+**The decision, for the user:**
+- **Option A, recommended: doctors don't duplicate.**
+  - Remove the item from the doctor's card menu by making `onDuplicate` optional, the same pattern `onEdit` and `onViewDetails` already use. The doctor page stops passing it, and its Duplicate modal, state and handlers are deleted.
+  - The route refuses doctors with 403, matching `POST /api/reservations`.
+  - Files: `doctor/page.tsx`, `Calendar.tsx`, `ReservationSlot.tsx`, `duplicate/route.ts`.
+  - Admin and secretary are unchanged.
+- **Option B: doctors may duplicate their own sessions**, for example to book a follow-up.
+  - Fix the doctor page's request to `{ sessionDate, sessionTime }`, and make it read the response and show the error.
+  - The route lets a doctor duplicate only a reservation booked under them, and checks the clinic window with `checkClinicWindow` from `src/lib/clinicHours.ts`.
+  - This makes the duplicate route the one place a doctor can create a booking, which is a deliberate exception to the rule `POST /api/reservations` enforces.
+  - Files: `doctor/page.tsx` and `duplicate/route.ts`.
+
+**Not yet decided, so no Scope or Instructions.** Once the option is chosen, the pass is finished against the files then current: anchors, literals and Verification. **Regression risks for either option:** admin's and secretary's Duplicate must keep working; it is the only Duplicate that works today.
+
+---
+
+### TJ-062 — Limit doctors to their own sessions
+
+- **Status:** BLOCKED. Planning pass run 2026-10-12. **It needs the user's decisions on scope (questions 1–3 below).** Every finding is measured. It will split into a server task and a UI task once scope is fixed.
+- **Branch:** to be assigned at the split. The UI half edits `src/app/doctor/page.tsx`, so it is cut after TJ-058 and TJ-061.
+- **Why:** User request, 2026-10-12: nothing on the server stops a doctor changing status on, or writing notes for, a colleague's session. TJ-058 made colleagues' cards the first thing a doctor sees.
+
+**Planning pass:** 2026-10-12. Files read:
+- `src/app/api/reservations/[id]/route.ts` (`GET`, `PUT`, `PATCH`, `DELETE`), `.../soap/route.ts` and `.../duplicate/route.ts`.
+- `src/app/api/patients/[id]/intake` (its call sites) and `src/lib/permissions.ts`.
+- `src/app/doctor/session/[id]/page.tsx`: data loading and every save handler.
+- The writes on `src/app/doctor/patients/[id]/page.tsx`.
+- `src/app/api/notes/route.ts` and `.../notes/[id]/route.ts`, and the `Note` model.
+
+Measured on `master`, signed in as `Dr.Ahmad`, acting on `dr_sami`'s reservation:
+
+| Request | Result |
+|---|---|
+| `GET …/soap` (read the colleague's SOAP note) | 200 |
+| `PUT …/soap` (write it) | **200** |
+| `PATCH /api/reservations/<id>` `{ status: "CHECKED_IN" }` | **200**, and the status really changed |
+| `PUT /api/reservations/<id>` `{ injuryPlace, paymentType }` | **200**, and the stored value changed |
+| `PUT /api/patients/<id>/intake` (patient-level) | 200 |
+
+- **Confirmed: no doctor-facing write checks ownership.**
+  - `PATCH` (status) checks only that a session exists.
+  - `PUT` refuses a doctor only for date, time and reassignment. Notes, injury, payment and the two-hour flag are open.
+  - The SOAP `PUT` checks `canAccessClinical`, which is role-only.
+  - Duplicate is TJ-061.
+  - `DELETE` already refuses doctors.
+- **Confirmed: ownership is checkable.** A reservation carries `doctorId`, and the session carries `session.user.id`. A reservation whose doctor was hard-deleted has `doctorId = null`, so no doctor owns it; admin can still act on it.
+- **Confirmed: the intake is patient-level, not session-level.** One record per patient, shared by every doctor who treats them. Restricting it is a separate question from restricting sessions.
+- **Adjacent, found during the pass:** `PUT /api/notes/[id]` lets any signed-in user, doctors included, edit any note, including reassigning its `doctorId`. Only `DELETE` refuses doctors. Not part of this request; listed as question 4.
+
+**Recommended design, pending the user's answers:**
+- **Server:** a `canWriteSession(user, reservationDoctorId)` helper in `permissions.ts`. Admin and secretary keep exactly what they have. A doctor is allowed only when `reservationDoctorId === user.id`. It is applied to `PATCH` and `PUT /api/reservations/[id]` and to the SOAP `PUT`, and to Duplicate if TJ-061 chooses option B. A refusal is a 403 naming the rule.
+- **UI:** on the doctor dashboard, a colleague's card shows no status actions. The session page opens a colleague's session read-only: a banner naming the doctor, and no save or status buttons. Without this the server change alone would leave buttons that fail.
+
+**The decisions, for the user:**
+1. **Which writes on a colleague's session are blocked?** Recommended: all of them (status, details, SOAP). The alternative is clinical writes only (SOAP and details), so any doctor can still move a colleague's patient through check-in and check-out.
+2. **May a doctor still *read* a colleague's session and SOAP notes?** Recommended: yes, for continuity of care. TJ-058 already shows the cards.
+3. **The patient-level intake:** keep it shared by every doctor (recommended), or restrict it to doctors who have a session with that patient?
+4. **Should doctors' editing of Notes be limited too?** That would be a separate task.
 
 ---
 
