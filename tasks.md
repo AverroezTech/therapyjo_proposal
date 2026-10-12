@@ -69,7 +69,7 @@ Two things that bear repeating here, because this is the file both agents open:
 | TJ-017 | Let a proxy fall-through fail cleanly | DONE — task commit `33cb466`, merged to `master` as `68cc31d` with `--no-ff`; runtime-proven against a measured master baseline | `chore/clinic-path-public` |
 | TJ-018 | Document the production environment variables | DONE — task commit `8bb70df`, merged to `master` as `cd3d4cf` with `--no-ff`; all seven deployment variables now documented, `.env` still ignored | `docs/env-example` |
 | TJ-019 | Migrate the `middleware` file convention to `proxy` | BACKLOG — deferred until after the cutover; see `Production_Cutover.md` | — |
-| TJ-020 | `.form-grid` in the employee modals has never fitted 320px | BACKLOG — no planning pass | — |
+| TJ-020 | Employee forms overflow sideways: their inputs never shrink below the browser's default width | READY — passed 2026-10-12, widened to desktop and the `/new` pages; diff prototyped, 0px overflow measured at 7 widths × 4 surfaces; **user priority: first after TJ-058/059/060** | `bugfix/employee-form-overflow` |
 | TJ-021 | Every admin page overflows horizontally at 320px | BACKLOG — no planning pass | — |
 | TJ-022 | Warn before unsaved clinical text is discarded | DONE — merged `6467b39` with `--no-ff`; runtime-proven and visually reviewed | `feat/unsaved-changes-warning` |
 | TJ-023 | Stop serving clinical data to secretaries | DONE — merged `c86985b` with `--no-ff`; runtime-proven and visually reviewed | `feat/clinical-read-boundary` |
@@ -1328,12 +1328,314 @@ The diff was read in full: exactly the six files in Scope, symmetric across the 
 
 ---
 
-### TJ-020 — `.form-grid` in the employee modals has never fitted 320px
+### TJ-020 — Employee forms overflow sideways: their inputs never shrink below the browser's default width
 
-- **Status:** BACKLOG — no planning pass. Do not execute against this ID.
-- **Why:** Confirmed during the TJ-005b2a pass, and previously only a standing planner note. `.form-grid` is declared `grid-template-columns: 1fr 1fr` with **no media query** in either employee modal (`src/app/admin/employees/doctors/page.tsx:688`, `src/app/admin/employees/secretaries/page.tsx:621`). `.modal-card` is `width: 100%; max-width: 560px; padding: 2rem`, so at a 320px viewport each column is roughly 120px — narrower than a `type="time"` input's intrinsic width, and the Working Hours field puts **two** of them plus a "to" separator in one column. The Definition of Done requires 320px not to be broken; this predates the requirement and has never been met.
+- **Status:** READY. Planning pass run 2026-10-12 and widened at the user's request: it now covers desktop widths and the two `/new` pages, not only the modals at 320px. The diff was prototyped, gated and measured in a browser. Nothing is committed against this task. **User priority, 2026-10-12: first to execute after TJ-058/059/060.**
+- **Branch:** `bugfix/employee-form-overflow`
+- **Why:** The doctor and secretary **edit modals** overflow sideways at every desktop width, not only on phones. Their right-hand column is cut off at the modal's edge: Phone, the second time input, and Repeat Password. The two `/new` pages overflow at tablet and phone widths. Measured on `master`, as `scrollWidth − clientWidth` of the modal card (modals) or of the page (`/new`):
 
-**What its planning pass owes:** whether a single `@media` collapsing the grid to one column is enough, or whether `.hours-row` needs to wrap independently; and whether the same declaration exists in any other modal (the patients and blog screens were not checked).
+  | Surface | 1440 | 1024 | 768 | 600 | 560 | 375 | 320 |
+  |---|---|---|---|---|---|---|---|
+  | Doctor and secretary edit modals | **115** | **115** | **115** | **115** | 0 | 0 | **47** |
+  | Doctor and secretary `/new` pages | 0 | 0 | **177** | 0 | 0 | **5** | **60** |
+
+**Planning pass:** 2026-10-12. Files read:
+- The modal markup and `<style jsx>` of `src/app/admin/employees/doctors/page.tsx` and `src/app/admin/employees/secretaries/page.tsx`.
+- The form markup and styles of `src/app/admin/employees/doctors/new/page.tsx` and `src/app/admin/employees/secretaries/new/page.tsx`.
+- The global `box-sizing` rule in `src/app/globals.css`, and every other `.form-grid` in `src/app`.
+
+Findings:
+- **Corrected: the original Why was stale, and its theory was not the mechanism.** It said `.form-grid` had "no media query". It has had one since `f32d337` ("Make the admin area mobile-responsive"), which collapses the grid to one column at 560px and below. That is why the modal already fits from 375px to 560px.
+- **The mechanism, measured.** Neither the modals' `.form-group input` nor the `/new` pages' `.field input` sets a width, so each input keeps the browser's default intrinsic width: about **314px** for a text input at this font size, and **125px** for a time input. A `1fr` grid track never shrinks below its widest item's minimum, so:
+  - **In the modals**, the Working Hours row (two time inputs and "to") holds its column at 313px. `1fr 1fr` then makes *both* columns 313px, which is 641px inside a 494px modal. That is the 115px overflow at every width above 560px.
+  - **On `/new` at 768px**, the Phone|Email row needs 2 × 314px inside a 460px column.
+  - **On `/new` at 320–375px**, a single 314px input plus the card's padding makes a 364px card.
+- **Three candidates were measured by injecting CSS into the live page:**
+  - **A:** inputs `width: 100%; min-width: 0`, and `minmax(0, 1fr)` tracks. Overflow went to 0 almost everywhere, **but the modal's time inputs shrank to 106px and clipped their value to "09:00 A"** (seen in a screenshot). Rejected.
+  - **B:** A, plus Working Hours and Email spanning both modal columns. Desktop times then show in full at 233px each, but phones still clip, at 109px.
+  - **C: B, plus an hours row that wraps, with a 9.5rem floor for each time input.** This gave **0px overflow on all four surfaces at all seven widths**, and no time input ever went below 152px. On phones the second time input wraps onto its own line. **Chosen.**
+- **Why Email spans too:** if only Working Hours spanned, Email would sit alone next to an empty cell. Emails are also the longest values in the form, so a full-width field suits them.
+- **Checked and unaffected:**
+  - The "Content management" checkbox stays 16px. Its `.grant-row input[type="checkbox"]` rule is more specific than `.form-group input`.
+  - The Documents file input was already full width, 494px before and after.
+- **Other `.form-grid`s:** the only other one is in `src/app/doctor/session/[id]/page.tsx`. That is a page, not an employee form, and it has its own 640px media query. Not measured; not in scope.
+- **Prototyped.** The steps below were applied by script, each anchor matching exactly once.
+  - `tsc` exits 0, `npm run build` exits 0, and `npm run lint` is unchanged at 64. The four files carry only their two existing `<img>` warnings.
+  - On the built app: **0px overflow on all 28 surface × width combinations**, both modals and both `/new` pages at 1440, 1024, 768, 600, 560, 375 and 320px.
+  - Time input widths after the change:
+
+    | | 1440 | 768 | 600 | 375 | 320 |
+    |---|---|---|---|---|---|
+    | Modal | 233 / 233 | 233 / 233 | 233 / 233 | 281 / 301, wrapped | 226 / 246, wrapped |
+    | `/new` | 269 / 269 | 191 / 191 | 156 / 156 | 273 / 293, wrapped | 218 / 238, wrapped |
+
+  - Screenshots at 1440px and 320px show "09:00 AM" and "05:30 PM" in full.
+  - The diff applies cleanly on top of TJ-059, which edits two of the same files in a different place (the `COLORS` block).
+
+**Scope — touch only these:**
+- `src/app/admin/employees/doctors/page.tsx`: the `<style jsx>` rules named below, and the `className` of the Email and Working Hours form groups.
+- `src/app/admin/employees/secretaries/page.tsx`: the same.
+- `src/app/admin/employees/doctors/new/page.tsx`: the `<style jsx>` rules named below.
+- `src/app/admin/employees/secretaries/new/page.tsx`: the same.
+
+**Do not touch:**
+- The `COLORS` blocks, which belong to TJ-059.
+- Any other JSX in these files, and the avatar and colour cards on the `/new` pages.
+- The admin shell, `src/app/admin/layout.tsx`, which belongs to TJ-021.
+- `src/app/doctor/session/[id]/page.tsx`.
+- The modals' width and padding, and the existing 560px and 640px breakpoints, except that their `1fr` becomes `minmax(0, 1fr)`.
+
+**Instructions.** All four files are LF. Every anchor below occurs exactly once in its file (machine-checked 2026-10-12). Fenced blocks show each file's own indentation. The two modal pages take identical edits, and so do the two `/new` pages; each is still listed in full so nothing has to be inferred.
+
+**Step 1.** In `src/app/admin/employees/doctors/page.tsx`, replace:
+```tsx
+        .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-bottom: 1rem; }
+```
+with:
+```tsx
+        /* minmax(0, 1fr), not 1fr: a 1fr track never shrinks below its widest
+           field, and the working-hours row pushed both columns past the modal. (TJ-020) */
+        .form-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1rem; margin-bottom: 1rem; }
+        .form-grid > .wide { grid-column: 1 / -1; }
+```
+
+**Step 2.** In `src/app/admin/employees/doctors/page.tsx`, replace:
+```tsx
+        .form-group input {
+```
+with:
+```tsx
+        .form-group input {
+          width: 100%; min-width: 0;
+```
+
+**Step 3.** In `src/app/admin/employees/doctors/page.tsx`, replace:
+```tsx
+          .form-grid { grid-template-columns: 1fr; }
+```
+with:
+```tsx
+          .form-grid { grid-template-columns: minmax(0, 1fr); }
+```
+
+**Step 4.** In `src/app/admin/employees/doctors/page.tsx`, replace:
+```tsx
+                            <div className="form-group">
+                                <label>Email</label>
+```
+with:
+```tsx
+                            <div className="form-group wide">
+                                <label>Email</label>
+```
+
+**Step 5.** In `src/app/admin/employees/doctors/page.tsx`, replace:
+```tsx
+                            <div className="form-group">
+                                <label>Working Hours</label>
+```
+with:
+```tsx
+                            <div className="form-group wide">
+                                <label>Working Hours</label>
+```
+
+**Step 6.** In `src/app/admin/employees/doctors/page.tsx`, replace:
+```tsx
+        .hours-row { display: flex; align-items: center; gap: 0.5rem; }
+        .hours-row input { flex: 1; min-width: 0; }
+```
+with:
+```tsx
+        .hours-row { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; }
+        /* A time input needs about 125px to show "09:00 AM" and its clock
+           icon (measured). 9.5rem leaves room for that; below it the row
+           wraps rather than clipping the time. (TJ-020) */
+        .hours-row input { flex: 1 1 9.5rem; min-width: 0; }
+```
+
+**Step 7.** In `src/app/admin/employees/secretaries/page.tsx`, replace:
+```tsx
+        .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-bottom: 1rem; }
+```
+with:
+```tsx
+        /* minmax(0, 1fr), not 1fr: a 1fr track never shrinks below its widest
+           field, and the working-hours row pushed both columns past the modal. (TJ-020) */
+        .form-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1rem; margin-bottom: 1rem; }
+        .form-grid > .wide { grid-column: 1 / -1; }
+```
+
+**Step 8.** In `src/app/admin/employees/secretaries/page.tsx`, replace:
+```tsx
+        .form-group input {
+```
+with:
+```tsx
+        .form-group input {
+          width: 100%; min-width: 0;
+```
+
+**Step 9.** In `src/app/admin/employees/secretaries/page.tsx`, replace:
+```tsx
+          .form-grid { grid-template-columns: 1fr; }
+```
+with:
+```tsx
+          .form-grid { grid-template-columns: minmax(0, 1fr); }
+```
+
+**Step 10.** In `src/app/admin/employees/secretaries/page.tsx`, replace:
+```tsx
+                            <div className="form-group">
+                                <label>Email</label>
+```
+with:
+```tsx
+                            <div className="form-group wide">
+                                <label>Email</label>
+```
+
+**Step 11.** In `src/app/admin/employees/secretaries/page.tsx`, replace:
+```tsx
+                            <div className="form-group">
+                                <label>Working Hours</label>
+```
+with:
+```tsx
+                            <div className="form-group wide">
+                                <label>Working Hours</label>
+```
+
+**Step 12.** In `src/app/admin/employees/secretaries/page.tsx`, replace:
+```tsx
+        .hours-row { display: flex; align-items: center; gap: 0.5rem; }
+        .hours-row input { flex: 1; min-width: 0; }
+```
+with:
+```tsx
+        .hours-row { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; }
+        /* A time input needs about 125px to show "09:00 AM" and its clock
+           icon (measured). 9.5rem leaves room for that; below it the row
+           wraps rather than clipping the time. (TJ-020) */
+        .hours-row input { flex: 1 1 9.5rem; min-width: 0; }
+```
+
+**Step 13.** In `src/app/admin/employees/doctors/new/page.tsx`, replace:
+```tsx
+                .field input {
+```
+with:
+```tsx
+                .field input {
+                    width: 100%; min-width: 0;
+```
+
+**Step 14.** In `src/app/admin/employees/doctors/new/page.tsx`, replace:
+```tsx
+                .field-row { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
+```
+with:
+```tsx
+                .field-row { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1rem; }
+```
+
+**Step 15.** In `src/app/admin/employees/doctors/new/page.tsx`, replace:
+```tsx
+                    .field-row { grid-template-columns: 1fr; }
+```
+with:
+```tsx
+                    .field-row { grid-template-columns: minmax(0, 1fr); }
+```
+
+**Step 16.** In `src/app/admin/employees/doctors/new/page.tsx`, replace:
+```tsx
+                .hours-row { display: flex; align-items: center; gap: 0.5rem; }
+                .hours-row input { flex: 1; min-width: 0; }
+```
+with:
+```tsx
+                .hours-row { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; }
+                /* A time input needs about 125px to show "09:00 AM" and its clock
+                   icon (measured). 9.5rem leaves room for that; below it the row
+                   wraps rather than clipping the time. (TJ-020) */
+                .hours-row input { flex: 1 1 9.5rem; min-width: 0; }
+```
+
+**Step 17.** In `src/app/admin/employees/secretaries/new/page.tsx`, replace:
+```tsx
+                .field input {
+```
+with:
+```tsx
+                .field input {
+                    width: 100%; min-width: 0;
+```
+
+**Step 18.** In `src/app/admin/employees/secretaries/new/page.tsx`, replace:
+```tsx
+                .field-row { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
+```
+with:
+```tsx
+                .field-row { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1rem; }
+```
+
+**Step 19.** In `src/app/admin/employees/secretaries/new/page.tsx`, replace:
+```tsx
+                    .field-row { grid-template-columns: 1fr; }
+```
+with:
+```tsx
+                    .field-row { grid-template-columns: minmax(0, 1fr); }
+```
+
+**Step 20.** In `src/app/admin/employees/secretaries/new/page.tsx`, replace:
+```tsx
+                .hours-row { display: flex; align-items: center; gap: 0.5rem; }
+                .hours-row input { flex: 1; min-width: 0; }
+```
+with:
+```tsx
+                .hours-row { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; }
+                /* A time input needs about 125px to show "09:00 AM" and its clock
+                   icon (measured). 9.5rem leaves room for that; below it the row
+                   wraps rather than clipping the time. (TJ-020) */
+                .hours-row input { flex: 1 1 9.5rem; min-width: 0; }
+```
+
+**Verification:**
+
+Static:
+- `npx tsc --noEmit` exits 0, and `npm run build` exits 0.
+- `npm run lint` reports `64 problems (50 errors, 14 warnings)`, unchanged.
+- In **each modal page**:
+  - `grep -c 'className="form-group wide"'` returns `2`.
+  - `grep -c 'minmax(0, 1fr)'` returns `3` (the comment, the rule and the media query).
+- In **each `/new` page**, `grep -c 'minmax(0, 1fr)'` returns `2`.
+- In **all four files**:
+  - `grep -c 'flex: 1 1 9.5rem'` returns `1`.
+  - `grep -c 'width: 100%; min-width: 0;'` returns `1`.
+  - `grep -c 'grid-template-columns: 1fr 1fr'` returns `0`.
+- `git diff --stat master` lists exactly the four files: 42 insertions, 20 deletions.
+
+Runtime, signed in as admin against a local database. Every bullet but the last is read-only.
+- Overflow is **0px** at 1440, 1024, 768, 600, 560, 375 and 320px on all four surfaces:
+  - the doctor edit modal and the secretary edit modal, measured on `.modal-card`;
+  - `/admin/employees/doctors/new` and `/admin/employees/secretaries/new`, measured on the page.
+- No `type="time"` input is narrower than 152px at any of those widths.
+- The hours row wraps at 375px and 320px, and stays on one line from 560px up.
+- In both modals, Email and Working Hours span the full grid width.
+- The "Content management" checkbox is 16px wide.
+- With the time inputs set to 09:00 and 17:30, a screenshot at 1440px and at 320px shows "09:00 AM" and "05:30 PM" unclipped.
+- **Write:** in the doctor edit modal and in the secretary edit modal, set working hours to 09:00–17:30 and save. The table's working-hours column shows the new value, so the change is purely visual.
+
+**Done when:**
+- [ ] Neither edit modal nor either `/new` page overflows sideways at any of the seven widths
+- [ ] Times are never clipped; on phones the hours row wraps instead
+- [ ] The forms still save
+- [ ] Only the four files changed; tsc and build pass; lint is 64
 
 ---
 
