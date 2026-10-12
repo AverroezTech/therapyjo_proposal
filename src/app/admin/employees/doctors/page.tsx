@@ -438,11 +438,11 @@ export default function DoctorsPage() {
                                 <label>Phone</label>
                                 <input value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} />
                             </div>
-                            <div className="form-group">
+                            <div className="form-group wide">
                                 <label>Email</label>
                                 <input type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} />
                             </div>
-                            <div className="form-group">
+                            <div className="form-group wide">
                                 <label>Working Hours</label>
                                 <div className="hours-row">
                                     <input
@@ -732,17 +732,24 @@ export default function DoctorsPage() {
           max-height: 90vh; overflow-y: auto;
         }
         .modal-card h2 { font-size: 1.3rem; margin-bottom: 1.5rem; font-weight: 600; }
-        .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-bottom: 1rem; }
+        /* minmax(0, 1fr), not 1fr: a 1fr track never shrinks below its widest
+           field, and the working-hours row pushed both columns past the modal. (TJ-020) */
+        .form-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1rem; margin-bottom: 1rem; }
+        .form-grid > .wide { grid-column: 1 / -1; }
         .form-group { display: flex; flex-direction: column; gap: 0.4rem; }
         .form-group label { font-size: 0.8rem; color: rgba(255,255,255,0.6); font-weight: 500; }
         .form-group input {
+          width: 100%; min-width: 0;
           background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.1);
           border-radius: 8px; padding: 0.65rem 0.8rem; color: #fff;
           font-size: 0.9rem; outline: none; font-family: inherit;
         }
         .form-group input:focus { border-color: #6ee7b7; }
-        .hours-row { display: flex; align-items: center; gap: 0.5rem; }
-        .hours-row input { flex: 1; min-width: 0; }
+        .hours-row { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; }
+        /* A time input needs about 125px to show "09:00 AM" and its clock
+           icon (measured). 9.5rem leaves room for that; below it the row
+           wraps rather than clipping the time. (TJ-020) */
+        .hours-row input { flex: 1 1 9.5rem; min-width: 0; }
         .hours-sep { font-size: 0.8rem; color: rgba(255,255,255,0.4); flex-shrink: 0; }
         .color-picker { display: flex; gap: 0.5rem; flex-wrap: wrap; margin-top: 0.25rem; }
         .color-swatch {
@@ -810,7 +817,7 @@ export default function DoctorsPage() {
           .page-header { flex-direction: column; align-items: stretch; gap: 0.75rem; }
           .modal-overlay { padding: 1rem; }
           .modal-card { padding: 1.25rem; }
-          .form-grid { grid-template-columns: 1fr; }
+          .form-grid { grid-template-columns: minmax(0, 1fr); }
           .btn-sm { padding: 0.45rem 0.75rem; }
         }
       `}</style>

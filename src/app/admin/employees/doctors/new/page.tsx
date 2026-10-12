@@ -334,15 +334,19 @@ export default function NewDoctorPage() {
                 .field label { font-size: 0.78rem; color: rgba(255,255,255,0.55); font-weight: 500; }
                 .req { color: var(--primary, #4CAF93); }
                 .field input {
+                    width: 100%; min-width: 0;
                     background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1);
                     border-radius: var(--radius-sm, 2px); padding: 0.65rem 0.85rem; color: #fff;
                     font-size: 0.9rem; outline: none; font-family: inherit; transition: border-color 0.15s;
                 }
                 .field input:focus { border-color: var(--primary, #4CAF93); }
                 .field input::placeholder { color: rgba(255,255,255,0.2); }
-                .field-row { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
-                .hours-row { display: flex; align-items: center; gap: 0.5rem; }
-                .hours-row input { flex: 1; min-width: 0; }
+                .field-row { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1rem; }
+                .hours-row { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; }
+                /* A time input needs about 125px to show "09:00 AM" and its clock
+                   icon (measured). 9.5rem leaves room for that; below it the row
+                   wraps rather than clipping the time. (TJ-020) */
+                .hours-row input { flex: 1 1 9.5rem; min-width: 0; }
                 .hours-sep { font-size: 0.8rem; color: rgba(255,255,255,0.4); flex-shrink: 0; }
                 .password-wrap { position: relative; }
                 .password-wrap input { width: 100%; padding-inline-end: 2.4rem; }
@@ -375,7 +379,7 @@ export default function NewDoctorPage() {
                     .avatar-card { flex-direction: row; flex-wrap: wrap; gap: 1rem; padding: 1rem; }
                     .avatar-circle { width: 80px; height: 80px; flex-shrink: 0; }
                     .color-card { flex: 1 1 200px; }
-                    .field-row { grid-template-columns: 1fr; }
+                    .field-row { grid-template-columns: minmax(0, 1fr); }
                     .form-actions { flex-wrap: wrap; }
                     .form-actions button { flex: 1 1 auto; }
                 }
