@@ -36,6 +36,10 @@ export default function DoctorDashboard() {
     const [doctors, setDoctors] = useState<Doctor[]>([]);
 
     const doctorId = (session?.user as { id?: string })?.id;
+    // Only this doctor's own cards offer actions; a colleague's are read-only.
+    // An admin may open this page too and keeps every action. Until the
+    // session loads, no card offers anything. (TJ-062)
+    const ownerId = session?.user?.role === "ADMIN" ? undefined : (doctorId ?? "");
 
     // Opens on the whole clinic's schedule, the same as admin and secretary.
     // The select below narrows it to the doctor's own, or to one colleague's.
@@ -128,6 +132,7 @@ export default function DoctorDashboard() {
                             onStatusChange={handleStatusChange}
                             onDelete={handleDelete}
                             onSlotClick={handleSlotClick}
+                            ownerId={ownerId}
                         />
                     )}
                 </div>

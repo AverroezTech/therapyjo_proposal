@@ -32,6 +32,9 @@ interface CalendarProps {
     // Optional: passed only by dashboards that have an edit screen (TJ-047b/c).
     onEdit?: (id: number) => void;
     canDelete?: boolean;
+    // When set (the doctor dashboard), only reservations booked under this
+    // doctor offer actions; every other card is read-only. (TJ-062)
+    ownerId?: string;
 }
 
 // Layout constants for the hour-row packing engine.
@@ -171,6 +174,7 @@ export default function Calendar({
     onViewDetails,
     onEdit,
     canDelete = false,
+    ownerId,
 }: CalendarProps) {
     // Measure the pane so a day that will not fit at MIN_COL_WIDTH can be drawn
     // smaller rather than pushed off the right edge. Layout constants are
@@ -328,6 +332,7 @@ export default function Calendar({
                                                     onViewDetails={onViewDetails}
                                                     onEdit={onEdit}
                                                     canDelete={canDelete}
+                                                    readOnly={ownerId !== undefined && r.doctor?.id !== ownerId}
                                                 />
                                             </div>
                                         );

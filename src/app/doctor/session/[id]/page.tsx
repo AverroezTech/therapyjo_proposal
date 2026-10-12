@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
+import { useSession } from "next-auth/react";
 import { use } from "react";
 import { useUnsavedChanges } from "@/lib/useUnsavedChanges";
 
@@ -54,10 +55,19 @@ const INTAKE_FIELDS = [
 export default function DoctorSessionPage({ params }: { params: Promise<{ id: string }> }) {
     const { id } = use(params);
     const router = useRouter();
+    const { data: authSession } = useSession();
     const [reservation, setReservation] = useState<ReservationDetail | null>(null);
     const [pastSessions, setPastSessions] = useState<PastSession[]>([]);
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
+
+    // A doctor may change only a session booked under them; a colleague's
+    // opens read-only. An admin may open this page too and keeps every
+    // action. Until the signed-in user is known, nothing is offered. (TJ-062)
+    const me = authSession?.user;
+    const isColleagues = !!me && me.role === "DOCTOR" && reservation?.doctor?.id !== me.id;
+    const readOnly = !me || isColleagues;
+    const ownerName = reservation?.doctor?.name ?? reservation?.doctorNameSnapshot ?? "another doctor";
 
     // Editable fields — session date, time, and doctor are not editable by a
     // doctor (only admin/secretary reschedule or reassign); Injury Place is.
@@ -229,7 +239,7 @@ export default function DoctorSessionPage({ params }: { params: Promise<{ id: st
                     <span className="status-badge" style={{ background: `${statusColors[reservation.status]}22`, color: statusColors[reservation.status], border: `1px solid ${statusColors[reservation.status]}44` }}>
                         {reservation.status.replace("_", " ")}
                     </span>
-                    {reservation.status !== "CHECKED_OUT" && (
+                    {!readOnly && reservation.status !== "CHECKED_OUT" && (
                         <div className="status-actions">
                             {reservation.status === "SCHEDULED" && <button className="action-btn" onClick={() => handleStatusChange("CHECKED_IN")}>Check In</button>}
                             {reservation.status === "CHECKED_IN" && <button className="action-btn" onClick={() => handleStatusChange("WITH_DOCTOR")}>Start Session</button>}
@@ -240,6 +250,15 @@ export default function DoctorSessionPage({ params }: { params: Promise<{ id: st
                     )}
                 </div>
             </div>
+
+            {/* A colleague's session: readable, not changeable. Reuses the
+                previous-note banner's style. (TJ-062) */}
+            {isColleagues && (
+                <div className="prev-note-banner">
+                    <span className="prev-label">Read only</span>
+                    <span>This session belongs to {ownerName}. Only they, an admin or the front desk can change it.</span>
+                </div>
+            )}
 
             {/* Previous session note */}
             {reservation.previousSessionNote && (
@@ -276,13 +295,15 @@ export default function DoctorSessionPage({ params }: { params: Promise<{ id: st
                         </div>
                         <div className="form-group">
                             <label>Injury Place</label>
-                            <input value={editInjury} onChange={(e) => setEditInjury(e.target.value)} placeholder="e.g. Lower back, Knee…" />
+                            <input value={editInjury} onChange={(e) => setEditInjury(e.target.value)} placeholder="e.g. Lower back, Knee…" readOnly={readOnly} />
                         </div>
                     </div>
                     <p className="field-hint">Date, time, and doctor are set by front-desk staff — contact them to reschedule or reassign this session.</p>
-                    <div className="card-actions">
-                        <button className="btn-save" onClick={handleSaveDetails} disabled={saving}>{saving ? "Saving…" : "Update Session"}</button>
-                    </div>
+                    {!readOnly && (
+                        <div className="card-actions">
+                            <button className="btn-save" onClick={handleSaveDetails} disabled={saving}>{saving ? "Saving…" : "Update Session"}</button>
+                        </div>
+                    )}
                 </div>
             )}
 
@@ -299,17 +320,20 @@ export default function DoctorSessionPage({ params }: { params: Promise<{ id: st
                                 <textarea
                                     rows={3}
                                     value={soapForm[field]}
+                                    readOnly={readOnly}
                                     onChange={(e) => setSoapForm({ ...soapForm, [field]: e.target.value })}
                                     placeholder={`Enter ${field}…`}
                                 />
                             </div>
                         ))}
                     </div>
-                    <div className="card-actions">
-                        <button className="btn-save" onClick={handleSaveSoap} disabled={savingSoap}>
-                            {savingSoap ? "Saving…" : soapSaved ? "✓ Saved" : "Save SOAP Note"}
-                        </button>
-                    </div>
+                    {!readOnly && (
+                        <div className="card-actions">
+                            <button className="btn-save" onClick={handleSaveSoap} disabled={savingSoap}>
+                                {savingSoap ? "Saving…" : soapSaved ? "✓ Saved" : "Save SOAP Note"}
+                            </button>
+                        </div>
+                    )}
                 </div>
             )}
 
