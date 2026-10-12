@@ -89,3 +89,23 @@ export function canViewPatientContact(
     if (!user) return false;
     return user.role === "ADMIN" || user.role === "SECRETARY";
 }
+
+/**
+ * May this user change this session — its status, its details, or its SOAP
+ * note?
+ *
+ * ADMIN and SECRETARY may change any session, as before. A DOCTOR may change
+ * only a session booked under them: a colleague's session, and one whose
+ * doctor was hard-deleted (doctorId null), are read-only to every doctor.
+ * Reading is not restricted here — a doctor may still read a colleague's
+ * session and SOAP note — and a secretary still may not touch a SOAP note
+ * (canAccessClinical, checked separately). User decision, 2026-10-12. (TJ-062)
+ */
+export function canWriteSession(
+    user: Session["user"] | undefined | null,
+    sessionDoctorId: string | null
+): boolean {
+    if (!user) return false;
+    if (user.role === "ADMIN" || user.role === "SECRETARY") return true;
+    return user.role === "DOCTOR" && sessionDoctorId !== null && sessionDoctorId === user.id;
+}

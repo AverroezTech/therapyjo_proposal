@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
-import { canAccessClinical } from "@/lib/permissions";
+import { canAccessClinical, canWriteSession } from "@/lib/permissions";
 import { logPatientActivity } from "@/lib/audit";
 
 // GET /api/reservations/[id]/soap — get SOAP note for a reservation
@@ -42,10 +42,14 @@ export async function PUT(
 
     const reservation = await prisma.reservation.findUnique({
         where: { id: reservationId },
-        select: { patientId: true },
+        select: { patientId: true, doctorId: true },
     });
     if (!reservation) {
         return NextResponse.json({ error: "Reservation not found" }, { status: 404 });
+    }
+    // A doctor may read a colleague's SOAP note but not write it. (TJ-062)
+    if (!canWriteSession(session.user, reservation.doctorId)) {
+        return NextResponse.json({ error: "Doctors can only change their own sessions" }, { status: 403 });
     }
 
     const data = {
