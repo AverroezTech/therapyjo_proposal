@@ -4,10 +4,15 @@ import { useState, useRef, useEffect, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { parseWorkingHours, formatWorkingHours, isLegacyWorkingHours } from "@/lib/workingHours";
 
+// The same list, in the same order, as admin/employees/doctors/page.tsx — keep the two identical.
+// The ten after the first twelve were added by TJ-059.
 const COLORS = [
     "#6ee7b7", "#93c5fd", "#fbbf24", "#f87171",
     "#a78bfa", "#fb923c", "#34d399", "#60a5fa",
     "#f472b6", "#38bdf8", "#facc15", "#c084fc",
+    "#fda4af", "#fdba74", "#fef08a", "#d9f99d",
+    "#a3e635", "#14b8a6", "#67e8f9", "#c4b5fd",
+    "#f0abfc", "#f9a8d4",
 ];
 
 export default function NewDoctorPage() {
