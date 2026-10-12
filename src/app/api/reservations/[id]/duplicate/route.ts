@@ -12,6 +12,12 @@ export async function POST(
     const session = await auth();
     if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
+    // A duplicate is a new booking, and doctors do not book: the same rule
+    // POST /api/reservations enforces, with the same message. (TJ-061)
+    if (session.user.role === "DOCTOR") {
+        return NextResponse.json({ error: "Doctors cannot create reservations" }, { status: 403 });
+    }
+
     const { id } = await params;
     const body = await req.json();
     const { sessionDate, sessionTime } = body;

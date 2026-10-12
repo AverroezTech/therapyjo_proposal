@@ -35,12 +35,6 @@ export default function DoctorDashboard() {
     const [loading, setLoading] = useState(true);
     const [doctors, setDoctors] = useState<Doctor[]>([]);
 
-    // Duplicate modal
-    const [dupeId, setDupeId] = useState<number | null>(null);
-    const [dupeDate, setDupeDate] = useState(today());
-    const [dupeTime, setDupeTime] = useState("09:00");
-    const [duping, setDuping] = useState(false);
-
     const doctorId = (session?.user as { id?: string })?.id;
 
     // Opens on the whole clinic's schedule, the same as admin and secretary.
@@ -78,25 +72,6 @@ export default function DoctorDashboard() {
 
     const handleSlotClick = (id: number) => {
         router.push(`/doctor/session/${id}`);
-    };
-
-    const handleDuplicate = (id: number) => {
-        setDupeId(id);
-        setDupeDate(today());
-        setDupeTime("09:00");
-    };
-
-    const confirmDuplicate = async () => {
-        if (!dupeId) return;
-        setDuping(true);
-        await fetch(`/api/reservations/${dupeId}/duplicate`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ date: dupeDate, time: dupeTime }),
-        });
-        setDuping(false);
-        setDupeId(null);
-        fetchReservations();
     };
 
     const handleDelete = async (id: number) => {
@@ -151,30 +126,12 @@ export default function DoctorDashboard() {
                         <Calendar
                             reservations={reservations}
                             onStatusChange={handleStatusChange}
-                            onDuplicate={handleDuplicate}
                             onDelete={handleDelete}
                             onSlotClick={handleSlotClick}
                         />
                     )}
                 </div>
             </div>
-
-            {/* Duplicate Modal */}
-            {dupeId !== null && (
-                <div className="modal-overlay" onClick={() => setDupeId(null)}>
-                    <div className="modal-card" onClick={(e) => e.stopPropagation()}>
-                        <h2>Duplicate Session</h2>
-                        <div className="form-row">
-                            <div className="form-group"><label>New Date</label><input type="date" value={dupeDate} onChange={(e) => setDupeDate(e.target.value)} /></div>
-                            <div className="form-group"><label>New Time</label><input type="time" value={dupeTime} onChange={(e) => setDupeTime(e.target.value)} /></div>
-                        </div>
-                        <div className="modal-actions">
-                            <button className="btn-cancel" onClick={() => setDupeId(null)}>Cancel</button>
-                            <button className="btn-save" onClick={confirmDuplicate} disabled={duping}>{duping ? "Duplicating…" : "Duplicate"}</button>
-                        </div>
-                    </div>
-                </div>
-            )}
 
             <style jsx>{`
                 .controls { display: flex; align-items: center; gap: 1.25rem; margin-bottom: 0.5rem; }
@@ -189,19 +146,6 @@ export default function DoctorDashboard() {
                 .session-count { color: rgba(255,255,255,0.5); font-size: 0.9rem; }
                 .main-layout { display: block; }
                 .calendar-col { min-width: 0; }
-                .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.6); display: flex; align-items: center; justify-content: center; z-index: 1000; backdrop-filter: blur(4px); }
-                .modal-card { background: var(--bg-dark-secondary, #243b44); border: 1px solid rgba(255,255,255,0.08); border-radius: var(--radius-md, 4px); padding: 2rem; width: 100%; max-width: 400px; }
-                .modal-card h2 { font-size: 1.1rem; margin-bottom: 1rem; font-weight: 600; }
-                .form-row { display: flex; gap: 0.75rem; }
-                .form-row .form-group { flex: 1; }
-                .form-group { display: flex; flex-direction: column; gap: 0.25rem; }
-                .form-group label { font-size: 0.76rem; color: rgba(255,255,255,0.5); font-weight: 500; }
-                .form-group input { background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.08); border-radius: var(--radius-sm, 2px); padding: 0.5rem 0.7rem; color: #fff; font-size: 0.85rem; outline: none; font-family: inherit; }
-                .form-group input:focus { border-color: var(--primary, #4CAF93); }
-                .modal-actions { display: flex; justify-content: flex-end; gap: 0.6rem; margin-top: 1.25rem; }
-                .btn-cancel { background: rgba(255,255,255,0.06); color: rgba(255,255,255,0.6); border: 1px solid rgba(255,255,255,0.1); border-radius: var(--radius-sm, 2px); padding: 0.5rem 1rem; font-size: 0.85rem; cursor: pointer; font-family: inherit; }
-                .btn-save { background: var(--primary, #4CAF93); color: #fff; border: none; border-radius: var(--radius-sm, 2px); padding: 0.5rem 1.2rem; font-size: 0.85rem; font-weight: 600; cursor: pointer; font-family: inherit; }
-                .btn-save:disabled { opacity: 0.5; cursor: not-allowed; }
             `}</style>
         </div>
     );
