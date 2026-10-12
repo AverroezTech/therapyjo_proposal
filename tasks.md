@@ -121,7 +121,7 @@ Two things that bear repeating here, because this is the file both agents open:
 | TJ-058 | Open the doctor dashboard on All Doctors | REVIEW — passed planner review and QA 2026-10-12; merged into `claude/exciting-einstein-krgpmv` as `031b184`; **not merged to `master`: merging deploys to production, awaiting the user** | `feat/doctor-calendar-all-default` |
 | TJ-059 | Ten more calendar colours for doctors | REVIEW — passed planner review and QA 2026-10-12; merged into `claude/exciting-einstein-krgpmv` as `aa47fca`; **not merged to `master`: merging deploys to production, awaiting the user** | `feat/more-doctor-colours` |
 | TJ-060 | Sign in with a username in any case | REVIEW — passed planner review and QA 2026-10-12; merged into `claude/exciting-einstein-krgpmv` as `72afb3e`; **not merged to `master`: merging deploys to production, awaiting the user** | `feat/username-any-case` |
-| TJ-061 | The doctor dashboard's Duplicate: broken, and the route behind it lets a doctor book | READY — passed 2026-10-12; **user chose option A: doctors don't duplicate**; diff prototyped and runtime-checked; cut from `claude/exciting-einstein-krgpmv` (needs TJ-058) | `bugfix/doctor-duplicate` |
+| TJ-061 | The doctor dashboard's Duplicate: broken, and the route behind it lets a doctor book | REVIEW — option A; passed planner review and QA 2026-10-12; merged into `claude/exciting-einstein-krgpmv`; **not merged to `master`: awaiting the user** | `bugfix/doctor-duplicate` |
 | TJ-062 | Limit doctors to their own sessions | BLOCKED — passed 2026-10-12; Q2 (read stays) and Q3 (intake shared) decided; **awaiting one answer: may a doctor change a colleague's session status?** | — |
 
 ---
@@ -10975,7 +10975,7 @@ Optional and read-only, for the user rather than the executor: on production, `S
 
 ### TJ-061 — The doctor dashboard's Duplicate: broken, and the route behind it lets a doctor book
 
-- **Status:** READY. Planning pass run 2026-10-12. **User decision, 2026-10-12: option A, doctors don't duplicate.** The diff was prototyped, gated and runtime-checked. Nothing is committed against this task.
+- **Status:** REVIEW. Passed planner review and QA on 2026-10-12. Task commit `41da75c` on `bugfix/doctor-duplicate`, merged into `claude/exciting-einstein-krgpmv` with `--no-ff`. **Not merged to `master`: merging deploys to production, awaiting the user.**
 - **Branch:** `bugfix/doctor-duplicate`, cut from `claude/exciting-einstein-krgpmv`. It must carry TJ-058, because TJ-058 also edits `src/app/doctor/page.tsx` and the anchors below were taken from its result. **Not from `master`.**
 - **Why:** User request, 2026-10-12, following the TJ-058 pass. Duplicate on the doctor dashboard has never worked. The route behind it is the one way a doctor can create a booking, for any doctor and at any hour, although `POST /api/reservations` refuses doctors.
 
@@ -11172,10 +11172,22 @@ Runtime, against a local database with sessions today for two doctors. The first
   - Admin's `POST` to the same route returns 201.
 
 **Done when:**
-- [ ] Doctors see no Duplicate, and the route refuses them
-- [ ] Admin's and secretary's Duplicate still work
-- [ ] The doctor page carries no dead Duplicate code or CSS
-- [ ] Only the four files changed; tsc and build pass; lint is 63
+- [x] Doctors see no Duplicate, and the route refuses them
+- [x] Admin's and secretary's Duplicate still work
+- [x] The doctor page carries no dead Duplicate code or CSS
+- [x] Only the four files changed; tsc and build pass; lint is 63
+
+**Review, 2026-10-12.** Executed as `41da75c`.
+- **Planner review:** all four files are byte-identical to the planned diff, re-derived from the tested script. One commit on `claude/exciting-einstein-krgpmv`.
+- **Executor and QA, independently: every Verification bullet passes.**
+  - The doctor's menus on his own card and on both colleague cards read "Check In | Waiting | Cancel", with 0 console errors.
+  - Admin's and secretary's menus keep Duplicate, and their UI duplicates each add a booking.
+  - A doctor's `POST …/duplicate` returns 403 "Doctors cannot create reservations" on his own reservation and on a colleague's, and the count does not move. Admin still gets 201.
+- **QA's probes:**
+  - The role check runs before the body or the id is read: the old `{date,time}` payload, an empty body, invalid JSON, a missing id and a non-numeric id are all refused with 403.
+  - The only two places in `src` that create reservations both now refuse doctors.
+  - A doctor's menu is never empty: QA checked all 7 statuses.
+  - The doctor page still filters, date-picks and opens sessions.
 
 ---
 
@@ -11237,6 +11249,9 @@ Measured on `master`, signed in as `Dr.Ahmad`, acting on `dr_sami`'s reservation
 ## Notes for the planner
 
 Findings reported by the executor, or surfaced during a pass, that fall outside the scope of the task that turned them up. The planner triages these into tasks. **The executor does not write here** — it reports in conversation and the planner records.
+
+- **A role change takes effect only at the next sign-in.** The role lives in the JWT, and `auth.ts`'s `jwt` callback re-reads only `status`. QA demoted a signed-in SECRETARY to DOCTOR in the database, and that session could still duplicate (201) until it signed in again. No API can change a role, since neither employee `PUT` reads `role`, so this needs a direct database edit. It applies to every role check in the app. Re-reading `role` alongside `status` in that callback would close it. (Found by QA during TJ-061, 2026-10-12.)
+- **A secretary Duplicate made without a time writes a row whose two columns disagree.** `duplicate/route.ts` falls back to the original's `sessionTime`, which still carries the original *date*, while `sessionDate` is the new day. QA saw `sessionDate` 2026-10-14 with `sessionTime` 2026-10-12 09:00. This is the same class of bug TJ-047a fixed on `PUT`. It belongs with TJ-046, which already owns this route's missing clinic-window check. (Found by QA during TJ-061, 2026-10-12.)
 
 - **A hub-and-spoke run of three executors and a QA agent worked cleanly, and how it was set up is reusable.** On 2026-10-12, TJ-058/059/060 were executed in parallel and TJ-020 straight after. The setup:
   - One worktree per task branch, built **outside** the repo so nothing nests (TJ-050), with a hard-linked `node_modules` and a gitignored `.env` each.
