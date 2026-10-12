@@ -122,7 +122,9 @@ Two things that bear repeating here, because this is the file both agents open:
 | TJ-059 | Ten more calendar colours for doctors | REVIEW — passed planner review and QA 2026-10-12; merged into `claude/exciting-einstein-krgpmv` as `aa47fca`; **not merged to `master`: merging deploys to production, awaiting the user** | `feat/more-doctor-colours` |
 | TJ-060 | Sign in with a username in any case | REVIEW — passed planner review and QA 2026-10-12; merged into `claude/exciting-einstein-krgpmv` as `72afb3e`; **not merged to `master`: merging deploys to production, awaiting the user** | `feat/username-any-case` |
 | TJ-061 | The doctor dashboard's Duplicate: broken, and the route behind it lets a doctor book | REVIEW — option A; passed planner review and QA 2026-10-12; merged into `claude/exciting-einstein-krgpmv`; **not merged to `master`: awaiting the user** | `bugfix/doctor-duplicate` |
-| TJ-062 | Limit doctors to their own sessions | BLOCKED — passed 2026-10-12; Q2 (read stays) and Q3 (intake shared) decided; **awaiting one answer: may a doctor change a colleague's session status?** | — |
+| TJ-062 | Limit doctors to their own sessions | SPLIT — passed 2026-10-12, all decisions taken (status blocked too; reading stays; intake shared); see TJ-062a, TJ-062b | — |
+| TJ-062a | Server: a doctor may change only their own sessions | READY — passed 2026-10-12; diff prototyped and runtime-proven (permission matrix); ships with TJ-062b | `feat/doctor-session-ownership` |
+| TJ-062b | Screens: a colleague's session is read-only to a doctor | READY — passed 2026-10-12; diff prototyped and browser-proven; cut from `claude/exciting-einstein-krgpmv` (needs TJ-061); ships with TJ-062a | `feat/doctor-readonly-sessions` |
 
 ---
 
@@ -11193,7 +11195,7 @@ Runtime, against a local database with sessions today for two doctors. The first
 
 ### TJ-062 — Limit doctors to their own sessions
 
-- **Status:** BLOCKED. Planning pass run 2026-10-12. **One decision is still owed: question 1, whether a doctor may change the *status* of a colleague's session.** Questions 2 and 3 were answered on 2026-10-12 (see Decisions). It splits into a server task and a UI task once question 1 is answered.
+- **Status:** SPLIT. Passed 2026-10-12, with every decision taken. See **TJ-062a** (server) and **TJ-062b** (screens); they touch different files, run in parallel and ship together. Nothing executes against this ID.
 - **Branch:** to be assigned at the split. The UI half edits `src/app/doctor/page.tsx`, so it is cut after TJ-058 and TJ-061.
 - **Why:** User request, 2026-10-12: nothing on the server stops a doctor changing status on, or writing notes for, a colleague's session. TJ-058 made colleagues' cards the first thing a doctor sees.
 
@@ -11227,7 +11229,7 @@ Measured on `master`, signed in as `Dr.Ahmad`, acting on `dr_sami`'s reservation
 **Decisions, 2026-10-12 (user):**
 - **Q2: doctors may still read a colleague's sessions and SOAP notes** (the recommended option).
 - **Q3: the patient-level intake stays shared** by every doctor (the recommended option).
-- **Q1 is narrowed, not yet answered.** The user asked what "details" meant. It means the non-clinical fields of one booked session that `PUT /api/reservations/[id]` lets a doctor change:
+- **Q1, answered later on 2026-10-12: status changes are blocked too.** A doctor changes nothing on a colleague's session: status, details and SOAP are all refused. Before that answer, Q1 had been narrowed as follows. The user asked what "details" meant. It means the non-clinical fields of one booked session that `PUT /api/reservations/[id]` lets a doctor change:
   - **on the doctor's screen**, injury place (the session page's "Save details");
   - **through the API only**, the calendar note and whether it shows on the card, the next-session note, the payment type, the two-hour flag and `isNote`.
 
@@ -11243,6 +11245,549 @@ Measured on `master`, signed in as `Dr.Ahmad`, acting on `dr_sami`'s reservation
 2. **May a doctor still *read* a colleague's session and SOAP notes?** Recommended: yes, for continuity of care. TJ-058 already shows the cards.
 3. **The patient-level intake:** keep it shared by every doctor (recommended), or restrict it to doctors who have a session with that patient?
 4. **Should doctors' editing of Notes be limited too?** That would be a separate task.
+
+---
+
+### TJ-062a — Server: a doctor may change only their own sessions
+
+- **Status:** READY. Planning pass run 2026-10-12, with all of TJ-062's decisions taken. The diff was prototyped, gated and runtime-checked. Nothing is committed against this task.
+- **Branch:** `feat/doctor-session-ownership`, cut from `claude/exciting-einstein-krgpmv` at `4651e24`.
+- **Why:** See TJ-062. Measured on `master`: a doctor's status, details and SOAP writes on a colleague's session all return 200. **User decisions, 2026-10-12:**
+  - block all of them, status included;
+  - keep reading allowed;
+  - keep the intake shared.
+- **Ships with TJ-062b.** That task touches different files, so the two can run in parallel. On its own this task would leave buttons on colleagues' sessions that now fail. TJ-062b alone would hide the buttons and leave the routes open.
+
+**Planning pass:** 2026-10-12. Files read:
+- `src/lib/permissions.ts` in full.
+- `src/app/api/reservations/[id]/route.ts`: `GET`, `PUT`, `PATCH` and `DELETE`.
+- `src/app/api/reservations/[id]/soap/route.ts` in full.
+- `src/types/next-auth.d.ts`, for the types of `session.user.id` and `role`.
+- `src/lib/auth.config.ts`, the `/doctor` guard: ADMIN may open the doctor pages too.
+
+Findings:
+- **The rule:** `canWriteSession(user, sessionDoctorId)` in `permissions.ts`, beside the other per-role helpers.
+  - ADMIN and SECRETARY get `true`, exactly what they have today.
+  - A DOCTOR gets `true` only when `sessionDoctorId === user.id`. A reservation whose doctor was hard-deleted has `doctorId = null`, so it is read-only to every doctor.
+  - Like the helpers beside it, it names the roles that may, so a role added later is refused.
+- **Where it applies:**
+  - **`PUT /api/reservations/[id]`** gains a `doctorId` lookup before anything else. As a side effect, a missing id now gets a clean 404 for every role; before, the final `update` threw.
+  - **`PATCH`** adds `doctorId` to the select it already makes and checks it before the transition rules.
+  - **The SOAP `PUT`** adds `doctorId` to its select and checks it after the 404.
+  - Every refusal is a 403 with "Doctors can only change their own sessions".
+- **Unchanged, confirmed:**
+  - Every `GET`, so reading stays allowed (decision Q2).
+  - `DELETE`, which already refuses doctors (`canDeleteReservation`).
+  - Duplicate, which already refuses doctors (TJ-061).
+  - The intake route, which stays shared (decision Q3).
+  - **A secretary on a SOAP note still gets "Secretaries cannot edit SOAP notes".** `canAccessClinical` runs first.
+- **Prototyped** on `4651e24`, applied by script with every anchor matching exactly once.
+  - This half alone: `tsc` exits 0, lint is unchanged at 63, and it is 3 files, +45/−4.
+  - With TJ-062b: `npm run build` exits 0.
+  - Measured against a local database:
+
+  | Who | Request | Result |
+  |---|---|---|
+  | Doctor | Own session: status, details, SOAP | 200, 200, 200 |
+  | Doctor | Colleague's session: status, details (`injuryPlace`, `paymentType`, `isTwoHours`), note, SOAP | **403** "Doctors can only change their own sessions" each time; the row and its SOAP are unchanged afterwards |
+  | Doctor | Colleague's session: `GET`, `GET …/soap` | 200, 200 (reading stays) |
+  | Doctor | Colleague's patient's intake | 200 (shared) |
+  | Doctor | A session whose doctor was hard-deleted | **403** |
+  | Admin | A colleague's status and SOAP; the deleted doctor's session | 200 |
+  | Secretary | Status on any session; SOAP | 200; 403 "Secretaries cannot edit SOAP notes" (as before) |
+  | Admin, doctor | `PUT` or `PATCH` on id 99999 | 404 "Reservation not found" |
+
+**Scope — touch only these:**
+- `src/lib/permissions.ts`: add `canWriteSession` after `canViewPatientContact`.
+- `src/app/api/reservations/[id]/route.ts`: the import and the `PUT` and `PATCH` checks.
+- `src/app/api/reservations/[id]/soap/route.ts`: the import and the `PUT` check.
+
+**Do not touch:**
+- Every `GET` handler, `DELETE`, the duplicate route, the intake route and the notes routes.
+- All UI, which is TJ-062b.
+
+**Instructions.** All three files are LF. Every anchor below occurs exactly once in its file, checked by machine on 2026-10-12 against `claude/exciting-einstein-krgpmv` at `4651e24`. Fenced blocks show each file's own indentation.
+
+**Step 1.** In `src/lib/permissions.ts`, replace:
+```tsx
+export function canViewPatientContact(
+    user: Session["user"] | undefined | null
+): boolean {
+    if (!user) return false;
+    return user.role === "ADMIN" || user.role === "SECRETARY";
+}
+```
+with:
+```tsx
+export function canViewPatientContact(
+    user: Session["user"] | undefined | null
+): boolean {
+    if (!user) return false;
+    return user.role === "ADMIN" || user.role === "SECRETARY";
+}
+
+/**
+ * May this user change this session — its status, its details, or its SOAP
+ * note?
+ *
+ * ADMIN and SECRETARY may change any session, as before. A DOCTOR may change
+ * only a session booked under them: a colleague's session, and one whose
+ * doctor was hard-deleted (doctorId null), are read-only to every doctor.
+ * Reading is not restricted here — a doctor may still read a colleague's
+ * session and SOAP note — and a secretary still may not touch a SOAP note
+ * (canAccessClinical, checked separately). User decision, 2026-10-12. (TJ-062)
+ */
+export function canWriteSession(
+    user: Session["user"] | undefined | null,
+    sessionDoctorId: string | null
+): boolean {
+    if (!user) return false;
+    if (user.role === "ADMIN" || user.role === "SECRETARY") return true;
+    return user.role === "DOCTOR" && sessionDoctorId !== null && sessionDoctorId === user.id;
+}
+```
+
+**Step 2.** In `src/app/api/reservations/[id]/route.ts`, replace:
+```tsx
+import { canAccessClinical, canDeleteReservation, canViewPatientContact } from "@/lib/permissions";
+```
+with:
+```tsx
+import { canAccessClinical, canDeleteReservation, canViewPatientContact, canWriteSession } from "@/lib/permissions";
+```
+
+**Step 3.** In `src/app/api/reservations/[id]/route.ts`, replace:
+```tsx
+    const body = await req.json();
+
+    // Doctors can update everything else about a session (injury place, note,
+```
+with:
+```tsx
+    const body = await req.json();
+
+    // A doctor may change only a session booked under them. (TJ-062)
+    const target = await prisma.reservation.findUnique({
+        where: { id: parseInt(id, 10) },
+        select: { doctorId: true },
+    });
+    if (!target) {
+        return NextResponse.json({ error: "Reservation not found" }, { status: 404 });
+    }
+    if (!canWriteSession(session.user, target.doctorId)) {
+        return NextResponse.json({ error: "Doctors can only change their own sessions" }, { status: 403 });
+    }
+
+    // Doctors can update everything else about a session (injury place, note,
+```
+
+**Step 4.** In `src/app/api/reservations/[id]/route.ts`, replace:
+```tsx
+        select: { id: true, status: true, patientId: true },
+```
+with:
+```tsx
+        select: { id: true, status: true, patientId: true, doctorId: true },
+```
+
+**Step 5.** In `src/app/api/reservations/[id]/route.ts`, replace:
+```tsx
+    const allowedNext = VALID_TRANSITIONS[reservation.status] || [];
+```
+with:
+```tsx
+    // A doctor may move only a session booked under them. (TJ-062)
+    if (!canWriteSession(session.user, reservation.doctorId)) {
+        return NextResponse.json({ error: "Doctors can only change their own sessions" }, { status: 403 });
+    }
+
+    const allowedNext = VALID_TRANSITIONS[reservation.status] || [];
+```
+
+**Step 6.** In `src/app/api/reservations/[id]/soap/route.ts`, replace:
+```tsx
+import { canAccessClinical } from "@/lib/permissions";
+```
+with:
+```tsx
+import { canAccessClinical, canWriteSession } from "@/lib/permissions";
+```
+
+**Step 7.** In `src/app/api/reservations/[id]/soap/route.ts`, replace:
+```tsx
+        select: { patientId: true },
+```
+with:
+```tsx
+        select: { patientId: true, doctorId: true },
+```
+
+**Step 8.** In `src/app/api/reservations/[id]/soap/route.ts`, replace:
+```tsx
+    if (!reservation) {
+        return NextResponse.json({ error: "Reservation not found" }, { status: 404 });
+    }
+
+    const data = {
+```
+with:
+```tsx
+    if (!reservation) {
+        return NextResponse.json({ error: "Reservation not found" }, { status: 404 });
+    }
+    // A doctor may read a colleague's SOAP note but not write it. (TJ-062)
+    if (!canWriteSession(session.user, reservation.doctorId)) {
+        return NextResponse.json({ error: "Doctors can only change their own sessions" }, { status: 403 });
+    }
+
+    const data = {
+```
+
+**Verification:**
+
+Static:
+- `npx tsc --noEmit` exits 0, and `npm run build` exits 0.
+- `npm run lint` reports `63 problems (49 errors, 14 warnings)`, unchanged.
+- `grep -c 'export function canWriteSession' src/lib/permissions.ts` returns `1`.
+- In `src/app/api/reservations/[id]/route.ts`:
+  - `grep -c canWriteSession` returns `3` (the import and two calls).
+  - `grep -c 'Doctors can only change their own sessions'` returns `2`.
+- In `src/app/api/reservations/[id]/soap/route.ts`:
+  - `grep -c canWriteSession` returns `2`.
+  - `grep -c 'Doctors can only change their own sessions'` returns `1`.
+- `git diff --stat claude/exciting-einstein-krgpmv` lists exactly the three files: 45 insertions, 4 deletions.
+
+Runtime, against a local database with sessions today for two doctors. Sign in as the doctor, as admin and as a secretary, and reproduce every row of the planning pass's table, including:
+- the hard-deleted doctor's session (set its `doctorId` to null with SQL);
+- the check afterwards that the colleague's row and SOAP note did not change.
+
+Reset the database afterwards.
+
+**Done when:**
+- [ ] A doctor's status, details and SOAP writes succeed on their own sessions and are refused on anyone else's
+- [ ] Reading stays allowed and the intake stays shared
+- [ ] Admin and secretary behave exactly as before
+- [ ] Only the three files changed; tsc and build pass; lint is 63
+
+---
+
+### TJ-062b — Screens: a colleague's session is read-only to a doctor
+
+- **Status:** READY. Planning pass run 2026-10-12, with all of TJ-062's decisions taken. The diff was prototyped, gated and checked in a browser. Nothing is committed against this task.
+- **Branch:** `feat/doctor-readonly-sessions`, cut from `claude/exciting-einstein-krgpmv` at `4651e24`. It must carry TJ-061: the `Calendar`, `ReservationSlot` and doctor-page anchors below are post-TJ-061.
+- **Why:** See TJ-062. **Ships with TJ-062a**, which enforces the same rule on the server. Without this task, a doctor would see buttons on colleagues' sessions that now fail with 403.
+
+**Planning pass:** 2026-10-12. Files read:
+- `src/app/components/ReservationSlot.tsx`: props, the action menu, the menu trigger and the render.
+- `src/app/components/Calendar.tsx`: props, and the props passed to each slot.
+- `src/app/doctor/page.tsx` after TJ-061.
+- `src/app/doctor/session/[id]/page.tsx`: state, handlers, the header's status buttons, and the Details, SOAP and Clinical Assessment tabs.
+- `src/lib/auth.config.ts`: **ADMIN may open `/doctor` pages**, so the rule keys on the DOCTOR role and an admin keeps every action there.
+- `src/types/next-auth.d.ts`.
+
+Design:
+- **Card:** `ReservationSlot` takes `readOnly`. A read-only card has **no ⋮ trigger**, so no menu at all. With TJ-061 a doctor has no Duplicate, Edit or Delete, so nothing useful is lost. A click on the card still opens the session, to read.
+- **Calendar:** takes `ownerId`. When it is set, a card is read-only unless the reservation is booked under that id. Admin and secretary don't pass it, so they are unchanged.
+- **Doctor dashboard:** `ownerId` is `undefined` for an admin, and otherwise the doctor's id, or `""` until the session loads. **That fails closed:** no card offers anything until the signed-in user is known.
+- **Session page:** `readOnly = !me || (me.role === "DOCTOR" && reservation.doctor?.id !== me.id)`.
+  - The header's status buttons, "Update Session" and "Save SOAP Note" are hidden.
+  - Injury Place and the four SOAP fields become `readOnly`.
+  - A "Read only" banner names the owner. It shows only once the user is known (`isColleagues`), so an owner never sees it flash during load. It reuses the previous-session-note banner's existing style.
+  - **The Clinical Assessment tab stays editable** (decision Q3, the intake is shared). History is already read-only.
+
+Prototyped on `4651e24`, applied by script with every anchor matching exactly once:
+- This half alone: `tsc` exits 0, lint is unchanged at 63, and it is 4 files, +61/−21.
+- With TJ-062a: `npm run build` exits 0.
+- In Chromium against a local database (Dr.Ahmad has one session today, dr_sami two):
+
+| Who and where | Result |
+|---|---|
+| Doctor, `/doctor` | Patient One (own) has the ⋮ menu; **Patient Two and Three (dr_sami's) have none** |
+| Doctor, own session | No banner; 2 status buttons; "Update Session"; Injury and SOAP editable; "Save SOAP Note"; Clinical Assessment editable with its Save |
+| Doctor, dr_sami's session | Banner "**Read only.** This session belongs to dr_sami. Only they, an admin or the front desk can change it."; 0 status buttons; no "Update Session"; Injury and SOAP `readOnly`; no "Save SOAP Note"; **Clinical Assessment still editable** with its Save |
+| Admin on `/doctor`, and on dr_sami's session page | Every card keeps its menu; full controls, no banner |
+| Admin `/admin`, secretary `/secretary` | Every card keeps its menu (unchanged) |
+| Console errors, all of the above | 0 |
+
+A screenshot of the doctor on dr_sami's session shows the banner above the tabs and no action buttons.
+
+**Scope — touch only these:**
+- `src/app/components/ReservationSlot.tsx`: the `readOnly` prop and the trigger.
+- `src/app/components/Calendar.tsx`: the `ownerId` prop, passed through to each slot.
+- `src/app/doctor/page.tsx`: `ownerId` and its use on `<Calendar>`.
+- `src/app/doctor/session/[id]/page.tsx`: `useSession`, `readOnly`, the banner, and the read-only and hidden controls.
+
+**Do not touch:**
+- The admin and secretary pages.
+- The Clinical Assessment and History tabs.
+- Every server route, which is TJ-062a.
+- The existing banner CSS, which is reused as is.
+
+**Instructions.** All four files are LF. Every anchor below occurs exactly once in its file, checked by machine on 2026-10-12 against `claude/exciting-einstein-krgpmv` at `4651e24`, which carries TJ-061. Fenced blocks show each file's own indentation. Step 14 quotes only part of a line, the `<input …/>` element; replace it within that line.
+
+**Step 1.** In `src/app/components/ReservationSlot.tsx`, replace:
+```tsx
+    canDelete?: boolean;
+}
+```
+with:
+```tsx
+    canDelete?: boolean;
+    // A colleague's session on the doctor dashboard: no actions, and no menu
+    // trigger. The card still opens the session to read. (TJ-062)
+    readOnly?: boolean;
+}
+```
+
+**Step 2.** In `src/app/components/ReservationSlot.tsx`, replace:
+```tsx
+    canDelete = false,
+}: ReservationSlotProps) {
+```
+with:
+```tsx
+    canDelete = false,
+    readOnly = false,
+}: ReservationSlotProps) {
+```
+
+**Step 3.** In `src/app/components/ReservationSlot.tsx`, replace:
+```tsx
+                    <button
+                        ref={triggerRef}
+                        className="menu-trigger"
+                        onClick={(e) => {
+                            e.stopPropagation();
+                            if (!menuOpen) openMenu();
+                            setMenuOpen(!menuOpen);
+                        }}
+                    >
+                        ⋮
+                    </button>
+```
+with:
+```tsx
+                    {!readOnly && (
+                        <button
+                            ref={triggerRef}
+                            className="menu-trigger"
+                            onClick={(e) => {
+                                e.stopPropagation();
+                                if (!menuOpen) openMenu();
+                                setMenuOpen(!menuOpen);
+                            }}
+                        >
+                            ⋮
+                        </button>
+                    )}
+```
+
+**Step 4.** In `src/app/components/Calendar.tsx`, replace:
+```tsx
+    canDelete?: boolean;
+}
+```
+with:
+```tsx
+    canDelete?: boolean;
+    // When set (the doctor dashboard), only reservations booked under this
+    // doctor offer actions; every other card is read-only. (TJ-062)
+    ownerId?: string;
+}
+```
+
+**Step 5.** In `src/app/components/Calendar.tsx`, replace:
+```tsx
+    canDelete = false,
+}: CalendarProps) {
+```
+with:
+```tsx
+    canDelete = false,
+    ownerId,
+}: CalendarProps) {
+```
+
+**Step 6.** In `src/app/components/Calendar.tsx`, replace:
+```tsx
+                                                    canDelete={canDelete}
+```
+with:
+```tsx
+                                                    canDelete={canDelete}
+                                                    readOnly={ownerId !== undefined && r.doctor?.id !== ownerId}
+```
+
+**Step 7.** In `src/app/doctor/page.tsx`, replace:
+```tsx
+    const doctorId = (session?.user as { id?: string })?.id;
+```
+with:
+```tsx
+    const doctorId = (session?.user as { id?: string })?.id;
+    // Only this doctor's own cards offer actions; a colleague's are read-only.
+    // An admin may open this page too and keeps every action. Until the
+    // session loads, no card offers anything. (TJ-062)
+    const ownerId = session?.user?.role === "ADMIN" ? undefined : (doctorId ?? "");
+```
+
+**Step 8.** In `src/app/doctor/page.tsx`, replace:
+```tsx
+                            onSlotClick={handleSlotClick}
+                        />
+```
+with:
+```tsx
+                            onSlotClick={handleSlotClick}
+                            ownerId={ownerId}
+                        />
+```
+
+**Step 9.** In `src/app/doctor/session/[id]/page.tsx`, replace:
+```tsx
+import { useRouter } from "next/navigation";
+```
+with:
+```tsx
+import { useRouter } from "next/navigation";
+import { useSession } from "next-auth/react";
+```
+
+**Step 10.** In `src/app/doctor/session/[id]/page.tsx`, replace:
+```tsx
+    const router = useRouter();
+```
+with:
+```tsx
+    const router = useRouter();
+    const { data: authSession } = useSession();
+```
+
+**Step 11.** In `src/app/doctor/session/[id]/page.tsx`, replace:
+```tsx
+    const [saving, setSaving] = useState(false);
+```
+with:
+```tsx
+    const [saving, setSaving] = useState(false);
+
+    // A doctor may change only a session booked under them; a colleague's
+    // opens read-only. An admin may open this page too and keeps every
+    // action. Until the signed-in user is known, nothing is offered. (TJ-062)
+    const me = authSession?.user;
+    const isColleagues = !!me && me.role === "DOCTOR" && reservation?.doctor?.id !== me.id;
+    const readOnly = !me || isColleagues;
+    const ownerName = reservation?.doctor?.name ?? reservation?.doctorNameSnapshot ?? "another doctor";
+```
+
+**Step 12.** In `src/app/doctor/session/[id]/page.tsx`, replace:
+```tsx
+                    {reservation.status !== "CHECKED_OUT" && (
+```
+with:
+```tsx
+                    {!readOnly && reservation.status !== "CHECKED_OUT" && (
+```
+
+**Step 13.** In `src/app/doctor/session/[id]/page.tsx`, replace:
+```tsx
+            {/* Previous session note */}
+```
+with:
+```tsx
+            {/* A colleague's session: readable, not changeable. Reuses the
+                previous-note banner's style. (TJ-062) */}
+            {isColleagues && (
+                <div className="prev-note-banner">
+                    <span className="prev-label">Read only</span>
+                    <span>This session belongs to {ownerName}. Only they, an admin or the front desk can change it.</span>
+                </div>
+            )}
+
+            {/* Previous session note */}
+```
+
+**Step 14.** In `src/app/doctor/session/[id]/page.tsx`, replace:
+```tsx
+<input value={editInjury} onChange={(e) => setEditInjury(e.target.value)} placeholder="e.g. Lower back, Knee…" />
+```
+with:
+```tsx
+<input value={editInjury} onChange={(e) => setEditInjury(e.target.value)} placeholder="e.g. Lower back, Knee…" readOnly={readOnly} />
+```
+
+**Step 15.** In `src/app/doctor/session/[id]/page.tsx`, replace:
+```tsx
+                    <div className="card-actions">
+                        <button className="btn-save" onClick={handleSaveDetails} disabled={saving}>{saving ? "Saving…" : "Update Session"}</button>
+                    </div>
+```
+with:
+```tsx
+                    {!readOnly && (
+                        <div className="card-actions">
+                            <button className="btn-save" onClick={handleSaveDetails} disabled={saving}>{saving ? "Saving…" : "Update Session"}</button>
+                        </div>
+                    )}
+```
+
+**Step 16.** In `src/app/doctor/session/[id]/page.tsx`, replace:
+```tsx
+                                    rows={3}
+                                    value={soapForm[field]}
+```
+with:
+```tsx
+                                    rows={3}
+                                    value={soapForm[field]}
+                                    readOnly={readOnly}
+```
+
+**Step 17.** In `src/app/doctor/session/[id]/page.tsx`, replace:
+```tsx
+                    <div className="card-actions">
+                        <button className="btn-save" onClick={handleSaveSoap} disabled={savingSoap}>
+                            {savingSoap ? "Saving…" : soapSaved ? "✓ Saved" : "Save SOAP Note"}
+                        </button>
+                    </div>
+```
+with:
+```tsx
+                    {!readOnly && (
+                        <div className="card-actions">
+                            <button className="btn-save" onClick={handleSaveSoap} disabled={savingSoap}>
+                                {savingSoap ? "Saving…" : soapSaved ? "✓ Saved" : "Save SOAP Note"}
+                            </button>
+                        </div>
+                    )}
+```
+
+**Verification:**
+
+Static:
+- `npx tsc --noEmit` exits 0, and `npm run build` exits 0.
+- `npm run lint` reports `63 problems (49 errors, 14 warnings)`, unchanged.
+- `grep -c readOnly src/app/components/ReservationSlot.tsx` returns `3`.
+- `grep -c ownerId` returns `3` in `src/app/components/Calendar.tsx` and `2` in `src/app/doctor/page.tsx`.
+- In `src/app/doctor/session/[id]/page.tsx`:
+  - `grep -c readOnly` returns `6`.
+  - `grep -c isColleagues` returns `3`.
+  - `grep -c useSession` returns `2`.
+  - `grep -c 'This session belongs to {ownerName}'` returns `1`.
+- `git diff --stat claude/exciting-einstein-krgpmv` lists exactly the four files: 61 insertions, 21 deletions.
+
+Runtime, against a local database with sessions today for two doctors. Every bullet is read-only.
+- Reproduce every row of the planning pass's table, signed in as the doctor, as admin and as a secretary.
+- Check the admin rows on `/doctor` as well as on `/admin`. An admin may open the doctor pages and must keep every action there.
+- Record console errors; there should be none.
+- Take a screenshot of the doctor on a colleague's session.
+
+**Done when:**
+- [ ] A doctor's own cards and sessions are unchanged
+- [ ] A colleague's card has no menu, and a colleague's session opens read-only with a banner naming its doctor
+- [ ] The shared Clinical Assessment stays editable
+- [ ] Admin and secretary are unchanged, including an admin on `/doctor`
+- [ ] Only the four files changed; tsc and build pass; lint is 63
 
 ---
 
