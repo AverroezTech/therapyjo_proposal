@@ -121,8 +121,8 @@ Two things that bear repeating here, because this is the file both agents open:
 | TJ-058 | Open the doctor dashboard on All Doctors | REVIEW — passed planner review and QA 2026-10-12; merged into `claude/exciting-einstein-krgpmv` as `031b184`; **not merged to `master`: merging deploys to production, awaiting the user** | `feat/doctor-calendar-all-default` |
 | TJ-059 | Ten more calendar colours for doctors | REVIEW — passed planner review and QA 2026-10-12; merged into `claude/exciting-einstein-krgpmv` as `aa47fca`; **not merged to `master`: merging deploys to production, awaiting the user** | `feat/more-doctor-colours` |
 | TJ-060 | Sign in with a username in any case | REVIEW — passed planner review and QA 2026-10-12; merged into `claude/exciting-einstein-krgpmv` as `72afb3e`; **not merged to `master`: merging deploys to production, awaiting the user** | `feat/username-any-case` |
-| TJ-061 | The doctor dashboard's Duplicate: broken, and the route behind it lets a doctor book | BLOCKED — passed 2026-10-12; measured; **awaiting the user's choice: doctors don't duplicate (A, recommended) or duplicate their own sessions (B)** | — |
-| TJ-062 | Limit doctors to their own sessions | BLOCKED — passed 2026-10-12; measured (a doctor can write a colleague's status, details and SOAP); **awaiting the user's scope decisions**; splits into server + UI once decided | — |
+| TJ-061 | The doctor dashboard's Duplicate: broken, and the route behind it lets a doctor book | READY — passed 2026-10-12; **user chose option A: doctors don't duplicate**; diff prototyped and runtime-checked; cut from `claude/exciting-einstein-krgpmv` (needs TJ-058) | `bugfix/doctor-duplicate` |
+| TJ-062 | Limit doctors to their own sessions | BLOCKED — passed 2026-10-12; Q2 (read stays) and Q3 (intake shared) decided; **awaiting one answer: may a doctor change a colleague's session status?** | — |
 
 ---
 
@@ -10975,17 +10975,17 @@ Optional and read-only, for the user rather than the executor: on production, `S
 
 ### TJ-061 — The doctor dashboard's Duplicate: broken, and the route behind it lets a doctor book
 
-- **Status:** BLOCKED. Planning pass run 2026-10-12. **It needs the user's decision between options A and B below.** Every finding is measured. The instructions are written once the option is chosen.
-- **Branch:** `bugfix/doctor-duplicate`, cut from wherever TJ-058 has landed. Both tasks edit `src/app/doctor/page.tsx`, and TJ-058's step 1 sits three lines below the Duplicate state this task removes or rewrites.
-- **Why:** User request, 2026-10-12, following the TJ-058 pass. Duplicate on the doctor dashboard has never worked, and fixing only the request would open a booking path that the rest of the app refuses to doctors.
+- **Status:** READY. Planning pass run 2026-10-12. **User decision, 2026-10-12: option A, doctors don't duplicate.** The diff was prototyped, gated and runtime-checked. Nothing is committed against this task.
+- **Branch:** `bugfix/doctor-duplicate`, cut from `claude/exciting-einstein-krgpmv`. It must carry TJ-058, because TJ-058 also edits `src/app/doctor/page.tsx` and the anchors below were taken from its result. **Not from `master`.**
+- **Why:** User request, 2026-10-12, following the TJ-058 pass. Duplicate on the doctor dashboard has never worked. The route behind it is the one way a doctor can create a booking, for any doctor and at any hour, although `POST /api/reservations` refuses doctors.
 
 **Planning pass:** 2026-10-12. Files read:
-- `src/app/doctor/page.tsx`: the Duplicate state, `handleDuplicate`, `confirmDuplicate`, and the modal.
+- `src/app/doctor/page.tsx` as it stands after TJ-058: the Duplicate state, `handleDuplicate`, `confirmDuplicate`, the modal and its CSS, and every `className` still in use.
 - `src/app/api/reservations/[id]/duplicate/route.ts` in full, and the `POST` of `src/app/api/reservations/route.ts`.
-- The action menu in `src/app/components/ReservationSlot.tsx` and the props of `src/app/components/Calendar.tsx`.
+- The props and action menu of `src/app/components/ReservationSlot.tsx`, and the props of `src/app/components/Calendar.tsx`.
 - The Duplicate callers in `src/app/admin/page.tsx` and `src/app/secretary/page.tsx`, and TJ-046.
 
-Measured on `master` against a local database, signed in as the doctor `Dr.Ahmad`:
+Measured on `master`, signed in as the doctor `Dr.Ahmad`:
 
 | Request | Result |
 |---|---|
@@ -10993,29 +10993,195 @@ Measured on `master` against a local database, signed in as the doctor `Dr.Ahmad
 | `POST /api/reservations`, the main booking route | **403** "Doctors cannot create reservations" |
 | `POST …/<colleague's id>/duplicate` with `{ sessionDate: "2026-10-13", sessionTime: "03:00" }` | **201**: a SCHEDULED booking for the colleague, at 03:00 |
 
-- **Confirmed: the doctor's Duplicate never works and fails silently.** `confirmDuplicate` posts `{ date: dupeDate, time: dupeTime }`. The route reads `sessionDate` / `sessionTime`. The page never reads the response, so the modal closes as though it worked. Admin sends `{ sessionDate, sessionTime }` and secretary sends `{ sessionDate }`; only the doctor's copy is wrong.
-- **Confirmed: the route has no role check, no ownership check and no clinic-window check.** A doctor can create bookings through it, for any doctor, at any hour. The missing window check is TJ-046, so whichever option is chosen should close that hole at the same time.
-- **Confirmed: every role sees "Duplicate" on every card.** `ReservationSlot` adds it unconditionally, and `Calendar` requires `onDuplicate`.
+- **Confirmed: the doctor's Duplicate fails silently.** `confirmDuplicate` posts `{ date, time }`, the route reads `sessionDate` / `sessionTime`, and the page never reads the response. Admin's and secretary's requests are correct.
+- **Confirmed: the route has no role, ownership or clinic-window check.**
+- **Confirmed: every role sees "Duplicate" on every card**, because `ReservationSlot` adds it unconditionally and `Calendar` requires `onDuplicate`.
+- **Design, option A:**
+  - `onDuplicate` becomes optional in both components, the same pattern `onEdit` and `onViewDetails` use. The card shows the item only when the prop is passed.
+  - The doctor page stops passing it, and its Duplicate modal is deleted together with its four state variables, two handlers and the 13 CSS rules only the modal used. The rules still in use (`controls`, `date-nav`, `btn-nav`, `btn-today`, `doctor-select`, `date-trigger-row`, `session-count`, `main-layout`, `calendar-col`) stay.
+  - The route refuses doctors with the same 403 message `POST /api/reservations` uses.
+  - Admin and secretary keep passing `onDuplicate`, so their menus are unchanged.
+- **Left for TJ-046:** the route still has no clinic-window check for the admin and secretary who can still duplicate. That remains TJ-046's job, a separate concern, and it is not widened into this task.
+- **Prototyped** on `claude/exciting-einstein-krgpmv` at `04b8045`. The steps were applied by script, each anchor matching exactly once.
+  - `tsc` exits 0, `npm run build` exits 0, and lint is unchanged at 63. The doctor page keeps only its two existing data-loading findings.
+  - In Chromium against a local database, the doctor's card menus on `/doctor` read "Check In | Waiting | Cancel" on his own card and on both of dr_sami's, with no Duplicate and 0 console errors.
+  - Admin's menu still reads "Session Details | Check In | Waiting | Edit | Duplicate | Cancel | Delete", and secretary's "Check In | Waiting | Edit | Duplicate | Cancel | Delete".
+  - Admin's Duplicate through its modal created a booking (3 → 4), and so did secretary's through its prompt (4 → 5).
+  - A doctor's `POST …/duplicate`, on his own reservation and on a colleague's, returned **403** "Doctors cannot create reservations", and the count did not move. Admin's `POST` still returned 201.
 
-**The decision, for the user:**
-- **Option A, recommended: doctors don't duplicate.**
-  - Remove the item from the doctor's card menu by making `onDuplicate` optional, the same pattern `onEdit` and `onViewDetails` already use. The doctor page stops passing it, and its Duplicate modal, state and handlers are deleted.
-  - The route refuses doctors with 403, matching `POST /api/reservations`.
-  - Files: `doctor/page.tsx`, `Calendar.tsx`, `ReservationSlot.tsx`, `duplicate/route.ts`.
-  - Admin and secretary are unchanged.
-- **Option B: doctors may duplicate their own sessions**, for example to book a follow-up.
-  - Fix the doctor page's request to `{ sessionDate, sessionTime }`, and make it read the response and show the error.
-  - The route lets a doctor duplicate only a reservation booked under them, and checks the clinic window with `checkClinicWindow` from `src/lib/clinicHours.ts`.
-  - This makes the duplicate route the one place a doctor can create a booking, which is a deliberate exception to the rule `POST /api/reservations` enforces.
-  - Files: `doctor/page.tsx` and `duplicate/route.ts`.
+**Scope — touch only these:**
+- `src/app/components/ReservationSlot.tsx`: the `onDuplicate` prop and the Duplicate menu item.
+- `src/app/components/Calendar.tsx`: the `onDuplicate` prop.
+- `src/app/doctor/page.tsx`: the Duplicate state, handlers, prop, modal and modal-only CSS.
+- `src/app/api/reservations/[id]/duplicate/route.ts`: the role check.
 
-**Not yet decided, so no Scope or Instructions.** Once the option is chosen, the pass is finished against the files then current: anchors, literals and Verification. **Regression risks for either option:** admin's and secretary's Duplicate must keep working; it is the only Duplicate that works today.
+**Do not touch:**
+- `src/app/admin/page.tsx` and `src/app/secretary/page.tsx`. Their Duplicate must keep working.
+- The rest of the card menu. Status actions on a colleague's card are TJ-062.
+- The clinic-window check, which is TJ-046.
+- Everything else in these files.
+
+**Instructions.** All four files are LF. Every anchor below occurs exactly once in its file, checked by machine on 2026-10-12 against `claude/exciting-einstein-krgpmv`, which carries TJ-058. Fenced blocks show each file's own indentation.
+
+**Step 1.** In `src/app/components/ReservationSlot.tsx`, replace:
+```tsx
+    onDuplicate: (id: number) => void;
+```
+with:
+```tsx
+    // Optional: admin and secretary pass it; the doctor dashboard does not,
+    // so doctors get no Duplicate item. (TJ-061)
+    onDuplicate?: (id: number) => void;
+```
+
+**Step 2.** In `src/app/components/ReservationSlot.tsx`, replace:
+```tsx
+    actions.push({ label: "Duplicate", icon: "📋", onClick: () => onDuplicate(id) });
+```
+with:
+```tsx
+    if (onDuplicate) {
+        actions.push({ label: "Duplicate", icon: "📋", onClick: () => onDuplicate(id) });
+    }
+```
+
+**Step 3.** In `src/app/components/Calendar.tsx`, replace:
+```tsx
+    onDuplicate: (id: number) => void;
+```
+with:
+```tsx
+    // Optional: passed by admin and secretary only; doctors do not duplicate (TJ-061).
+    onDuplicate?: (id: number) => void;
+```
+
+**Step 4.** In `src/app/doctor/page.tsx`, delete these lines, together with the one blank line that follows them:
+```tsx
+    // Duplicate modal
+    const [dupeId, setDupeId] = useState<number | null>(null);
+    const [dupeDate, setDupeDate] = useState(today());
+    const [dupeTime, setDupeTime] = useState("09:00");
+    const [duping, setDuping] = useState(false);
+```
+
+**Step 5.** In `src/app/doctor/page.tsx`, delete these lines, together with the one blank line that follows them:
+```tsx
+    const handleDuplicate = (id: number) => {
+        setDupeId(id);
+        setDupeDate(today());
+        setDupeTime("09:00");
+    };
+
+    const confirmDuplicate = async () => {
+        if (!dupeId) return;
+        setDuping(true);
+        await fetch(`/api/reservations/${dupeId}/duplicate`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ date: dupeDate, time: dupeTime }),
+        });
+        setDuping(false);
+        setDupeId(null);
+        fetchReservations();
+    };
+```
+
+**Step 6.** In `src/app/doctor/page.tsx`, delete these lines:
+```tsx
+                            onDuplicate={handleDuplicate}
+```
+
+**Step 7.** In `src/app/doctor/page.tsx`, delete these lines, together with the one blank line that follows them:
+```tsx
+            {/* Duplicate Modal */}
+            {dupeId !== null && (
+                <div className="modal-overlay" onClick={() => setDupeId(null)}>
+                    <div className="modal-card" onClick={(e) => e.stopPropagation()}>
+                        <h2>Duplicate Session</h2>
+                        <div className="form-row">
+                            <div className="form-group"><label>New Date</label><input type="date" value={dupeDate} onChange={(e) => setDupeDate(e.target.value)} /></div>
+                            <div className="form-group"><label>New Time</label><input type="time" value={dupeTime} onChange={(e) => setDupeTime(e.target.value)} /></div>
+                        </div>
+                        <div className="modal-actions">
+                            <button className="btn-cancel" onClick={() => setDupeId(null)}>Cancel</button>
+                            <button className="btn-save" onClick={confirmDuplicate} disabled={duping}>{duping ? "Duplicating…" : "Duplicate"}</button>
+                        </div>
+                    </div>
+                </div>
+            )}
+```
+
+**Step 8.** In `src/app/doctor/page.tsx`, delete these lines:
+```tsx
+                .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.6); display: flex; align-items: center; justify-content: center; z-index: 1000; backdrop-filter: blur(4px); }
+                .modal-card { background: var(--bg-dark-secondary, #243b44); border: 1px solid rgba(255,255,255,0.08); border-radius: var(--radius-md, 4px); padding: 2rem; width: 100%; max-width: 400px; }
+                .modal-card h2 { font-size: 1.1rem; margin-bottom: 1rem; font-weight: 600; }
+                .form-row { display: flex; gap: 0.75rem; }
+                .form-row .form-group { flex: 1; }
+                .form-group { display: flex; flex-direction: column; gap: 0.25rem; }
+                .form-group label { font-size: 0.76rem; color: rgba(255,255,255,0.5); font-weight: 500; }
+                .form-group input { background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.08); border-radius: var(--radius-sm, 2px); padding: 0.5rem 0.7rem; color: #fff; font-size: 0.85rem; outline: none; font-family: inherit; }
+                .form-group input:focus { border-color: var(--primary, #4CAF93); }
+                .modal-actions { display: flex; justify-content: flex-end; gap: 0.6rem; margin-top: 1.25rem; }
+                .btn-cancel { background: rgba(255,255,255,0.06); color: rgba(255,255,255,0.6); border: 1px solid rgba(255,255,255,0.1); border-radius: var(--radius-sm, 2px); padding: 0.5rem 1rem; font-size: 0.85rem; cursor: pointer; font-family: inherit; }
+                .btn-save { background: var(--primary, #4CAF93); color: #fff; border: none; border-radius: var(--radius-sm, 2px); padding: 0.5rem 1.2rem; font-size: 0.85rem; font-weight: 600; cursor: pointer; font-family: inherit; }
+                .btn-save:disabled { opacity: 0.5; cursor: not-allowed; }
+```
+
+**Step 9.** In `src/app/api/reservations/[id]/duplicate/route.ts`, replace:
+```tsx
+    if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+```
+with:
+```tsx
+    if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+    // A duplicate is a new booking, and doctors do not book: the same rule
+    // POST /api/reservations enforces, with the same message. (TJ-061)
+    if (session.user.role === "DOCTOR") {
+        return NextResponse.json({ error: "Doctors cannot create reservations" }, { status: 403 });
+    }
+```
+
+**Verification:**
+
+Static:
+- `npx tsc --noEmit` exits 0, and `npm run build` exits 0.
+- `npm run lint` reports `63 problems (49 errors, 14 warnings)`, unchanged from `claude/exciting-einstein-krgpmv`.
+- In `src/app/doctor/page.tsx`:
+  - `grep -ci 'dupe\|duplicat'` returns `0`.
+  - `grep -c 'modal-'` returns `0`.
+- In `src/app/components/ReservationSlot.tsx`:
+  - `grep -c 'if (onDuplicate)'` returns `1`.
+  - `grep -c 'onDuplicate?:'` returns `1`.
+- In `src/app/components/Calendar.tsx`, `grep -c 'onDuplicate?:'` returns `1`.
+- In the route:
+  - `grep -c 'session.user.role === "DOCTOR"'` returns `1`.
+  - `grep -c 'Doctors cannot create reservations'` returns `1`.
+- `grep -c 'onDuplicate={handleDuplicate}'` still returns `1` in `src/app/admin/page.tsx` and `1` in `src/app/secretary/page.tsx`.
+- `git diff --stat claude/exciting-einstein-krgpmv` lists exactly the four files: 14 insertions, 59 deletions.
+
+Runtime, against a local database with sessions today for two doctors. The first three bullets are read-only.
+- As a doctor on `/doctor`, every card's menu, his own and colleagues', has no "Duplicate". The other items are unchanged, and there are no console errors.
+- As admin on `/admin`, the menu still has "Duplicate".
+- As secretary on `/secretary`, the menu still has "Duplicate".
+- **Write:**
+  - Admin duplicates through its modal, and the count of bookings rises by one.
+  - Secretary duplicates through its prompt, and the count rises by one.
+  - A doctor's `POST /api/reservations/<id>/duplicate`, on his own reservation and on a colleague's, returns **403** `{"error":"Doctors cannot create reservations"}`, and the count does not change.
+  - Admin's `POST` to the same route returns 201.
+
+**Done when:**
+- [ ] Doctors see no Duplicate, and the route refuses them
+- [ ] Admin's and secretary's Duplicate still work
+- [ ] The doctor page carries no dead Duplicate code or CSS
+- [ ] Only the four files changed; tsc and build pass; lint is 63
 
 ---
 
 ### TJ-062 — Limit doctors to their own sessions
 
-- **Status:** BLOCKED. Planning pass run 2026-10-12. **It needs the user's decisions on scope (questions 1–3 below).** Every finding is measured. It will split into a server task and a UI task once scope is fixed.
+- **Status:** BLOCKED. Planning pass run 2026-10-12. **One decision is still owed: question 1, whether a doctor may change the *status* of a colleague's session.** Questions 2 and 3 were answered on 2026-10-12 (see Decisions). It splits into a server task and a UI task once question 1 is answered.
 - **Branch:** to be assigned at the split. The UI half edits `src/app/doctor/page.tsx`, so it is cut after TJ-058 and TJ-061.
 - **Why:** User request, 2026-10-12: nothing on the server stops a doctor changing status on, or writing notes for, a colleague's session. TJ-058 made colleagues' cards the first thing a doctor sees.
 
@@ -11045,6 +11211,16 @@ Measured on `master`, signed in as `Dr.Ahmad`, acting on `dr_sami`'s reservation
 - **Confirmed: ownership is checkable.** A reservation carries `doctorId`, and the session carries `session.user.id`. A reservation whose doctor was hard-deleted has `doctorId = null`, so no doctor owns it; admin can still act on it.
 - **Confirmed: the intake is patient-level, not session-level.** One record per patient, shared by every doctor who treats them. Restricting it is a separate question from restricting sessions.
 - **Adjacent, found during the pass:** `PUT /api/notes/[id]` lets any signed-in user, doctors included, edit any note, including reassigning its `doctorId`. Only `DELETE` refuses doctors. Not part of this request; listed as question 4.
+
+**Decisions, 2026-10-12 (user):**
+- **Q2: doctors may still read a colleague's sessions and SOAP notes** (the recommended option).
+- **Q3: the patient-level intake stays shared** by every doctor (the recommended option).
+- **Q1 is narrowed, not yet answered.** The user asked what "details" meant. It means the non-clinical fields of one booked session that `PUT /api/reservations/[id]` lets a doctor change:
+  - **on the doctor's screen**, injury place (the session page's "Save details");
+  - **through the API only**, the calendar note and whether it shows on the card, the next-session note, the payment type, the two-hour flag and `isNote`.
+
+  Date, time and reassignment are already refused to doctors. SOAP and details are blocked under either answer. **The open choice is only status:** may a doctor check in, mark waiting, move to "with doctor", check out or cancel a colleague's patient?
+- **Q4, Notes editing,** has no recommendation on record yet. It is put to the user separately, and is not part of this task either way.
 
 **Recommended design, pending the user's answers:**
 - **Server:** a `canWriteSession(user, reservationDoctorId)` helper in `permissions.ts`. Admin and secretary keep exactly what they have. A doctor is allowed only when `reservationDoctorId === user.id`. It is applied to `PATCH` and `PUT /api/reservations/[id]` and to the SOAP `PUT`, and to Duplicate if TJ-061 chooses option B. A refusal is a 403 naming the rule.
