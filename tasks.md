@@ -118,6 +118,9 @@ Two things that bear repeating here, because this is the file both agents open:
 | TJ-055 | `--font-heading` has never resolved: headings render in the body font, not Bodoni Moda | DONE — task commit `32bd05c`, merged as `d9a53ee` on 2026-09-28; option 2 (keep the body face), chosen by the planner at the user's request; no visible change measured | `bugfix/heading-font-variable` |
 | TJ-056 | Card text reads blurry on Windows: unhinted font files and faded muted lines | DONE — task commit `2079d78`, merged to `master` as `220ed3e` with `--no-ff` on 2026-09-28 at the user's request; **a look on a Windows machine is owed** | `bugfix/windows-text-rendering` |
 | TJ-057 | Draw Arabic 10% larger; clip long Arabic names at their end | DONE — task commit `e60699e`, merged to `master` as `01cfb82` with `--no-ff` on 2026-09-28 at the user's request; **a look on a Windows machine is owed** | `feat/arabic-size-adjust` |
+| TJ-058 | Open the doctor dashboard on All Doctors | READY — passed 2026-10-12; diff prototyped, gated and browser-checked | `feat/doctor-calendar-all-default` |
+| TJ-059 | Ten more calendar colours for doctors | READY — passed 2026-10-12; colours chosen by measurement; diff prototyped, gated and browser-checked | `feat/more-doctor-colours` |
+| TJ-060 | Sign in with a username in any case | READY — passed 2026-10-12; **the obvious Prisma one-liner is a login wildcard**, so the plan uses `lower() = lower()`; diff prototyped and runtime-proven | `feat/username-any-case` |
 
 ---
 
@@ -10211,9 +10214,442 @@ Option 1 remains available later as a deliberate redesign.
 
 ---
 
+### TJ-058 — Open the doctor dashboard on All Doctors
+
+- **Status:** READY. Planning pass run 2026-10-12. The planned diff was prototyped in a throwaway worktree, gated and checked in a browser. Nothing is committed against this task.
+- **Branch:** `feat/doctor-calendar-all-default`
+- **Why:** User request, 2026-10-12: the calendar a doctor sees by default should be the all-doctors calendar, not the doctor's own. Today `/doctor` opens filtered to the signed-in doctor, and "All Doctors" is the second option in the select. Admin and secretary already open on "All Doctors" (`useState("all")` in `admin/page.tsx` and `secretary/page.tsx`). This brings the third dashboard in line.
+
+**Planning pass:** 2026-10-12. Read `src/app/doctor/page.tsx` in full and `src/app/doctor/layout.tsx`. Read the filter state and select of `src/app/admin/page.tsx` and `src/app/secretary/page.tsx`. Read `src/app/components/DatePickerPopover.tsx`, `src/app/components/DatePicker.tsx` and the props of `src/app/components/Calendar.tsx`. On the server, read the `GET` of `src/app/api/reservations/route.ts`, plus `src/app/api/reservations/[id]/route.ts`, `src/app/api/reservations/[id]/duplicate/route.ts` and `src/lib/permissions.ts`.
+- **Confirmed: the default is one initial value and one effect.** `doctorFilter` starts as `""`. An effect copies the doctor's id into it once the session loads. `fetchReservations` returns early while the filter is empty, which is all that guard is for. Nothing else depends on the own-schedule default.
+- **Confirmed: `"all"` is already handled everywhere it goes.** The page leaves out `doctorId` when the filter is `"all"`. The API's day view ignores `doctorId=all`. `DatePicker` drops the parameter for `"all"`, so the month dots count the whole clinic, as they do on admin and secretary.
+- **Confirmed: nothing a doctor may do changes.** The API applies the phone boundary (TJ-054) by role, whatever the filter. `canDeleteReservation` still refuses doctors. Every action on a colleague's card is already reachable through the existing "All Doctors" option. This task changes which view is on screen first, not what a doctor is allowed to do. The ownership question this raises is recorded under Notes for the planner.
+- **Corrected:** the comment being replaced cites `(TJ-024)`. In this file TJ-024 is "The session page claims 'Saved!' on a failed request", so the citation is one of the contested ones TJ-026 exists to reconcile. The new comment cites TJ-058.
+- **Decided here, so the executor has nothing to choose:**
+  - The page's `<h1>My Schedule</h1>` and the nav link with the same name stay as they are. They name the doctor's page, not the filter, and the select already says "All Doctors".
+  - "All Doctors" moves above "My Schedule" in the select, matching the other two dashboards.
+- **Found, out of scope:** Duplicate on this page has never worked. It posts `{ date, time }`, the route requires `sessionDate`, and the page never reads the 400. Recorded under Notes for the planner and **not** fixed here.
+- **Prototyped:** the three steps below were applied by script, with each anchor asserted to match exactly once.
+  - `tsc` exits 0 and `npm run build` exits 0.
+  - `npm run lint` drops from **64 to 63** (49 errors, 14 warnings). Removing the effect clears the `react-hooks/set-state-in-effect` error at `doctor/page.tsx:49`.
+  - In Chromium, against a local database with two doctors and three sessions today (one of them the signed-in doctor's), `/doctor` opened with the select on "All Doctors", the first option, and showed "3 sessions".
+  - The first `/api/reservations?` request was `?date=2026-10-12`, with no `doctorId`. Choosing "My Schedule" narrowed the view to "1 session".
+
+**Scope — touch only these:**
+- `src/app/doctor/page.tsx`
+
+**Do not touch:** these all stay as they are:
+- `src/app/doctor/layout.tsx` and the page's `<h1>` (decided above).
+- The Duplicate modal and `confirmDuplicate`. They are broken, but filed separately.
+- `admin/page.tsx`, `secretary/page.tsx`, `Calendar.tsx`, `DatePicker*.tsx` and every API route.
+- The `useEffect` import, which the two data-loading effects still use.
+
+**Instructions.** The file is LF. Each anchor below occurs exactly once (machine-checked 2026-10-12), and the fenced blocks show the file's own indentation.
+
+**Step 1.** Replace:
+```tsx
+    // Defaults to "my schedule only" — the toggle below lets a doctor opt
+    // into seeing the whole clinic's schedule, same as admin/secretary. (TJ-024)
+    const [doctorFilter, setDoctorFilter] = useState("");
+    useEffect(() => { if (doctorId) setDoctorFilter(doctorId); }, [doctorId]);
+```
+with:
+```tsx
+    // Opens on the whole clinic's schedule, the same as admin and secretary.
+    // The select below narrows it to the doctor's own, or to one colleague's.
+    // (TJ-058)
+    const [doctorFilter, setDoctorFilter] = useState("all");
+```
+
+**Step 2.** Delete the guard that only waited for the session. Replace:
+```tsx
+    const fetchReservations = useCallback(async () => {
+        if (!doctorFilter) return;
+        setLoading(true);
+```
+with:
+```tsx
+    const fetchReservations = useCallback(async () => {
+        setLoading(true);
+```
+
+**Step 3.** Swap the select's first two options. Replace:
+```tsx
+                    {doctorId && <option value={doctorId}>My Schedule</option>}
+                    <option value="all">All Doctors</option>
+```
+with:
+```tsx
+                    <option value="all">All Doctors</option>
+                    {doctorId && <option value={doctorId}>My Schedule</option>}
+```
+
+**Verification:**
+
+Static:
+- `npx tsc --noEmit` exits 0, and `npm run build` exits 0.
+- `npm run lint` reports `63 problems (49 errors, 14 warnings)`, down from 64. Measure in a checkout with no nested worktrees (TJ-050).
+- `grep -c 'useState("all")' src/app/doctor/page.tsx` returns `1`.
+- `grep -c 'setDoctorFilter(doctorId)' src/app/doctor/page.tsx` returns `0`.
+- `grep -c 'if (!doctorFilter) return;' src/app/doctor/page.tsx` returns `0`.
+- `git diff --stat master` lists only `src/app/doctor/page.tsx`.
+
+Runtime, signed in as a doctor, against a database with sessions today for at least two doctors. All of these are read-only:
+- `/doctor` opens with the select reading "All Doctors", and it is the first option. "My Schedule" is second, then the other doctors.
+- The session count equals the clinic-wide total for the day.
+- The first `/api/reservations?` request has no `doctorId` parameter.
+- Choosing "My Schedule" narrows the view to the doctor's own sessions. Choosing "All Doctors" again restores the full day.
+- The date picker's month dots count every doctor's sessions.
+- The `/api/reservations?date=…` response still carries no `phone1` or `phone2` for a doctor (TJ-054).
+- Admin and secretary dashboards still open on "All Doctors". Their files are untouched, so this is a sanity look.
+
+**Done when:**
+- [ ] A doctor's dashboard opens on the whole clinic's schedule
+- [ ] "My Schedule" and each colleague can still be chosen
+- [ ] Only `src/app/doctor/page.tsx` changed
+- [ ] tsc and build pass; lint is 63
+
+---
+
+### TJ-059 — Ten more calendar colours for doctors
+
+- **Status:** READY. Planning pass run 2026-10-12. The colours were chosen by measurement. The diff was prototyped in a throwaway worktree, gated and checked in a browser. Nothing is committed against this task.
+- **Branch:** `feat/more-doctor-colours`
+- **Why:** User request, 2026-10-12: "add more color options to assign to doctors, add about 10 more." There are 12 colours, and TJ-009d made each one exclusive to a single ACTIVE doctor, so the 13th active doctor already has to share one ("Every colour is in use — this one will be shared"). Ten more makes 22.
+
+**Planning pass:** 2026-10-12. Files read:
+- `src/app/admin/employees/doctors/page.tsx`: `COLORS`, `takenColors`, `paletteExhausted`, the edit modal's picker and its CSS.
+- `src/app/admin/employees/doctors/new/page.tsx`: `COLORS`, TJ-009h's first-free default, the picker and its CSS.
+- The colour handling in `src/app/api/employees/doctors/route.ts` and `.../doctors/[id]/route.ts`.
+- `src/app/components/ReservationSlot.tsx`: `readableTextColor`, `STATUS_COLORS`, the checked-out opacity.
+- The `User.color` and `Reservation.doctorColorSnapshot` columns in `prisma/schema.prisma`, and `prisma/seed.ts`.
+
+Findings:
+- **Confirmed: the palette is two identical literal arrays and nothing else.** A `diff` of the two `COLORS` blocks is empty, and no other file lists colours. The server keeps no whitelist. It only refuses a colour that another ACTIVE doctor holds, by exact string. The schema stores any string. Every consumer treats the value as opaque: the calendar card, the snapshot and the table dot. Adding values needs no change to the server, the schema or the data.
+- **Confirmed: the picker logic scales on its own.** `paletteExhausted` and the "every colour is in use" fallbacks compare against `COLORS.length`. TJ-009h's default takes the first free colour in array order. The new values are **appended**, so:
+  - the first 12 keep their positions;
+  - `COLORS[0]` stays `#6ee7b7`;
+  - every doctor's saved colour still matches a swatch, which the edit modal needs to show it selected.
+- **How the ten were chosen.** A card is filled with the doctor's colour, and `readableTextColor` gives it either white or `#1a2e35` text, whichever contrasts more. Candidates were Tailwind's 200–500 shades, the family the existing 12 come from (all 300/400). A candidate had to pass three tests:
+  - text contrast of at least 4.5:1 under that rule (the existing palette's floor is 5.11);
+  - contrast against the dashboard background of at least 3:1;
+  - CIELAB chroma of at least 35, so it reads as a colour.
+
+  Greys were excluded. A grey card reads as "inactive", it collapses into the background at the checked-out 50% opacity, and `#666` is already the deleted-doctor fallback. From what was left, each next pick was the candidate farthest, by CIEDE2000, from everything already in the palette:
+
+  | Added, in array order | Tailwind | Card text | Text contrast | Nearest colour, ΔE₀₀ |
+  |---|---|---|---|---|
+  | `#fda4af` | rose-300 | dark | 7.47 | 10.5 (pink-300) |
+  | `#fdba74` | orange-300 | dark | 8.38 | 10.8 (orange-400) |
+  | `#fef08a` | yellow-200 | dark | 12.14 | 11.3 (lime-200) |
+  | `#d9f99d` | lime-200 | dark | 12.10 | 11.3 (lime-400) |
+  | `#a3e635` | lime-400 | dark | 9.37 | 11.3 (lime-200) |
+  | `#14b8a6` | teal-500 | dark | 5.68 | 12.3 (emerald-400) |
+  | `#67e8f9` | cyan-300 | dark | 9.75 | 15.9 (sky-400) |
+  | `#c4b5fd` | violet-300 | dark | 7.65 | 11.0 (fuchsia-300) |
+  | `#f0abfc` | fuchsia-300 | dark | 8.03 | 9.8 (pink-300) |
+  | `#f9a8d4` | pink-300 | dark | 7.79 | 9.8 (fuchsia-300) |
+
+  Every new colour sits **at least ΔE₀₀ 9.8** from its nearest neighbour in the 22. That is wider than the existing palette's own closest pairs: amber-400/yellow-400 at 5.1, violet-400/purple-400 at 5.5, emerald-300/emerald-400 at 6.3. None of the ten is a status-dot colour.
+- **Why ten and not twelve:** twelve would fill the 4-column grid evenly, but the 11th and 12th candidates (green-500 and amber-500) land within ΔE₀₀ 9.4–9.6 of existing colours. The user asked for "about 10", and ten is where the measurement is cleanest.
+- **Prototyped:** the steps below were applied by script, with each anchor asserted to match exactly once.
+  - `tsc` exits 0 and `npm run build` exits 0. Lint is unchanged at 64. The one existing warning in `new/page.tsx` (`@next/next/no-img-element`) moves from line 133 to line 138.
+  - In Chromium against a local database, `/admin/employees/doctors/new` drew **22 swatches in 6 rows of 4** at both 1440px and 320px. The colour card did not overflow.
+  - With `#6ee7b7` held by a doctor, the new-doctor default moved to `#93c5fd`, so TJ-009h still holds.
+  - The edit modal drew **22 swatches in 2 rows of 12** at 1440px, and 4 rows of 6 at 320px. The doctor's saved colour was selected, and the colour another doctor held was disabled.
+  - A reservation card for a doctor holding the new `#14b8a6` drew its text in `rgb(26, 46, 53)`.
+  - The edit modal does overflow sideways, by 115px at 1440px. The cause is the working-hours row, not the picker; see Notes.
+
+**Scope — touch only these:**
+- `src/app/admin/employees/doctors/page.tsx` (the `COLORS` block only)
+- `src/app/admin/employees/doctors/new/page.tsx` (the `COLORS` block only)
+
+**Do not touch:**
+- The first twelve values and their order. Saved colours and the `COLORS[0]` default depend on both.
+- The swatch CSS in both files. It was measured above and fits as is.
+- The server routes: there is no whitelist to update.
+- `ReservationSlot.tsx` (`readableTextColor`, `STATUS_COLORS`).
+- The schema and the seed.
+
+**Instructions.** Both files are LF. The anchor below occurs exactly once in each file (machine-checked 2026-10-12).
+
+**Step 1.** In `src/app/admin/employees/doctors/page.tsx`, replace:
+```tsx
+const COLORS = [
+    "#6ee7b7", "#93c5fd", "#fbbf24", "#f87171",
+    "#a78bfa", "#fb923c", "#34d399", "#60a5fa",
+    "#f472b6", "#38bdf8", "#facc15", "#c084fc",
+];
+```
+with:
+```tsx
+// The same list, in the same order, as admin/employees/doctors/new/page.tsx — keep the two identical.
+// The ten after the first twelve were added by TJ-059.
+const COLORS = [
+    "#6ee7b7", "#93c5fd", "#fbbf24", "#f87171",
+    "#a78bfa", "#fb923c", "#34d399", "#60a5fa",
+    "#f472b6", "#38bdf8", "#facc15", "#c084fc",
+    "#fda4af", "#fdba74", "#fef08a", "#d9f99d",
+    "#a3e635", "#14b8a6", "#67e8f9", "#c4b5fd",
+    "#f0abfc", "#f9a8d4",
+];
+```
+
+**Step 2.** In `src/app/admin/employees/doctors/new/page.tsx`, replace the same anchor with the same block. Only the first comment line differs, because it names the other file:
+```tsx
+// The same list, in the same order, as admin/employees/doctors/page.tsx — keep the two identical.
+```
+
+**Verification:**
+
+Static:
+- `npx tsc --noEmit` exits 0, and `npm run build` exits 0.
+- `npm run lint` reports `64 problems (50 errors, 14 warnings)`, unchanged.
+- This prints nothing: `diff <(sed -n '/^const COLORS = \[/,/^\];/p' src/app/admin/employees/doctors/new/page.tsx) <(sed -n '/^const COLORS = \[/,/^\];/p' src/app/admin/employees/doctors/page.tsx)`
+- For each file, `sed -n '/^const COLORS = \[/,/^\];/p' <file> | grep -o '"#[0-9a-f]\{6\}"' | wc -l` returns `22`.
+- The same pipeline ending in `sort | uniq -d | wc -l` instead returns `0`.
+- `git diff --stat master` lists exactly the two files.
+
+Runtime, against a local database. Every bullet but the last is read-only.
+- `/admin/employees/doctors/new` at 1440px and at 320px:
+  - It draws 22 `.color-swatch` elements across 6 distinct `offsetTop` values. Count rows by `offsetTop`, not `getBoundingClientRect`: the selected swatch is `scale(1.12)` and reads as an extra row.
+  - `.color-card` has `scrollWidth <= clientWidth`.
+- With `#6ee7b7` held by an ACTIVE doctor, the new-doctor form's selected swatch is `#93c5fd` (TJ-009h).
+- The edit modal on `/admin/employees/doctors` draws 22 swatches, with the doctor's own colour selected and other ACTIVE doctors' colours disabled.
+  - `.color-picker` has `scrollWidth <= clientWidth`.
+  - The modal's own sideways overflow already exists, from the working-hours row. Do not fail the task on it.
+- **Write:** give a doctor one of the new colours and save.
+  - That doctor's cards on `/admin` draw in it, with text `rgb(26, 46, 53)`.
+  - A second doctor offered the same colour gets a 409, "That colour is already used by …".
+
+**Done when:**
+- [ ] Both pickers offer 22 colours, the first twelve unchanged and in order
+- [ ] The two arrays are identical
+- [ ] A new colour can be assigned, draws legibly on a card, and stays exclusive
+- [ ] tsc and build pass; lint is 64
+
+---
+
+### TJ-060 — Sign in with a username in any case
+
+- **Status:** READY. Planning pass run 2026-10-12. The obvious one-line fix was measured, found to be a login wildcard, and rejected. The planned diff was prototyped and runtime-proven against a local database. Nothing is committed against this task.
+- **Branch:** `feat/username-any-case`
+- **Why:** User request, 2026-10-12: "make the username not case sensitive at sign in." `authorize()` finds the account with `prisma.user.findUnique({ where: { username } })`, which is an exact, case-sensitive match. So `dr.ahmad` typed for an account stored as `Dr.Ahmad` is refused as a wrong password. The usual cause is a phone capitalising the first letter. Once this lands, a username signs in in any case, and the password check stays exactly as strict as it is.
+
+**Planning pass:** 2026-10-12. Files read:
+- `src/lib/auth.ts` in full, `src/lib/auth.config.ts`, the imports of `src/middleware.ts`, and `src/lib/prisma.ts`.
+- The `User` model in `prisma/schema.prisma`, and `prisma/seed.ts`.
+- The `POST` and `PUT` handlers of `src/app/api/employees/doctors/route.ts`, `.../doctors/[id]/route.ts`, `.../secretaries/route.ts` and `.../secretaries/[id]/route.ts`.
+- The username fields of the four employee pages, and `src/app/login/page.tsx`.
+
+Findings:
+- **Confirmed: usernames are written in two places only, the two `POST` routes.** Both `PUT` handlers destructure the body without `username`, so a username cannot change after creation. The edit modals hide the field outside the Add mode nobody can reach. Each `POST` guards with an exact `findUnique` and answers 409 "Username already taken". The seed creates the first admin from `ADMIN_USERNAME`.
+- **Confirmed: `username` is `@unique` and case-sensitive.** It is a Postgres `text` column, with no `citext` and no functional index. Two accounts that differ only by case can exist today, so a case-blind lookup can return more than one row. The design below says what happens then.
+- **Corrected, by measurement: the obvious fix turns `%` into a wildcard at the login box.** Prisma's `equals` with `mode: "insensitive"` was run against a local Postgres 16 with Prisma 7.4.1, with query logging on. It compiles to `WHERE "username" ILIKE $1` and **escapes nothing**:
+  - Input `fif%` matched the account `fifty%`.
+  - Input `%` matched **every** account.
+  - Inside `authorize()`, `%` would therefore try the password against whichever account the database returned first. Every wrong guess would add to a random colleague's lockout counter.
+  - It also fails the other way. `\` is `ILIKE`'s escape character, so an account whose username contains one could never sign in.
+  - Filtering the `ILIKE` rows in JavaScript fixes the wildcard but not the backslash.
+- **Chosen instead: `SELECT id FROM "User" WHERE lower(username) = lower(${input})`.** It goes through Prisma's tagged `$queryRaw`, in one small helper shared by all three call sites.
+  - Run against the same inputs, it gives the exact answer every time, backslash included.
+  - The tag binds the input as `$1`. `x' OR '1'='1` and `'; DROP TABLE "User"; --` both returned 0 rows, and the query log showed `lower($1)` with the text passed as a parameter.
+  - The table is `"User"`, since the schema has no `@@map`.
+  - This is the repo's first raw query, which is why the helper's comment explains the choice.
+- **Decided: a case collision never guesses.**
+  - When exactly one account matches ignoring case, it signs in.
+  - When several match, only the exact spelling signs in, which is exactly how those accounts behave today.
+  - No new collisions can be created: both `POST` routes refuse a username that matches an existing one in any case, across roles.
+- **Left out on purpose:**
+  - Trimming whitespace: `"dr.ahmad "` is still refused, as today.
+  - `autoCapitalize="none"` on the login input.
+  - Rewriting stored usernames to lower case, which would need a write to production rows and could collide on the unique index.
+  - The seed's exact `findUnique`, which an operator runs once.
+- **Prototyped and runtime-proven.** In a throwaway worktree, `tsc` exits 0 and `npm run build` exits 0. Lint is unchanged at 64: the new file and the three edited ones have no findings.
+
+  The test ran against a local Postgres seeded with `Admin`, `Dr.Ahmad`, `dr_sami` and a deliberate collision pair, `secA` / `SECA`. Sign-in went through the real `POST /api/auth/callback/credentials`, and the result was read back from `/api/auth/session`:
+
+  | Typed | Password | Signed in as |
+  |---|---|---|
+  | `Dr.Ahmad` | right | Dr.Ahmad (the exact-case control) |
+  | `dr.ahmad` | right | Dr.Ahmad |
+  | `DR.AHMAD` | right | Dr.Ahmad |
+  | `dr_sami` | right | dr_sami |
+  | `DR_SAMI` | right | dr_sami |
+  | `dr.ahmad` | wrong | refused |
+  | `%` | Dr.Ahmad's | refused |
+  | `%` | wrong | refused |
+  | `dr%` | Dr.Ahmad's | refused |
+  | `secA` | secA's | secA |
+  | `SECA` | SECA's | SECA |
+  | `seca` | secA's | refused (collision, neither spelling exact) |
+  | `Seca` | SECA's | refused (collision, neither spelling exact) |
+  | `dr.ahmad ` (trailing space) | right | refused (not trimmed, as today) |
+
+  Failed-attempt counters afterwards: `Dr.Ahmad=1`, from the one wrong password, on the right account. Every other account was at `0`, so **the two `%` attempts moved no one's counter.**
+
+  Creating accounts as `admin` (itself signed in in lower case):
+
+  | Route | Username | Result |
+  |---|---|---|
+  | `POST /api/employees/doctors` | `DR.AHMAD` | 409 "Username already taken" |
+  | `POST /api/employees/secretaries` | `dr.ahmad` | 409 (across roles) |
+  | `POST /api/employees/secretaries` | `seca` | 409 |
+  | `POST /api/employees/doctors` | `Dr.Ahmad` | 409 (exact duplicate, as today) |
+  | `POST /api/employees/doctors` | `new_doc%` | 201 |
+  | `POST /api/employees/doctors` | `NEW_DOC%` | 409 |
+
+  `New_Doc%` then signed in as the account created as `new_doc%`.
+- **A harness trap, recorded so the executor does not chase it.** `src/lib/prisma.ts` always connects with SSL. A local Postgres therefore has to run with `ssl=on`; a self-signed certificate is enough. Without it, every sign-in fails with `CallbackRouteError … The server does not support SSL connections`, which looks exactly like the feature not working. The exact-case control row above is what tells the two apart.
+
+**Scope — touch only these:**
+- `src/lib/username.ts` (new; `src/lib` exists)
+- `src/lib/auth.ts`
+- `src/app/api/employees/doctors/route.ts` (`POST` only)
+- `src/app/api/employees/secretaries/route.ts` (`POST` only)
+
+**Do not touch:**
+- `src/lib/auth.config.ts` and `src/middleware.ts`. They run on the Edge and must stay free of Prisma, so the helper is imported only from `auth.ts` and the route handlers.
+- The `[id]` `PUT` routes, since usernames cannot change.
+- `prisma/schema.prisma`. There is no migration and no `db push`. Stored usernames keep the case they were created with, and the admin tables keep showing it.
+- `prisma/seed.ts` and `src/app/login/page.tsx`.
+- The rest of `authorize()`. The status check, the lockout and its counters stay exactly as they are, applied to whichever account the lookup resolves.
+
+**Instructions.** All files are LF. Each anchor below occurs exactly once in its file (machine-checked 2026-10-12).
+
+**Step 1.** Create `src/lib/username.ts` with exactly:
+```ts
+import "server-only";
+import { prisma } from "@/lib/prisma";
+
+/**
+ * The ids of every account whose username equals `input`, ignoring case.
+ *
+ * Raw SQL on purpose. Prisma's `mode: "insensitive"` compiles to a bare
+ * `ILIKE $1` with nothing escaped (measured on Prisma 7.4.1), so a `%` or
+ * `_` typed at the login box acts as a wildcard — `%` alone matches every
+ * account — and a username containing `\` can never match itself.
+ * `lower() = lower()` is plain equality with none of that. The template tag
+ * binds `input` as a parameter; it is never spliced into the SQL. (TJ-060)
+ */
+export async function findUserIdsByUsername(input: string): Promise<string[]> {
+    const rows = await prisma.$queryRaw<{ id: string }[]>`
+        SELECT id FROM "User" WHERE lower(username) = lower(${input})
+    `;
+    return rows.map((r) => r.id);
+}
+```
+
+**Step 2.** In `src/lib/auth.ts`, replace:
+```ts
+import { authConfig } from "@/lib/auth.config";
+```
+with:
+```ts
+import { authConfig } from "@/lib/auth.config";
+import { findUserIdsByUsername } from "@/lib/username";
+```
+
+**Step 3.** In `src/lib/auth.ts`, replace:
+```ts
+                const user = await prisma.user.findUnique({
+                    where: { username: credentials.username as string },
+                });
+```
+with:
+```ts
+                // A username signs in in any case: a phone that capitalises
+                // the first letter must not shut anyone out. Should two
+                // accounts ever differ only by case, only the exact spelling
+                // signs in — never a guess between two people. (TJ-060)
+                const typed = credentials.username as string;
+                const ids = await findUserIdsByUsername(typed);
+                const user = ids.length === 1
+                    ? await prisma.user.findUnique({ where: { id: ids[0] } })
+                    : await prisma.user.findUnique({ where: { username: typed } });
+```
+The second branch covers both zero matches and a collision. With zero matches the exact lookup finds nothing either. With a collision it finds only the exact spelling. Keep it as a ternary rather than `let user = null` plus an `if`: under this repo's `"strict": false`, `let user = null` widens to `any` and drops the typing of every check below it.
+
+**Step 4.** In `src/app/api/employees/doctors/route.ts`, replace `import { auth } from "@/lib/auth";` with that line followed by `import { findUserIdsByUsername } from "@/lib/username";`. Then replace:
+```ts
+    // Check if username is taken
+    const existing = await prisma.user.findUnique({ where: { username } });
+```
+with:
+```ts
+    // Taken in any case: sign-in ignores case, so "Dr.Ahmad" beside an
+    // existing "dr.ahmad" would be two accounts behind one login. (TJ-060)
+    const existing = (await findUserIdsByUsername(username)).length > 0;
+```
+
+**Step 5.** In `src/app/api/employees/secretaries/route.ts`, add the same import line in the same way. Then replace:
+```ts
+    const existing = await prisma.user.findUnique({ where: { username } });
+```
+with:
+```ts
+    // Taken in any case: sign-in ignores case, so "Sec.Rana" beside an
+    // existing "sec.rana" would be two accounts behind one login. (TJ-060)
+    const existing = (await findUserIdsByUsername(username)).length > 0;
+```
+In both routes, the `if (existing) {` line that follows stays as it is. `existing` is now a boolean.
+
+**Verification:**
+
+Static:
+- `npx tsc --noEmit` exits 0, and `npm run build` exits 0.
+- `npm run lint` reports `64 problems (50 errors, 14 warnings)`, unchanged.
+- `grep -c findUserIdsByUsername` returns `2` in `src/lib/auth.ts`, `2` in each of the two routes, and `1` in `src/lib/username.ts`.
+- `grep -rn "insensitive" src/lib/auth.ts src/app/api/employees | wc -l` returns `0`. The phrase does appear in `username.ts`'s comment on purpose, so grepping that file returns `1`.
+- `grep -c 'lower(username) = lower(${input})' src/lib/username.ts` returns `1`.
+- `grep -c 'findUnique({ where: { username } })'` returns `0` in both routes.
+- `git diff --stat master` lists exactly the four files. `auth.config.ts` and `middleware.ts` are unchanged.
+
+Runtime, against a local Postgres running with `ssl=on` and seeded as above:
+- Every row of both tables in the planning pass gives the result shown.
+- After the sign-in table, only the account that took the wrong password has a non-zero counter.
+
+Optional and read-only, for the user rather than the executor: on production, `SELECT lower(username), array_agg(username) FROM "User" GROUP BY 1 HAVING count(*) > 1;` lists any existing case-collision pairs. By design, each such account keeps signing in with its exact spelling only.
+
+**Done when:**
+- [ ] A username signs in in any case, and the password stays case-sensitive
+- [ ] `%`, `_` and `\` in a username are literal characters, at sign-in and at creation
+- [ ] A case collision signs in only by exact spelling, and no new collision can be created
+- [ ] Lockout still counts against the account that was actually tried
+- [ ] tsc and build pass; lint is 64
+
+---
+
 ## Notes for the planner
 
 Findings reported by the executor, or surfaced during a pass, that fall outside the scope of the task that turned them up. The planner triages these into tasks. **The executor does not write here** — it reports in conversation and the planner records.
+
+- **Prisma's `mode: "insensitive"` is an unescaped `ILIKE`, so never route user input through it where equality is meant.** Measured on Prisma 7.4.1 against Postgres 16 during the TJ-060 pass:
+  - `{ username: { equals: input, mode: "insensitive" } }` compiles to `WHERE "username" ILIKE $1` and escapes nothing.
+  - So `%` matches every row, `fif%` matches `fifty%`, and a stored value containing `\` can never match itself.
+  - It reads like equality, it passes `tsc`, and on an all-letters fixture it behaves exactly like equality. Only a probe with a wildcard in it shows the difference.
+  - At a login box it hands anyone a "match every account" username.
+
+  TJ-060 uses a parameterised `lower(col) = lower(${input})` through the tagged `$queryRaw` instead. **Rule: any future case-insensitive match on user input — a patient-name search, an email lookup — is either a deliberate `contains` search, where wildcards are harmless, or goes through `lower() = lower()`.** It is never `equals` plus `mode: "insensitive"`. (Found during the TJ-060 pass, 2026-10-12.)
+- **The doctor dashboard's Duplicate has never worked.**
+  - `confirmDuplicate` in `src/app/doctor/page.tsx` posts `{ date: dupeDate, time: dupeTime }`.
+  - `POST /api/reservations/[id]/duplicate` reads `sessionDate` / `sessionTime` and answers 400 "sessionDate is required".
+  - The page never reads the response, so the modal closes as though the duplicate worked.
+  - Admin sends `{ sessionDate, sessionTime }` and secretary sends `{ sessionDate }`, so only the doctor's copy is wrong.
+
+  Fixing the body alone would be a mistake. The duplicate route has **no role check**, while `POST /api/reservations` refuses doctors ("Doctors cannot create reservations"), so a working doctor Duplicate would be a way round that rule. This needs the user's decision before it becomes a task: either fix the body and accept doctors creating bookings this way, or remove Duplicate from the doctor's menu and refuse doctors at the route. TJ-046, the duplicate route's missing clinic-window check, is the natural place to file it. (Found during the TJ-058 pass, 2026-10-12.)
+- **After TJ-058, a doctor's first view is every colleague's cards, and nothing on the server limits a doctor to their own reservations.**
+  - `PATCH /api/reservations/[id]` (status) checks the role, never ownership.
+  - So do the doctor's session page and its SOAP `PUT`: `canAccessClinical` admits any doctor to any session.
+  - All of this was already true behind the "All Doctors" option. TJ-058 changes how exposed it is, not what a doctor is permitted to do.
+
+  Whether a doctor may check in, cancel or write notes on a colleague's patient is the user's call. Worth asking once TJ-058 is live, before anyone treats the default view as a permission boundary. (Found during the TJ-058 pass, 2026-10-12.)
+- **The employee edit modal overflows sideways at desktop width too, not only at 320px.** Measured in the TJ-059 prototype: the edit modal on `/admin/employees/doctors` has `scrollWidth` 673 against `clientWidth` 558 at 1440px, and 333 against 286 at 320px. The cause is the working-hours `.form-group` / `.hours-row` inputs, not the colour picker, which fits at both widths. TJ-020 is filed as a 320px problem; its pass should measure at desktop width as well. (Found during the TJ-059 pass, 2026-10-12.)
+- **A planning pass can prototype its own diff, and in this repo that is cheap. Two snags cost one failed build each:**
+  - `npm run build` in a bare checkout fails with `supabaseUrl is required` unless `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_ANON_KEY` are set. Any value will do.
+  - Turbopack refuses a `node_modules` symlinked from outside the project root ("Symlink node_modules is invalid"). Hard-link it instead with `cp -al`, which uses no extra disk on the same filesystem.
+
+  Build the throwaway worktree **outside** the repo, so it cannot become a TJ-050 nested worktree. Add `ssl=on` to any local Postgres (see TJ-060). With that, TJ-058/059/060 were each applied by script with exact-once anchors, gated, and browser- or runtime-checked before being written down. That process caught one false Verification number before it shipped: a `grep -c 'mode: "insensitive"'` that returns 1, not 0, because the new helper's own comment names the phrase. (Recorded during the TJ-058/059/060 passes, 2026-10-12.)
 
 - **A waived runtime review is recoverable, and most of it does not need write access.** TJ-047b/c, TJ-048, TJ-049a and TJ-049b all merged with their runtime bullets waived because no agent can sign in. When the user signed in themselves on 2026-09-15 and handed over the browser, **almost every bullet turned out to be answerable read-only** — navigation, menu contents, form field values, computed styles, card geometry, and the presence or absence of a clinical field. The only genuinely unavailable checks were the ones that *write*: saving an edit, the out-of-window refusal path, and a status transition. **Two habits follow.** When writing a task's Verification block, **separate the read-only bullets from the write bullets explicitly** — the read-only ones can be honoured later without touching the clinic's database, and a block that mixes them reads as entirely blocked when it is mostly not. And **prefer an assertion over an eye**: the strongest evidence in this pass was not a screenshot but `getComputedStyle`, `scrollWidth === clientWidth`, and a form's `input.value` compared against the same record fetched from the API. A screenshot would have flattered every one of those. (Recorded after the live verification pass, 2026-09-15.)
 - **Driving a browser by screenshot coordinates is unsafe when the screenshot is scaled, and the failure looks exactly like an application bug.** During the live pass the screenshot frame was **1568×698** while the page viewport was **1920×855** — a 0.816 factor. Clicks issued in screenshot coordinates landed roughly 22% off and hit neighbouring cards, which produced a convincing false positive: a card click appeared to open **the wrong patient's file**. It was very nearly written up as a TJ-048 defect. Clicking by **element reference** instead resolved it immediately and the behaviour was correct. **Rule: click by element ref; if coordinates are unavoidable, read `innerWidth`/`innerHeight` and compare them against the reported screenshot frame before trusting a single click.** A corollary worth keeping: when a UI test "fails" in a way that implies a deep logic bug in code that reads like a simple id lookup, suspect the harness before the code. (Found during the live verification pass, 2026-09-15.)
