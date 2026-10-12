@@ -118,9 +118,9 @@ Two things that bear repeating here, because this is the file both agents open:
 | TJ-055 | `--font-heading` has never resolved: headings render in the body font, not Bodoni Moda | DONE — task commit `32bd05c`, merged as `d9a53ee` on 2026-09-28; option 2 (keep the body face), chosen by the planner at the user's request; no visible change measured | `bugfix/heading-font-variable` |
 | TJ-056 | Card text reads blurry on Windows: unhinted font files and faded muted lines | DONE — task commit `2079d78`, merged to `master` as `220ed3e` with `--no-ff` on 2026-09-28 at the user's request; **a look on a Windows machine is owed** | `bugfix/windows-text-rendering` |
 | TJ-057 | Draw Arabic 10% larger; clip long Arabic names at their end | DONE — task commit `e60699e`, merged to `master` as `01cfb82` with `--no-ff` on 2026-09-28 at the user's request; **a look on a Windows machine is owed** | `feat/arabic-size-adjust` |
-| TJ-058 | Open the doctor dashboard on All Doctors | READY — passed 2026-10-12; diff prototyped, gated and browser-checked | `feat/doctor-calendar-all-default` |
-| TJ-059 | Ten more calendar colours for doctors | READY — passed 2026-10-12; colours chosen by measurement; diff prototyped, gated and browser-checked | `feat/more-doctor-colours` |
-| TJ-060 | Sign in with a username in any case | READY — passed 2026-10-12; **the obvious Prisma one-liner is a login wildcard**, so the plan uses `lower() = lower()`; diff prototyped and runtime-proven | `feat/username-any-case` |
+| TJ-058 | Open the doctor dashboard on All Doctors | REVIEW — passed planner review and QA 2026-10-12; merged into `claude/exciting-einstein-krgpmv` as `031b184`; **not merged to `master`: merging deploys to production, awaiting the user** | `feat/doctor-calendar-all-default` |
+| TJ-059 | Ten more calendar colours for doctors | REVIEW — passed planner review and QA 2026-10-12; merged into `claude/exciting-einstein-krgpmv` as `aa47fca`; **not merged to `master`: merging deploys to production, awaiting the user** | `feat/more-doctor-colours` |
+| TJ-060 | Sign in with a username in any case | REVIEW — passed planner review and QA 2026-10-12; merged into `claude/exciting-einstein-krgpmv` as `72afb3e`; **not merged to `master`: merging deploys to production, awaiting the user** | `feat/username-any-case` |
 | TJ-061 | The doctor dashboard's Duplicate: broken, and the route behind it lets a doctor book | BLOCKED — passed 2026-10-12; measured; **awaiting the user's choice: doctors don't duplicate (A, recommended) or duplicate their own sessions (B)** | — |
 | TJ-062 | Limit doctors to their own sessions | BLOCKED — passed 2026-10-12; measured (a doctor can write a colleague's status, details and SOAP); **awaiting the user's scope decisions**; splits into server + UI once decided | — |
 
@@ -10520,7 +10520,7 @@ Option 1 remains available later as a deliberate redesign.
 
 ### TJ-058 — Open the doctor dashboard on All Doctors
 
-- **Status:** READY. Planning pass run 2026-10-12. The planned diff was prototyped in a throwaway worktree, gated and checked in a browser. Nothing is committed against this task.
+- **Status:** REVIEW. Passed planner review and QA on 2026-10-12. Task commit `455f662` on `feat/doctor-calendar-all-default`, merged into `claude/exciting-einstein-krgpmv` as `031b184` with `--no-ff`. **not merged to `master`: merging deploys to production, awaiting the user**.
 - **Branch:** `feat/doctor-calendar-all-default`
 - **Why:** User request, 2026-10-12: the calendar a doctor sees by default should be the all-doctors calendar, not the doctor's own. Today `/doctor` opens filtered to the signed-in doctor, and "All Doctors" is the second option in the select. Admin and secretary already open on "All Doctors" (`useState("all")` in `admin/page.tsx` and `secretary/page.tsx`). This brings the third dashboard in line.
 
@@ -10608,16 +10608,26 @@ Runtime, signed in as a doctor, against a database with sessions today for at le
 - Admin and secretary dashboards still open on "All Doctors". Their files are untouched, so this is a sanity look.
 
 **Done when:**
-- [ ] A doctor's dashboard opens on the whole clinic's schedule
-- [ ] "My Schedule" and each colleague can still be chosen
-- [ ] Only `src/app/doctor/page.tsx` changed
-- [ ] tsc and build pass; lint is 63
+- [x] A doctor's dashboard opens on the whole clinic's schedule
+- [x] "My Schedule" and each colleague can still be chosen
+- [x] Only `src/app/doctor/page.tsx` changed
+- [x] tsc and build pass; lint is 63
+
+**Review, 2026-10-12.** Executed as `455f662` on `feat/doctor-calendar-all-default` by one of three executors running in parallel, then checked by an independent QA agent on all three branches merged together, the combination that will ship.
+- **Planner review:** `src/app/doctor/page.tsx` is byte-identical to the prototype the pass measured. The branch is one commit on `master`, Scope only.
+- **Executor and QA, independently: every Verification bullet passes.**
+  - `tsc` exits 0, build exits 0, lint is 63.
+  - `/doctor` opens on All Doctors with "3 sessions", and the first fetch carries no `doctorId`.
+  - The month dots count the whole clinic (`12:3`), and "My Schedule" narrows them to `12:1`.
+  - A doctor receives no phone fields. Admin and secretary are unchanged.
+  - QA also delayed the session by 3 seconds: no request ever went out with an empty `doctorId`.
+- **Visual review (QA):** `/doctor`, `/admin` and `/secretary` at 1440, 320 and 2560px showed no console errors and no broken images. `/doctor` overflows by 204px at 320px, identically with either filter selected, so the cause is not this change; see Notes.
 
 ---
 
 ### TJ-059 — Ten more calendar colours for doctors
 
-- **Status:** READY. Planning pass run 2026-10-12. The colours were chosen by measurement. The diff was prototyped in a throwaway worktree, gated and checked in a browser. Nothing is committed against this task.
+- **Status:** REVIEW. Passed planner review and QA on 2026-10-12. Task commit `34270bf` on `feat/more-doctor-colours`, merged into `claude/exciting-einstein-krgpmv` as `aa47fca` with `--no-ff`. **not merged to `master`: merging deploys to production, awaiting the user**.
 - **Branch:** `feat/more-doctor-colours`
 - **Why:** User request, 2026-10-12: "add more color options to assign to doctors, add about 10 more." There are 12 colours, and TJ-009d made each one exclusive to a single ACTIVE doctor, so the 13th active doctor already has to share one ("Every colour is in use — this one will be shared"). Ten more makes 22.
 
@@ -10727,16 +10737,27 @@ Runtime, against a local database. Every bullet but the last is read-only.
   - A second doctor offered the same colour gets a 409, "That colour is already used by …".
 
 **Done when:**
-- [ ] Both pickers offer 22 colours, the first twelve unchanged and in order
-- [ ] The two arrays are identical
-- [ ] A new colour can be assigned, draws legibly on a card, and stays exclusive
-- [ ] tsc and build pass; lint is 64
+- [x] Both pickers offer 22 colours, the first twelve unchanged and in order
+- [x] The two arrays are identical
+- [x] A new colour can be assigned, draws legibly on a card, and stays exclusive
+- [x] tsc and build pass; lint is 64
+
+**Review, 2026-10-12.** Executed as `34270bf` on `feat/more-doctor-colours` by one of three executors running in parallel, then checked by an independent QA agent on all three branches merged together, the combination that will ship.
+- **Planner review:** both files are byte-identical to the prototype.
+- **Executor and QA, independently: every Verification bullet passes.**
+  - 22 swatches: 6 rows of 4 on `/new`; 2 rows of 12 in the modal, or 4 rows of 6 at 320px.
+  - The default is `#93c5fd` while `#6ee7b7` and `#fbbf24` are held.
+  - A doctor given `#14b8a6` draws `rgb(20, 184, 166)` cards with `rgb(26, 46, 53)` text, on `/admin` and on `/doctor`.
+  - A second doctor is refused the same colour with a 409, by `PUT` and by `POST`.
+- **QA's extra checks:**
+  - It recomputed the ten contrasts with the app's own formula; they match the table.
+  - Palette exhaustion scales: with 21 colours held, the default is the one free colour; with 22 held, the "every colour is in use" hint shows.
 
 ---
 
 ### TJ-060 — Sign in with a username in any case
 
-- **Status:** READY. Planning pass run 2026-10-12. The obvious one-line fix was measured, found to be a login wildcard, and rejected. The planned diff was prototyped and runtime-proven against a local database. Nothing is committed against this task.
+- **Status:** REVIEW. Passed planner review and QA on 2026-10-12. Task commit `61b10e3` on `feat/username-any-case`, merged into `claude/exciting-einstein-krgpmv` as `72afb3e` with `--no-ff`. **not merged to `master`: merging deploys to production, awaiting the user**.
 - **Branch:** `feat/username-any-case`
 - **Why:** User request, 2026-10-12: "make the username not case sensitive at sign in." `authorize()` finds the account with `prisma.user.findUnique({ where: { username } })`, which is an exact, case-sensitive match. So `dr.ahmad` typed for an account stored as `Dr.Ahmad` is refused as a wrong password. The usual cause is a phone capitalising the first letter. Once this lands, a username signs in in any case, and the password check stays exactly as strict as it is.
 
@@ -10916,11 +10937,26 @@ Runtime, against a local Postgres running with `ssl=on` and seeded as above:
 Optional and read-only, for the user rather than the executor: on production, `SELECT lower(username), array_agg(username) FROM "User" GROUP BY 1 HAVING count(*) > 1;` lists any existing case-collision pairs. By design, each such account keeps signing in with its exact spelling only.
 
 **Done when:**
-- [ ] A username signs in in any case, and the password stays case-sensitive
-- [ ] `%`, `_` and `\` in a username are literal characters, at sign-in and at creation
-- [ ] A case collision signs in only by exact spelling, and no new collision can be created
-- [ ] Lockout still counts against the account that was actually tried
-- [ ] tsc and build pass; lint is 64
+- [x] A username signs in in any case, and the password stays case-sensitive
+- [x] `%`, `_` and `\` in a username are literal characters, at sign-in and at creation
+- [x] A case collision signs in only by exact spelling, and no new collision can be created
+- [x] Lockout still counts against the account that was actually tried
+- [x] tsc and build pass; lint is 64
+
+**Review, 2026-10-12.** Executed as `61b10e3` on `feat/username-any-case` by one of three executors running in parallel, then checked by an independent QA agent on all three branches merged together, the combination that will ship.
+- **Planner review:** all four files are byte-identical to the prototype, and `username.ts` matches Step 1 exactly.
+- **Executor and QA, independently: both tables pass row for row.** Counters end at `Dr.Ahmad=1` and 0 for everyone else, and the log has 0 `CallbackRouteError`.
+- **QA's own probes all held:**
+  - `_`, `%`, `\` and `'` are literal at sign-in and at creation.
+  - Injection strings are refused, with the table intact.
+  - Empty, whitespace-only and 20,000-character usernames are refused cleanly.
+  - A RESIGNED account is refused in every case.
+  - Lockout trips after five wrong passwords typed in five different cases, counted against the right account.
+- **Corrected by QA: "no new collision can be created" holds for requests sent one at a time, not for concurrent ones.**
+  - Six simultaneous `POST`s of case variants all returned 201, because the lookup runs before a ~250 ms bcrypt hash.
+  - Not a regression: `master` allowed case variants at any time. Negligible in practice. Recorded in Notes.
+  - The Done-when box is ticked with that qualification.
+- **Still the user's to run before merging to `master`:** the optional read-only production query for existing case-collision pairs.
 
 ---
 
@@ -11012,6 +11048,16 @@ Measured on `master`, signed in as `Dr.Ahmad`, acting on `dr_sami`'s reservation
 ## Notes for the planner
 
 Findings reported by the executor, or surfaced during a pass, that fall outside the scope of the task that turned them up. The planner triages these into tasks. **The executor does not write here** — it reports in conversation and the planner records.
+
+- **A hub-and-spoke run of three executors and a QA agent worked cleanly, and how it was set up is reusable.** On 2026-10-12, TJ-058/059/060 were executed in parallel and TJ-020 straight after. The setup:
+  - One worktree per task branch, built **outside** the repo so nothing nests (TJ-050), with a hard-linked `node_modules` and a gitignored `.env` each.
+  - One SSL-enabled local Postgres with a database per executor, a separate port each, and a shared fixture seeder.
+  - A separate QA worktree with every task branch merged in, so QA tests the combination that will ship.
+
+  All four branches came back byte-identical to the planner's prototype, and the merges did not conflict. **One harness fact to put in every future brief: `ss` is not installed here.** Find a server with `fuser -n tcp <port>`, and confirm `/proc/<pid>/cwd` before killing it. Every executor rediscovered this. (Recorded after the TJ-058/059/060/020 run, 2026-10-12.)
+- **TJ-060's case-insensitive collision check is not atomic.** QA's six simultaneous `POST`s of `rc2ab`, `Rc2ab`, `rC2ab` and so on all returned 201, because each lookup runs before a ~250 ms bcrypt hash. Not a regression, since `master` allowed case variants at any time, and the exact-spelling unique index still holds. The real fix would be a unique index on `lower(username)`, which needs a migration this project does not run (it uses `db push`, and Prisma cannot declare functional indexes). File it only if concurrent admin account creation ever becomes plausible. Also pre-existing and unchanged: a non-string `username` in an employee `POST` body returns a 500 (`PrismaClientValidationError`), exactly as on `master`. (Found by QA, 2026-10-12.)
+- **`/doctor` overflows by 204px at 320px.** The cause is the controls row (`.btn-nav` to 383px, the select to 524px) and the layout's `.user-btn`. It is identical with either filter selected, so TJ-058 did not cause it. It belongs with TJ-021's 320px work, though TJ-021 is filed against the admin shell only, so its pass should take in the doctor shell too. (Found by QA, 2026-10-12.)
+- **On the `/new` employee pages at phone width, the gap between Phone and Email (~42px) is far larger than between Email and Working Hours (~11px).** The cause is `.field { margin-bottom: 1rem }` plus the grid gap, with `.field:last-child { margin-bottom: 0 }` zeroing Email's margin. It predates TJ-020, which touched none of those rules. Cosmetic. (Found by the TJ-020 executor, 2026-10-12.)
 
 - **Prisma's `mode: "insensitive"` is an unescaped `ILIKE`, so never route user input through it where equality is meant.** Measured on Prisma 7.4.1 against Postgres 16 during the TJ-060 pass:
   - `{ username: { equals: input, mode: "insensitive" } }` compiles to `WHERE "username" ILIKE $1` and escapes nothing.
