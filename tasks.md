@@ -69,7 +69,7 @@ Two things that bear repeating here, because this is the file both agents open:
 | TJ-017 | Let a proxy fall-through fail cleanly | DONE — task commit `33cb466`, merged to `master` as `68cc31d` with `--no-ff`; runtime-proven against a measured master baseline | `chore/clinic-path-public` |
 | TJ-018 | Document the production environment variables | DONE — task commit `8bb70df`, merged to `master` as `cd3d4cf` with `--no-ff`; all seven deployment variables now documented, `.env` still ignored | `docs/env-example` |
 | TJ-019 | Migrate the `middleware` file convention to `proxy` | BACKLOG — deferred until after the cutover; see `Production_Cutover.md` | — |
-| TJ-020 | Employee forms overflow sideways: their inputs never shrink below the browser's default width | READY — passed 2026-10-12, widened to desktop and the `/new` pages; diff prototyped, 0px overflow measured at 7 widths × 4 surfaces; **user priority: first after TJ-058/059/060** | `bugfix/employee-form-overflow` |
+| TJ-020 | Employee forms overflow sideways: their inputs never shrink below the browser's default width | REVIEW — passed planner review and QA 2026-10-12; merged into `claude/exciting-einstein-krgpmv` as `ba23881`; **not merged to `master`: merging deploys to production, awaiting the user** | `bugfix/employee-form-overflow` |
 | TJ-021 | Every admin page overflows horizontally at 320px | BACKLOG — no planning pass | — |
 | TJ-022 | Warn before unsaved clinical text is discarded | DONE — merged `6467b39` with `--no-ff`; runtime-proven and visually reviewed | `feat/unsaved-changes-warning` |
 | TJ-023 | Stop serving clinical data to secretaries | DONE — merged `c86985b` with `--no-ff`; runtime-proven and visually reviewed | `feat/clinical-read-boundary` |
@@ -1332,7 +1332,7 @@ The diff was read in full: exactly the six files in Scope, symmetric across the 
 
 ### TJ-020 — Employee forms overflow sideways: their inputs never shrink below the browser's default width
 
-- **Status:** READY. Planning pass run 2026-10-12 and widened at the user's request: it now covers desktop widths and the two `/new` pages, not only the modals at 320px. The diff was prototyped, gated and measured in a browser. Nothing is committed against this task. **User priority, 2026-10-12: first to execute after TJ-058/059/060.**
+- **Status:** REVIEW. Passed planner review and QA on 2026-10-12. Task commit `6a7270e` on `bugfix/employee-form-overflow`, merged into `claude/exciting-einstein-krgpmv` as `ba23881` with `--no-ff`. **Not merged to `master`: merging deploys to production, awaiting the user.**
 - **Branch:** `bugfix/employee-form-overflow`
 - **Why:** The doctor and secretary **edit modals** overflow sideways at every desktop width, not only on phones. Their right-hand column is cut off at the modal's edge: Phone, the second time input, and Repeat Password. The two `/new` pages overflow at tablet and phone widths. Measured on `master`, as `scrollWidth − clientWidth` of the modal card (modals) or of the page (`/new`):
 
@@ -1634,10 +1634,23 @@ Runtime, signed in as admin against a local database. Every bullet but the last 
 - **Write:** in the doctor edit modal and in the secretary edit modal, set working hours to 09:00–17:30 and save. The table's working-hours column shows the new value, so the change is purely visual.
 
 **Done when:**
-- [ ] Neither edit modal nor either `/new` page overflows sideways at any of the seven widths
-- [ ] Times are never clipped; on phones the hours row wraps instead
-- [ ] The forms still save
-- [ ] Only the four files changed; tsc and build pass; lint is 64
+- [x] Neither edit modal nor either `/new` page overflows sideways at any of the seven widths
+- [x] Times are never clipped; on phones the hours row wraps instead
+- [x] The forms still save
+- [x] Only the four files changed; tsc and build pass; lint is 64
+
+**Review, 2026-10-12.** Executed as `6a7270e` right after TJ-058/059/060, as the user asked. QA then checked it on all four branches merged together, against a "before" build of the same tree.
+- **Planner review:** all four files are byte-identical to the prototype. One commit on `master`, Scope only.
+- **Executor and QA, independently: every Verification bullet passes.**
+  - Overflow is 0px at all 28 surface × width combinations. QA's "before" numbers reproduce the master table exactly.
+  - The narrowest time input is 156px. The row wraps only at 375px and 320px.
+  - Both write paths save.
+- **QA's extra widths and probes:**
+  - At 2560, 700, 640 and 480px, overflow is 0. That includes `/new` at 700px, which was 245px before.
+  - A 124-character legacy-hours hint, very long unbroken emails and names, a 150% default font size, and the hard-delete confirm input all fit without overflow.
+  - On `/new` at desktop widths, the Personal Information card had been overflowing *internally* by 54px (the Email input stuck out of the card). That was fixed as a side effect.
+  - The list pages are box-for-box identical, and TJ-059's swatch layout is unchanged.
+- **Cosmetic, by design:** Email and Working Hours now take a full row each, so the edit modals are about 87px taller. In a window about 900px tall, the secretary modal now scrolls by 3px (811px of content in an 808px box); Save stays reachable.
 
 ---
 
