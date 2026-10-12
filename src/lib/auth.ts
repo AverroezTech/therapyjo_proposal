@@ -4,6 +4,7 @@ import Credentials from "next-auth/providers/credentials";
 import bcrypt from "bcryptjs";
 import { prisma } from "@/lib/prisma";
 import { authConfig } from "@/lib/auth.config";
+import { findUserIdsByUsername } from "@/lib/username";
 
 const MAX_LOGIN_ATTEMPTS = 5;
 const LOCKOUT_MINUTES = 15;
@@ -54,9 +55,15 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
                     return null;
                 }
 
-                const user = await prisma.user.findUnique({
-                    where: { username: credentials.username as string },
-                });
+                // A username signs in in any case: a phone that capitalises
+                // the first letter must not shut anyone out. Should two
+                // accounts ever differ only by case, only the exact spelling
+                // signs in — never a guess between two people. (TJ-060)
+                const typed = credentials.username as string;
+                const ids = await findUserIdsByUsername(typed);
+                const user = ids.length === 1
+                    ? await prisma.user.findUnique({ where: { id: ids[0] } })
+                    : await prisma.user.findUnique({ where: { username: typed } });
 
                 if (!user) return null;
                 if (user.status !== "ACTIVE") return null;
