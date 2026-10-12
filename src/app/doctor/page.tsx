@@ -43,10 +43,10 @@ export default function DoctorDashboard() {
 
     const doctorId = (session?.user as { id?: string })?.id;
 
-    // Defaults to "my schedule only" — the toggle below lets a doctor opt
-    // into seeing the whole clinic's schedule, same as admin/secretary. (TJ-024)
-    const [doctorFilter, setDoctorFilter] = useState("");
-    useEffect(() => { if (doctorId) setDoctorFilter(doctorId); }, [doctorId]);
+    // Opens on the whole clinic's schedule, the same as admin and secretary.
+    // The select below narrows it to the doctor's own, or to one colleague's.
+    // (TJ-058)
+    const [doctorFilter, setDoctorFilter] = useState("all");
 
     const fetchDoctors = useCallback(async () => {
         const res = await fetch("/api/employees/doctors");
@@ -55,7 +55,6 @@ export default function DoctorDashboard() {
     }, []);
 
     const fetchReservations = useCallback(async () => {
-        if (!doctorFilter) return;
         setLoading(true);
         const params = new URLSearchParams({ date: selectedDate });
         if (doctorFilter !== "all") params.set("doctorId", doctorFilter);
@@ -127,8 +126,8 @@ export default function DoctorDashboard() {
                     <button className="btn-nav" onClick={() => goDay(1)}>Tomorrow →</button>
                 </div>
                 <select className="doctor-select" value={doctorFilter} onChange={(e) => setDoctorFilter(e.target.value)}>
-                    {doctorId && <option value={doctorId}>My Schedule</option>}
                     <option value="all">All Doctors</option>
+                    {doctorId && <option value={doctorId}>My Schedule</option>}
                     {doctors.filter((d) => d.id !== doctorId).map((d) => (
                         <option key={d.id} value={d.id}>{d.name}</option>
                     ))}
